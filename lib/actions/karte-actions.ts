@@ -134,6 +134,22 @@ export async function updateKarte(karteId: string, formData: FormData) {
   redirect(`/karte/${data.facilityNo}`);
 }
 
+// カルテ自体の削除。点検対象・点検記録・災害履歴・写真・資料は全てKarteとの
+// リレーションにonDelete: Cascadeを設定してあるため、Prisma側で自動的に
+// まとめて削除される（Vercel Blob上の実ファイルは削除されず残る。誤って
+// 大量アップロードした場合を除き実害は小さいため、現時点では未対応）。
+//
+// 点検対象の論理削除（isActive）とは異なり、こちらは物理削除にしている。
+// 「誤って追加したカルテ」を消す用途のため、中途半端に残しておく方が
+// かえって一覧を汚してしまうと判断した。確認ダイアログ（ConfirmSubmitButton）
+// で誤操作を防ぐ。
+export async function deleteKarte(karteId: string) {
+  await prisma.karte.delete({ where: { id: karteId } });
+
+  revalidatePath("/karte");
+  redirect("/karte");
+}
+
 // ── 点検対象（変状No.相当） ──────────────────────────────────
 
 export async function createInspectionTarget(karteId: string, karteFacilityNo: string, formData: FormData) {

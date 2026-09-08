@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { updateKarte } from "@/lib/actions/karte-actions";
+import { updateKarte, deleteKarte } from "@/lib/actions/karte-actions";
 import KarteForm, { type KarteFormValues } from "@/components/KarteForm";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
+import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
         where: { targetId: null, eventId: null, disasterEventId: null },
         orderBy: { takenAt: "asc" },
       },
+      _count: { select: { targets: true, events: true, disasterEvents: true, photos: true, attachments: true } },
     },
   });
 
@@ -59,6 +61,7 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
   };
 
   const action = updateKarte.bind(null, karte.id);
+  const deleteAction = deleteKarte.bind(null, karte.id);
 
   return (
     <div className="space-y-4">
@@ -91,6 +94,25 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
       </section>
 
       <KarteForm action={action} initial={initial} submitLabel="保存する" />
+
+      <section className="rounded border border-red-300 bg-red-50 p-4">
+        <h2 className="mb-1 font-semibold text-red-800">カルテの削除</h2>
+        <p className="mb-3 text-sm text-red-700">
+          このカルテ（{karte.facilityNo}）を削除すると、点検対象 {karte._count.targets} 件・
+          点検記録 {karte._count.events} 件・災害履歴 {karte._count.disasterEvents} 件・
+          写真 {karte._count.photos} 件・資料 {karte._count.attachments} 件も
+          <strong>すべて完全に削除</strong>され、元に戻せません。
+          誤って登録したカルテを削除する場合にのみ使用してください。
+        </p>
+        <form action={deleteAction}>
+          <ConfirmSubmitButton
+            message={`本当にカルテ「${karte.routeName}（${karte.facilityNo}）」を削除しますか？\n関連する点検対象・点検記録・災害履歴・写真もすべて完全に削除され、元に戻せません。`}
+            className="rounded border border-red-400 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-100"
+          >
+            このカルテを完全に削除する
+          </ConfirmSubmitButton>
+        </form>
+      </section>
     </div>
   );
 }
