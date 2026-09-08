@@ -165,9 +165,10 @@ export async function importKarteExcel(
   }
 
   // 取込元のExcelそのものをカルテ資料として保存しておく（抽出結果の検証・原本保全用、ベストエフォート）。
-  // @vercel/blob はトークン未設定時にすぐ失敗せず長時間待たされることを確認済みのため、
-  // 事前にトークンの有無を確認してから呼び出す（photo-actions.tsと同じ理由）。
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
+  // @vercel/blob は認証情報が無いとすぐ失敗せず長時間待たされることを確認済みのため、
+  // 事前に認証情報の有無を確認してから呼び出す（photo-actions.tsのhasBlobCredentials()と同じ理由。
+  // BLOB_READ_WRITE_TOKEN固定トークン方式・VERCEL_OIDC_TOKEN方式のどちらかがあればよい）。
+  if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN) {
     try {
       const blob = await put(`karte-imports/${facilityNo}-${Date.now()}.xls`, buffer, {
         access: "public",

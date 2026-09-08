@@ -68,10 +68,18 @@ labelの文言は実際の様式にできるだけ合わせている。
 点検対象ごとに画像をアップロードできる（`lib/actions/photo-actions.ts`）。データ本体は
 Excel取込、写真は別アップロードという指示に沿い、独立した仕組みにしている。
 
-- 保存先はVercel Blob。`.env`に`BLOB_READ_WRITE_TOKEN`が必要（`.env.example`参照）。
-- **実装中に発見した問題**: `@vercel/blob`はトークン未設定時、即座には失敗せず
+- 保存先はVercel Blob。ローカル開発では`.env`に`BLOB_READ_WRITE_TOKEN`が必要
+  （`.env.example`参照）。本番（Vercel）では、Vercelダッシュボードで**Blobストアを
+  作成しこのプロジェクトに接続する**だけでよい。接続方式には2通りあることを実データで
+  確認済み: (1) 従来の固定トークンが`BLOB_READ_WRITE_TOKEN`として自動設定される、
+  (2) 新しいOIDC方式では`BLOB_READ_WRITE_TOKEN`は設定されず`VERCEL_OIDC_TOKEN`のみが
+  設定される（Vercel側が「All connected projects use OIDC」と案内するプロジェクトで
+  実際にこちらだった）。どちらの方式でも動くよう、認証情報の有無チェックは
+  `BLOB_READ_WRITE_TOKEN`と`VERCEL_OIDC_TOKEN`のいずれかが存在すればOKと判定している
+  （`lib/actions/photo-actions.ts`の`hasBlobCredentials()`）。
+- **実装中に発見した問題**: `@vercel/blob`は認証情報が全く無い場合、即座には失敗せず
   内部のリトライ処理で1分以上待たされた末にエラーになることを実際に確認した。
-  UXが悪いため、呼び出し前に`process.env.BLOB_READ_WRITE_TOKEN`の有無を自前でチェックし、
+  UXが悪いため、呼び出し前に認証情報の有無を自前でチェックし、
   未設定なら即座に分かりやすいエラーを返すようにしている（Excel取込側の原本保存も同様）。
   この修正はNode.jsから関数を直接呼び出すテストで1ミリ秒で正しくエラーになることを確認済み。
 - Vercel Blobの実トークンでの実アップロード（実際に画像が保存されること）は、
