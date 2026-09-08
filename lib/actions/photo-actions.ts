@@ -57,10 +57,13 @@ export async function uploadPhoto(
       access: "public",
     });
     url = blob.url;
-  } catch {
+  } catch (e) {
+    // TODO: 原因特定のため一時的に実際のエラー内容を表示している。解決したら
+    // 元の汎用メッセージに戻す。
+    const detail = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
-      error: "画像のアップロードに失敗しました。Vercel Blobの設定を確認してください（README参照）。",
+      error: `画像のアップロードに失敗しました（詳細: ${detail}）`,
     };
   }
 
