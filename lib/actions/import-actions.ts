@@ -37,6 +37,14 @@ const WEATHER_BY_LABEL: Record<string, Weather> = { "晴": Weather.SUNNY, "曇":
 // ハードコードしても情報漏洩にはあたらない）。
 const KNOWN_TEMPLATE_PASSWORD = "VelvetSweatshop";
 
+// ファイル名等をURLパスセグメントとして安全な文字列に変換する
+// （拡張子を除去し、半角英数字・ハイフン・アンダースコア以外の連続を"_"にまとめる）。
+function sanitizeForUrl(name: string): string {
+  const stem = name.replace(/\.[^.]+$/, "");
+  const safe = stem.replace(/[^A-Za-z0-9-]+/g, "_").replace(/^_+|_+$/g, "");
+  return safe || "FILE";
+}
+
 // 取込結果をユーザーに分かりやすく伝えるため、成功時もエラー時も
 // redirect()を使わず呼び出し元（クライアントコンポーネント、useActionState）に返す設計にしている。
 export type ImportKarteResult =
@@ -76,7 +84,10 @@ export async function importKarteExcel(
 
   // 施設管理番号が未入力（今回のテストファイルのように空）の場合は、
   // 後から編集画面で修正できることを前提に、ファイル名から仮の番号を組み立てる。
-  const facilityNo = extracted.facilityNo || `IMPORT-${file.name.replace(/\.[^.]+$/, "")}-${Date.now()}`;
+  // facilityNoはURLのパスセグメント（/karte/[karteNo]）としてそのまま使われるため、
+  // 半角英数字・ハイフン・アンダースコアのみに正規化する（空白や日本語を含む値を
+  // 実際にVercel本番環境で使ったところ、詳細画面が404になる不具合を実データで確認したため）。
+  const facilityNo = extracted.facilityNo || `IMPORT-${sanitizeForUrl(file.name)}-${Date.now()}`;
   const karteType = extracted.karteTypeLabel
     ? KARTE_TYPE_BY_LABEL[extracted.karteTypeLabel] ?? KarteType.OTHER
     : KarteType.OTHER;
