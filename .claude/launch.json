@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "webgis-mvp",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\b1630\\project\\ClaudeCode\\Saigai\\webgis-mvp && npm run dev"],
+      "port": 3000
+    }
+  ]
+}

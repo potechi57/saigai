@@ -1,0 +1,387 @@
+// 道路防災カルテ Web GIS MVP — データモデル
+//
+// 設計の背景・レビュー時の指摘事項は ../../12_DATA_MODEL_WEBGIS_MVP.md を参照。
+// 実際の防災カルテ様式（karte_sheet_jgca201307/01防災カルテ様式_落石・崩壊.xls、
+// 全国地質調査業協会連合会 平成25年7月）の様式Ａ〜Ｄ・現状記録写真の構造に基づく。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── enum（防災カルテ様式の"List"シートに存在する正式なコード表を採用） ──────────
+
+// 点検対象項目（カルテ種別）。全10種のうち、MVPでは落石・崩壊のみ
+// KarteRockfallDetail で詳細を持つ。他種別は Karte 本体の登録は可能だが、
+// 種別固有の詳細テーブル（KarteBridgeScourDetail 等）は未実装。
+enum KarteType {
+  ROCKFALL_COLLAPSE // 落石・崩壊
+  ROCK_MASS_COLLAPSE // 岩盤崩壊
+  LANDSLIDE // 地すべり
+  AVALANCHE // 雪崩
+  DEBRIS_FLOW // 土石流
+  EMBANKMENT // 盛土
+  RETAINING_WALL // 擁壁
+  BRIDGE_FOUNDATION_SCOUR // 橋梁基礎の洗掘
+  SNOWDRIFT // 地吹雪
+  OTHER // その他
+}
+
+enum ProjectCategory {
+  GENERAL // 一般
+  TOLL // 有料
+}
+
+// 道路種別（Listシートの主要なもののみ採用。将来項目が増えた場合はマスタテーブル化を検討）
+enum RoadType {
+  EXPRESSWAY // 高速自動車国道
+  NATIONAL_DESIGNATED // 一般国道（指定区間）
+  NATIONAL_UNDESIGNATED // 一般国道（指定区間外）
+  MAJOR_PREFECTURAL // 主要地方道
+  PREFECTURAL // 一般都道府県道
+  MUNICIPAL_1 // 市町村道（1級）
+  MUNICIPAL_2 // 市町村道（2級）
+  MUNICIPAL_OTHER // 市町村道（その他）
+  TOLL_ROAD // 一般有料道路
+  URBAN_EXPRESSWAY // 都市高速道路
+}
+
+enum RoadStatus {
+  CURRENT // 現道
+  OLD // 旧道
+  NEW // 新道
+  NEWEST // 新新道
+}
+
+enum GeodeticSystem {
+  WORLD // 世界測地系
+  JAPAN // 日本測地系
+}
+
+enum Weather {
+  SUNNY // 晴
+  CLOUDY // 曇
+  RAIN // 雨
+  SNOW // 雪
+}
+
+// 対応区分。指示書が例示した5段階（異常なし〜要対策）ではなく、
+// 実データ（Listシート「点検結果1」）の正式な3値に、初期状態（未評価）を加えた4値。
+// Karte（カルテの現在の対応方針）と InspectionEvent.specialistJudgement
+// （その点検時点での専門技術者の判定）の両方で共有する。
+// 様式Ａの「評価」欄と様式Ｃの「点検後の対応（専門技術者の判定）」が同じ区分を指している
+// らしいことは実データの構造から推測できるが、記入済みの実例では未確認のため、
+// この対応関係（現在値のキャッシュ+履歴）は要検証（推測の範囲）。
+enum ResponseCategory {
+  UNEVALUATED // 未評価（初期値。様式上は空欄に相当）
+  COUNTERMEASURE_NEEDED // 対策工が必要
+  HANDLED_BY_KARTE // カルテ対応
+  NO_COUNTERMEASURE_NEEDED // 対策不要
+  COUNTERMEASURE_COMPLETED // 対策完了
+}
+
+enum InspectionPeriodType {
+  REGULAR // 定期
+  IRREGULAR // 不定期
+}
+
+// 写真の由来様式。旧Excelからの移行時のトレーサビリティ用（新規登録では通常 OTHER でよい）
+enum PhotoSourceForm {
+  FORM_A // 様式Ａ（点検地点位置図）
+  FORM_B // 様式Ｂ（詳細スケッチ・写真張付欄）
+  FORM_D // 様式Ｄ（平面図・断面図・現況写真）
+  GENERAL_RECORD // 現状記録写真（様式に収まらなかった写真）
+  OTHER
+}
+
+// ── カルテ本体 ──────────────────────────────────────────────
+
+model Karte {
+  id String @id @default(cuid())
+
+  // 施設管理番号。様式上は1マスに半角1文字ずつ入力する仕様だが、
+  // アプリ内部では結合済みの文字列として1カラムで保持する。
+  facilityNo String    @unique
+  karteType  KarteType
+
+  manageOrgName String? // 管理機関名
+  manageOrgCode String? // 管理機関コード
+
+  routeName String // 路線名
+  routeNo   String? // 路線番号（指示書3.1に記載あり、様式上は路線名に含まれるため任意）
+
+  // 距離標。様式は「km(4桁)」「m(2桁)」の別セル入力＋マイナス距離標対応だが、
+  // アプリ内部では小数kmに正規化して1カラムで保持する（符号はそのままマイナス値で表現）。
+  distanceMarkerFromKm Decimal? @db.Decimal(7, 3)
+  distanceMarkerToKm   Decimal? @db.Decimal(7, 3)
+  sideOfRoad           String? // 上下線の別（上/下/他 等、選択肢が少なくないため自由入力）
+
+  extensionLengthM Decimal? @db.Decimal(8, 1) // 延長(m)
+
+  projectCategory ProjectCategory?
+  roadType        RoadType?
+  roadStatus      RoadStatus?
+
+  // 所在地
+  locationDistrict String? // 郡・支庁 等
+  locationTown     String? // 市区町村
+  landmark         String? // 位置目印
+
+  latitude       Decimal?        @db.Decimal(9, 6) // 10進度に変換して保持（様式は度分秒入力）
+  longitude      Decimal?        @db.Decimal(9, 6)
+  geodeticSystem GeodeticSystem?
+
+  preTrafficRestriction Boolean? // 事前通行規制区間指定 有/無
+  continuousRainfallMm  Int? // 規制基準等：連続雨量(mm)
+  hourlyRainfallMm      Int? // 規制基準等：時間雨量(mm)
+
+  trafficVolumeWeekday Int? // 交通量：平日(台/12h)
+  trafficVolumeHoliday Int? // 交通量：休日(台/12h)
+
+  didArea               Boolean? // DID区間 該当/非該当
+  busRoute              Boolean? // バス路線 該当/非該当
+  detour                Boolean? // 迂回路 有/無
+  emergencyRoadCategory String? // 緊急輸送道路区分（指定有/指定無 等）
+
+  specialistInspectionRequired Boolean? // 専門技術者による点検 有/無
+
+  keyDeformationSummary    String? @db.Text // 着目すべき変状（様式Aの共通コメント）
+  inspectionContentSummary String? @db.Text // 点検内容の要点
+  specialistComment        String? @db.Text // 専門技術者のコメント
+
+  responseCategory    ResponseCategory @default(UNEVALUATED) // 対応するものに○印（①〜④）
+  responseEvaluatedAt DateTime? // 評価年月日
+
+  inspectionPeriodType   InspectionPeriodType?
+  inspectionIntervalNote String? // 例: "1年に1回"（Listの値をそのまま格納）
+
+  assumedDisasterForm  String? @db.Text // 想定される災害形態
+  responseWhenDeformed String? @db.Text // 変状が出たときの対応
+
+  createdOnSiteDate    DateTime? // 様式作成年月日
+  createdOnSiteWeather Weather?
+
+  inspectorName    String? // 点検者名（作成時点）
+  inspectorCompany String?
+  inspectorTel     String?
+
+  specialistName    String? // 専門技術者名（作成時点）
+  specialistCompany String?
+  specialistTel     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rockfallDetail KarteRockfallDetail?
+  targets        InspectionTarget[]
+  events         InspectionEvent[]
+  disasterEvents DisasterEvent[]
+  photos         Photo[]
+  attachments    AttachmentDocument[]
+
+  @@index([karteType])
+  @@index([routeName])
+}
+
+// 落石・崩壊カルテ固有の属性（様式Ａ下部「主な災害形態」チェック欄）。
+// 他の9種別（岩盤崩壊・地すべり・雪崩・土石流・盛土・擁壁・橋梁基礎の洗掘・地吹雪・その他）を
+// 追加する際は、Karte 本体を変更せず KarteXxxDetail を新設して Karte と1:1で結ぶ。
+// 例: 橋梁基礎の洗掘は橋梁名・橋長・河川名（河川管理者）が様式Ａに追加される。
+model KarteRockfallDetail {
+  id      String @id @default(cuid())
+  karteId String @unique
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  mainFormRockfall Boolean @default(false) // 主な災害形態：落石
+  mainFormCollapse Boolean @default(false) // 主な災害形態：崩壊
+}
+
+// ── 点検対象（変状No.相当） ──────────────────────────────────
+
+model InspectionTarget {
+  id      String @id @default(cuid())
+  karteId String
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  // カルテ内での通し番号。表示用コードは "{facilityNo}-T{sequenceNo}" のように
+  // アプリ層で組み立てる（実データの「変状No.」は数値のみのため）。
+  sequenceNo Int
+
+  name        String // 対象名称（例:「起点側法面」「P-3付近の浮石」等、自由記述）
+  description String? @db.Text
+
+  // 以下は様式Ｂ（着目すべき変状の詳細記録）相当の項目。
+  // 様式Ｂの「<詳細スケッチ欄>」「<写真張付欄>」は、固定2枠ではなく
+  // Photo（sourceForm=FORM_B）の複数枚アップロードとして自由度高く扱う
+  // （紙の様式より柔軟にできる点はデジタル化のメリットとして活かす）。
+  keyPoints            String?   @db.Text // 着目すべき点
+  checkItems           String?   @db.Text // チェック項目
+  createdOnSiteDate    DateTime? // 様式Ｂの作成年月日（様式Ａ全体の作成日とは別に、変状ごとに記録される）
+  createdOnSiteWeather Weather?
+
+  isActive     Boolean @default(true) // 解消済み等になった場合はfalseにする（論理的な終了、削除はしない）
+  displayOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  results        InspectionResult[]
+  disasterEvents DisasterEvent[]
+  photos         Photo[]
+
+  @@unique([karteId, sequenceNo])
+}
+
+// ── 点検イベント（1回の訪問。点検対象をまたいで共通の情報） ──────────────
+
+model InspectionEvent {
+  id      String @id @default(cuid())
+  karteId String
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  inspectionDate DateTime
+  inspectorName  String?
+  weather        Weather?
+
+  specialTopics String? @db.Text // 点検時の特記事項（点検時の対応）
+
+  specialistInspectionDate DateTime?
+  specialistName           String?
+  specialistJudgement      ResponseCategory? // 点検後の対応（専門技術者の判定）。Karte.responseCategoryと同じ区分（推測、要検証）
+
+  nextInspectionDueYear Int? // 次回点検実施時期（年度）
+
+  createdAt DateTime @default(now())
+
+  results InspectionResult[]
+  photos  Photo[]
+
+  // Excel取込の再実行（同じファイルを再アップロード等）で点検イベントが
+  // 重複作成されないよう、カルテ×点検日で一意にする（upsertのキーとして使う）。
+  @@unique([karteId, inspectionDate])
+}
+
+// ── 点検結果（点検イベント×点検対象の交差） ────────────────────────
+
+model InspectionResult {
+  id String @id @default(cuid())
+
+  eventId  String
+  event    InspectionEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  targetId String
+  target   InspectionTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  diffFromPrevious Boolean? // 前回との差異 有/無
+  disasterHistory  Boolean? // 被災履歴 有/無
+  repairHistory    Boolean? // 補修履歴 有/無
+  comment          String?  @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, targetId])
+}
+
+// ── 災害履歴（様式Ｄ相当。被災・対策工の実績があった場合のみ作成） ──────────
+
+model DisasterEvent {
+  id      String @id @default(cuid())
+  karteId String
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  targetId String?
+  target   InspectionTarget? @relation(fields: [targetId], references: [id], onDelete: SetNull)
+
+  disasterType KarteType? // 災害種別（Listの「被災種別」もKarteTypeとほぼ同じ語彙のため共有）
+  occurredDate DateTime?
+
+  // 規模
+  scaleWidthM  Decimal? @db.Decimal(6, 2)
+  scaleLengthM Decimal? @db.Decimal(6, 2)
+  scaleDepthM  Decimal? @db.Decimal(6, 2)
+  scaleComment String?  @db.Text
+
+  // 誘因（該当するものだけ入力する想定。単一カテゴリ選択ではなく実測値の記録に近いため個別カラム）
+  rainContinuousMm       Int?
+  rainMaxHourlyMm        Int?
+  seismicIntensity       String? // 例:「震度5弱」
+  seismicAccelerationGal Int?
+  snowTemperatureC       Decimal? @db.Decimal(4, 1)
+  snowDepthM             Decimal? @db.Decimal(5, 2)
+  causeComment           String?  @db.Text
+
+  // 被害
+  damageDeaths                   Int?
+  damageInjured                  Int?
+  propertyDamageComment          String?  @db.Text
+  propertyDamageAmountMillionYen Decimal? @db.Decimal(10, 1)
+
+  // 通行止め実績・対策工
+  closureFullHours    Decimal? @db.Decimal(6, 1)
+  closurePartialHours Decimal? @db.Decimal(6, 1)
+  shoulderRestriction Boolean?
+
+  countermeasureFiscalYear     Int?
+  countermeasureType           String?  @db.Text // 提案対策工マスタ（約150項目）は未テーブル化のため自由入力
+  countermeasureCostMillionYen Decimal? @db.Decimal(10, 1)
+
+  comment String? @db.Text
+
+  createdOnSiteDate    DateTime?
+  createdOnSiteWeather Weather?
+
+  createdAt DateTime @default(now())
+
+  photos Photo[]
+
+  @@index([karteId, occurredDate])
+}
+
+// ── 写真 ────────────────────────────────────────────────
+
+model Photo {
+  id String @id @default(cuid())
+
+  karteId String
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  targetId String?
+  target   InspectionTarget? @relation(fields: [targetId], references: [id], onDelete: SetNull)
+
+  eventId String?
+  event   InspectionEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  disasterEventId String?
+  disasterEvent   DisasterEvent? @relation(fields: [disasterEventId], references: [id], onDelete: SetNull)
+
+  url        String // Vercel Blob等のオブジェクトストレージURLを想定
+  sourceForm PhotoSourceForm @default(OTHER)
+
+  takenAt      DateTime?
+  takenBy      String?
+  takenLat     Decimal?  @db.Decimal(9, 6)
+  takenLng     Decimal?  @db.Decimal(9, 6)
+  caption      String?
+  displayOrder Int       @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([karteId])
+  @@index([targetId])
+}
+
+// ── カルテ資料（元カルテPDF等） ───────────────────────────────
+
+model AttachmentDocument {
+  id      String @id @default(cuid())
+  karteId String
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  title      String
+  url        String
+  fileType   String? // "pdf" 等
+  uploadedAt DateTime @default(now())
+}
