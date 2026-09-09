@@ -48,7 +48,7 @@ export default async function EditInspectionTargetPage({
             防災カルテ様式Ｂ　（{KARTE_TYPE_LABEL[target.karte.karteType] ?? target.karte.karteType}）
           </h1>
         </div>
-        <table className="w-full min-w-[600px] border-collapse text-xs">
+        <table className="w-full border-collapse text-xs">
           <tbody>
             <tr>
               <Th>施設管理番号</Th>
@@ -153,5 +153,9 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function Td({ children }: { children: React.ReactNode }) {
-  return <td className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle">{children}</td>;
+  return (
+    <td className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle whitespace-nowrap">
+      {children}
+    </td>
+  );
 }

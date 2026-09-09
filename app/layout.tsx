@@ -43,7 +43,11 @@ export default function RootLayout({
             <ThemeToggle />
           </nav>
         </header>
-        <main className="mx-auto max-w-5xl p-6">{children}</main>
+        {/* 様式Ａ・様式Ｃ等はExcelを模した横に広い表になるため、幅を制限しすぎると
+            本来不要な横スクロールが発生してしまう。画面の余白を活かせるよう
+            十分に広い上限（max-w-[1800px]）にとどめている（無制限にはせず、
+            超ワイドモニタでの間延びだけは防ぐ）。 */}
+        <main className="mx-auto max-w-[1800px] p-6">{children}</main>
       </body>
     </html>
   );

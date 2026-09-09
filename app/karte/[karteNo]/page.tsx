@@ -82,7 +82,7 @@ export default async function KarteDetailPage({
         </div>
       </div>
 
-      <table className="w-full min-w-[1100px] border-collapse text-xs">
+      <table className="w-full border-collapse text-xs">
         <tbody>
           {/* 実際のExcelの1行目（施設管理番号〜延長）と同じ並び */}
           <tr>
@@ -323,7 +323,7 @@ export default async function KarteDetailPage({
       {karte.events.length === 0 ? (
         <p className="p-4 text-sm text-gray-400 dark:text-gray-500">点検記録がまだありません</p>
       ) : (
-        <table className="w-full min-w-[700px] border-collapse text-xs">
+        <table className="w-full border-collapse text-xs">
           <thead>
             <tr>
               <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検年月日</Th>
@@ -476,7 +476,7 @@ export default async function KarteDetailPage({
         <div className="divide-y divide-gray-300 dark:divide-gray-700">
           {karte.disasterEvents.map((d) => (
             <div key={d.id} className="overflow-x-auto p-2">
-              <table className="w-full min-w-[700px] border-collapse text-xs">
+              <table className="w-full border-collapse text-xs">
                 <tbody>
                   <tr>
                     <Th>発生年月日</Th>
@@ -623,7 +623,10 @@ function Td({
   className?: string;
 }) {
   return (
-    <td colSpan={colSpan} className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle ${className}`}>
+    <td
+      colSpan={colSpan}
+      className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle whitespace-nowrap ${className}`}
+    >
       {children}
     </td>
   );
