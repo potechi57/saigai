@@ -4,6 +4,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, ROAD_TYPE_LABEL, WEATHER_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
+import PhotoSlot from "@/components/PhotoSlot";
 import SheetTabs from "@/components/SheetTabs";
 
 // 一覧画面と同じ理由で静的プリレンダリングを無効化する。
@@ -307,6 +308,97 @@ export default async function KarteDetailPage({
     </section>
   );
 
+  // ── 様式Ｂ（変状/点検対象ごとの詳細記録） ───────────────────────────
+  // 実際のExcelでは点検対象（変状）ごとに様式Ｂのシートが分かれる（例:"様式Ｂ (1)"
+  // "様式Ｂ(2)"）。1つのシート＝1つの点検対象なので、ここでは点検対象ごとに
+  // ブロックを分けて並べる（様式Ｄの災害履歴と同じ考え方）。
+  // レイアウトは点検対象編集画面（様式Ｂの編集版）と同じで、実データでdrawingの
+  // アンカー位置まで確認済み: 左に<詳細スケッチ欄>（写真2枚縦並び）、右に
+  // <写真張付欄>（大きめの写真1枚）とその下に着目すべき点・チェック項目。
+  const formB = (
+    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
+          防災カルテ様式Ｂ　（{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}）
+        </h2>
+      </div>
+      {karte.targets.length === 0 ? (
+        <p className="p-4 text-sm text-gray-400 dark:text-gray-500">点検対象が登録されていません</p>
+      ) : (
+        <div className="divide-y divide-gray-400 dark:divide-gray-600">
+          {karte.targets.map((t) => {
+            const [sketchPhoto1, sketchPhoto2, pastePhoto] = t.photos;
+            const targetCode = `${karte.facilityNo}-T${String(t.sequenceNo).padStart(2, "0")}`;
+            return (
+              <div key={t.id} className={t.isActive ? undefined : "opacity-60"}>
+                <table className="w-full border-collapse text-xs">
+                  <tbody>
+                    <tr>
+                      <Th>施設管理番号</Th>
+                      <Td>{karte.facilityNo}</Td>
+                      <Th>路線名</Th>
+                      <Td>{karte.routeName}</Td>
+                      <Th>変状 No.</Th>
+                      <Td colSpan={3}>
+                        {targetCode} {t.name}
+                        {!t.isActive && <span className="ml-2 text-gray-500 dark:text-gray-400">（解消済み）</span>}
+                        <Link
+                          href={`/karte/${karte.facilityNo}/targets/${t.id}/edit`}
+                          className="ml-3 font-normal text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          編集
+                        </Link>
+                      </Td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
+                  {/* 左: <詳細スケッチ欄>（実データでは写真2枚が縦に並ぶ） */}
+                  <div className="p-3">
+                    <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
+                    <div className="space-y-3">
+                      <PhotoSlot photo={sketchPhoto1} heightClass="h-56" />
+                      <PhotoSlot photo={sketchPhoto2} heightClass="h-56" />
+                    </div>
+                  </div>
+                  {/* 右: <写真張付欄>（実データでは大きめの写真1枚）＋着目すべき点／チェック項目 */}
+                  <div className="space-y-3 p-3 text-sm">
+                    <div>
+                      <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h3>
+                      <PhotoSlot photo={pastePhoto} heightClass="h-[29rem]" />
+                    </div>
+                    <div>
+                      <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">着目すべき点</h3>
+                      <p className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">{t.keyPoints || "—"}</p>
+                    </div>
+                    <div>
+                      <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">チェック項目</h3>
+                      <p className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">{t.checkItems || "—"}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">作成年月日</h3>
+                        <p className="text-gray-800 dark:text-gray-100">
+                          {t.createdOnSiteDate ? new Date(t.createdOnSiteDate).toLocaleDateString("ja-JP") : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">天候</h3>
+                        <p className="text-gray-800 dark:text-gray-100">
+                          {t.createdOnSiteWeather ? WEATHER_LABEL[t.createdOnSiteWeather] : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+
   // ── 様式Ｃ（点検履歴） ─────────────────────────────────────
   const formC = (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
@@ -587,6 +679,7 @@ export default async function KarteDetailPage({
       <SheetTabs
         tabs={[
           { id: "formA", label: "様式Ａ", content: formA },
+          { id: "formB", label: "様式Ｂ", content: formB },
           { id: "formC", label: "様式Ｃ", content: formC },
           { id: "formD", label: "様式Ｄ", content: formD },
           { id: "documents", label: "カルテ資料", content: documents },

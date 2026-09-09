@@ -5,6 +5,7 @@ import { updateInspectionTarget, setInspectionTargetActive } from "@/lib/actions
 import { TextField, TextAreaField, DateField, SelectField } from "@/components/FormFields";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
+import PhotoSlot from "@/components/PhotoSlot";
 import { KARTE_TYPE_LABEL, WEATHER_LABEL } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -165,34 +166,6 @@ export default async function EditInspectionTargetPage({
         )}
       </div>
     </div>
-  );
-}
-
-function PhotoSlot({
-  photo,
-  heightClass,
-}: {
-  photo?: { id: string; url: string; caption: string | null };
-  heightClass: string;
-}) {
-  if (!photo) {
-    return (
-      <div
-        className={`flex ${heightClass} items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500`}
-      >
-        写真なし
-      </div>
-    );
-  }
-  return (
-    <a href={photo.url} target="_blank" rel="noreferrer" title={photo.caption ?? undefined}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={photo.url}
-        alt={photo.caption ?? "写真"}
-        className={`${heightClass} w-full rounded border border-gray-300 object-cover dark:border-gray-700`}
-      />
-    </a>
   );
 }
 
