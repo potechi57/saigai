@@ -2,8 +2,14 @@ import type { WorkBook, WorkSheet } from "xlsx";
 import { utils } from "xlsx";
 
 // 防災カルテ様式（全国地質調査業協会連合会 平成25年7月版、karte_sheet_jgca201307）の
-// 固定セル位置マップ。実際に一部記入済みのファイル（「国道432号 A001.xls」）と
-// 突き合わせて位置を検証した上で実装している。
+// 固定セル位置マップ。実際に一部記入済みのファイル（「国道432号 A001.xls」、および
+// 島根県の実データ複数件「B1432A279」「B1432A020」「B3101A019」等）と突き合わせて
+// 位置を検証した上で実装している。
+//
+// 【注記】初版は施設管理番号等が未入力の「国道432号 A001.xls」のみで検証しており、
+// 施設管理番号・点検対象項目（カルテ区分）・路線名・距離標の列位置に誤りがあった
+// （記入例が無いと列がずれていても空文字列が返るだけで気づけないため）。
+// 上記の実データ複数件で再検証し、列位置を修正済み。
 //
 // 【重要】ここで抽出しているのは「実データで位置を確認できた、または構造上ほぼ
 // 疑いようのないフィールド」だけである。以下は意図的に対象外にしている
@@ -50,6 +56,32 @@ function joinChars(ws: WorkSheet, r: number, cols: number[]): string | null {
   return s === "" ? null : s;
 }
 
+// 距離標（km＋m）専用。joinDigitsと違い「km側のセルが全て空/0」でも
+// m側に値があれば未入力扱いにしない（例:"0k020m"のようにルート起点付近で
+// km側が0になる実データが実在することを確認したため）。
+// km・mの両方のセル群が完全に空（未記入セル）の場合のみnullを返す。
+function distanceMarker(ws: WorkSheet, r: number, kmCols: number[], mCols: number[]): number | null {
+  const allCols = [...kmCols, ...mCols];
+  const allBlank = allCols.every((c) => {
+    const v = cellValue(ws, r, c);
+    return v === undefined || v === null || v === "";
+  });
+  if (allBlank) return null;
+
+  const digits = (cols: number[]): number => {
+    const s = cols
+      .map((c) => {
+        const v = cellValue(ws, r, c);
+        return v === undefined || v === null || v === "" ? "0" : String(v);
+      })
+      .join("");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  return digits(kmCols) + digits(mCols) / 1000;
+}
+
 function dms(ws: WorkSheet, r: number, degCol: number, minCol: number, secCol: number): number | null {
   const deg = Number(cellValue(ws, r, degCol)) || 0;
   const min = Number(cellValue(ws, r, minCol)) || 0;
@@ -78,17 +110,15 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
   const ws = wb.Sheets[FORM_A_SHEET_NAME];
   if (!ws) return null;
 
-  const fromKm = joinDigits(ws, 4, [55, 56, 57, 58]);
-  const fromM = joinDigits(ws, 4, [61, 62]);
-  const toKm = joinDigits(ws, 4, [66, 67, 68, 69]);
-  const toM = joinDigits(ws, 4, [72, 73]);
-
   return {
-    facilityNo: joinChars(ws, 4, [6, 7, 8, 9, 10, 11, 12, 13]),
-    karteTypeLabel: cellText(ws, 4, 19) || null,
-    routeName: cellText(ws, 4, 28) || null,
-    distanceMarkerFromKm: fromKm !== null ? fromKm + (fromM ?? 0) / 1000 : null,
-    distanceMarkerToKm: toKm !== null ? toKm + (toM ?? 0) / 1000 : null,
+    // 施設管理番号は9マス（例:"B1432A279"）。実データ検証前は8マスだと誤認していた。
+    facilityNo: joinChars(ws, 4, [6, 7, 8, 9, 10, 11, 12, 13, 14]),
+    karteTypeLabel: cellText(ws, 4, 20) || null,
+    routeName: cellText(ws, 4, 29) || null,
+    // 距離標（自）＝ 2桁（km）＋3桁（m）、距離標（至）＝ 同様の2桁＋3桁。
+    // （実データ検証前は4桁＋2桁と誤認していた）
+    distanceMarkerFromKm: distanceMarker(ws, 4, [61, 62], [63, 64, 65]),
+    distanceMarkerToKm: distanceMarker(ws, 4, [69, 70], [71, 72, 73]),
     sideOfRoad: cellText(ws, 4, 78) || null,
     extensionLengthM: joinDigits(ws, 4, [83]),
     projectCategoryLabel: cellText(ws, 5, 4) || null,

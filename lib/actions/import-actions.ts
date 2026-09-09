@@ -55,12 +55,36 @@ export async function importKarteExcel(
   _prevState: ImportKarteResult | null,
   formData: FormData
 ): Promise<ImportKarteResult> {
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, error: "ファイルが選択されていません。" };
-  }
+  // 実際の防災カルテExcelは様式Ｂ・Ｃに写真が埋め込まれており数MB～10MB近くになることが多い。
+  // Server Actionの本文には既定で1MBの上限があり（next.config.mjsで緩和済み）、さらに本番
+  // （Vercel）ではVercel Functions自体のリクエストサイズ上限（next.config側の設定とは無関係に
+  // 存在する）があるため、大きいファイルはブラウザから直接Vercel Blobへアップロードし、
+  // ここにはそのURLだけを渡す経路をExcelImportForm側で使う（app/api/blob-upload/route.ts参照）。
+  // 小さいファイル（ローカル開発でのテスト等、Blob未設定の環境向け）は従来どおり
+  // ファイル本体をそのままここに送る経路も残している。
+  const blobUrl = formData.get("blobUrl");
+  const blobFileName = formData.get("fileName");
 
-  const buffer = Buffer.from(await file.arrayBuffer());
+  let buffer: Buffer;
+  let fileName: string;
+  let alreadyUploadedBlobUrl: string | null = null;
+
+  if (typeof blobUrl === "string" && blobUrl) {
+    const res = await fetch(blobUrl);
+    if (!res.ok) {
+      return { ok: false, error: "アップロード済みファイルの取得に失敗しました。もう一度お試しください。" };
+    }
+    buffer = Buffer.from(await res.arrayBuffer());
+    fileName = typeof blobFileName === "string" && blobFileName ? blobFileName : "uploaded.xlsx";
+    alreadyUploadedBlobUrl = blobUrl;
+  } else {
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: "ファイルが選択されていません。" };
+    }
+    buffer = Buffer.from(await file.arrayBuffer());
+    fileName = file.name;
+  }
 
   let wb: XLSX.WorkBook;
   try {
@@ -87,7 +111,7 @@ export async function importKarteExcel(
   // facilityNoはURLのパスセグメント（/karte/[karteNo]）としてそのまま使われるため、
   // 半角英数字・ハイフン・アンダースコアのみに正規化する（空白や日本語を含む値を
   // 実際にVercel本番環境で使ったところ、詳細画面が404になる不具合を実データで確認したため）。
-  const facilityNo = extracted.facilityNo || `IMPORT-${sanitizeForUrl(file.name)}-${Date.now()}`;
+  const facilityNo = extracted.facilityNo || `IMPORT-${sanitizeForUrl(fileName)}-${Date.now()}`;
   const karteType = extracted.karteTypeLabel
     ? KARTE_TYPE_BY_LABEL[extracted.karteTypeLabel] ?? KarteType.OTHER
     : KarteType.OTHER;
@@ -165,17 +189,28 @@ export async function importKarteExcel(
   }
 
   // 取込元のExcelそのものをカルテ資料として保存しておく（抽出結果の検証・原本保全用、ベストエフォート）。
-  // @vercel/blob は認証情報が無いとすぐ失敗せず長時間待たされることを確認済みのため、
-  // 事前に認証情報の有無を確認してから呼び出す（photo-actions.tsのhasBlobCredentials()と同じ理由。
-  // BLOB_READ_WRITE_TOKEN固定トークン方式・VERCEL_OIDC_TOKEN方式のどちらかがあればよい）。
-  if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN) {
+  if (alreadyUploadedBlobUrl) {
+    // ブラウザから直接Blobへアップロード済み（上記参照）。同じURLをそのまま資料として記録するだけでよく、
+    // サーバー側から再度アップロードし直す必要はない。
+    try {
+      await prisma.attachmentDocument.create({
+        data: { karteId: karte.id, title: `取込元Excel（${fileName}）`, url: alreadyUploadedBlobUrl, fileType: "xls" },
+      });
+    } catch {
+      // 原本保存はベストエフォート。失敗してもインポート結果には影響させない。
+    }
+  } else if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN) {
+    // 従来経路（ファイル本体を直接Server Actionに送った小さいファイル向け）。
+    // @vercel/blob は認証情報が無いとすぐ失敗せず長時間待たされることを確認済みのため、
+    // 事前に認証情報の有無を確認してから呼び出す（photo-actions.tsのhasBlobCredentials()と同じ理由。
+    // BLOB_READ_WRITE_TOKEN固定トークン方式・VERCEL_OIDC_TOKEN方式のどちらかがあればよい）。
     try {
       const blob = await put(`karte-imports/${facilityNo}-${Date.now()}.xls`, buffer, {
         access: "public",
         addRandomSuffix: false,
       });
       await prisma.attachmentDocument.create({
-        data: { karteId: karte.id, title: `取込元Excel（${file.name}）`, url: blob.url, fileType: "xls" },
+        data: { karteId: karte.id, title: `取込元Excel（${fileName}）`, url: blob.url, fileType: "xls" },
       });
     } catch {
       // 原本保存はベストエフォート。失敗してもインポート結果には影響させない。
