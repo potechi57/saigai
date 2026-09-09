@@ -40,9 +40,6 @@ export default function RootLayout({
             <a href="/karte" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
               検索・一覧
             </a>
-            <a href="/karte/map" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-              地図
-            </a>
             <ThemeToggle />
           </nav>
         </header>
