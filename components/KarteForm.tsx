@@ -118,7 +118,7 @@ export default function KarteForm({
       </Section>
 
       <div>
-        <button type="submit" className="rounded bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700">
+        <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
           {submitLabel}
         </button>
       </div>

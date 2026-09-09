@@ -65,14 +65,14 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
 
   return (
     <div className="space-y-4">
-      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 hover:underline">
+      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>
-      <h1 className="text-xl font-bold text-gray-800">カルテ編集: {karte.routeName}</h1>
+      <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">カルテ編集: {karte.routeName}</h1>
 
-      <section className="rounded border border-gray-300 bg-white p-4">
-        <h2 className="mb-1 font-semibold text-gray-700">点検地点位置図・現況写真</h2>
-        <p className="mb-3 text-xs text-gray-400">
+      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+        <h2 className="mb-1 font-semibold text-gray-700 dark:text-gray-200">点検地点位置図・現況写真</h2>
+        <p className="mb-3 text-xs text-gray-400 dark:text-gray-500">
           様式Ａの「点検地点位置図」「現況写真」に相当。特定の点検対象に限らない、カルテ全体の写真です
           （個別の点検対象の写真は、カルテ詳細画面の各点検対象欄から追加してください）。
         </p>
@@ -84,7 +84,7 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
                 <img
                   src={p.url}
                   alt={p.caption ?? "点検地点位置図・現況写真"}
-                  className="h-24 w-24 rounded border border-gray-200 object-cover"
+                  className="h-24 w-24 rounded border border-gray-200 dark:border-gray-700 object-cover"
                 />
               </a>
             ))}
@@ -95,9 +95,9 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
 
       <KarteForm action={action} initial={initial} submitLabel="保存する" />
 
-      <section className="rounded border border-red-300 bg-red-50 p-4">
-        <h2 className="mb-1 font-semibold text-red-800">カルテの削除</h2>
-        <p className="mb-3 text-sm text-red-700">
+      <section className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-4">
+        <h2 className="mb-1 font-semibold text-red-800 dark:text-red-300">カルテの削除</h2>
+        <p className="mb-3 text-sm text-red-700 dark:text-red-400">
           このカルテ（{karte.facilityNo}）を削除すると、点検対象 {karte._count.targets} 件・
           点検記録 {karte._count.events} 件・災害履歴 {karte._count.disasterEvents} 件・
           写真 {karte._count.photos} 件・資料 {karte._count.attachments} 件も
@@ -107,7 +107,7 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
         <form action={deleteAction}>
           <ConfirmSubmitButton
             message={`本当にカルテ「${karte.routeName}（${karte.facilityNo}）」を削除しますか？\n関連する点検対象・点検記録・災害履歴・写真もすべて完全に削除され、元に戻せません。`}
-            className="rounded border border-red-400 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-100"
+            className="rounded border border-red-400 dark:border-red-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950"
           >
             このカルテを完全に削除する
           </ConfirmSubmitButton>

@@ -69,28 +69,32 @@ export default async function KarteListPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800">カルテ検索・一覧</h1>
+        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">カルテ検索・一覧</h1>
         <div className="flex items-center gap-4 text-sm">
-          <Link href="/karte/map" className="text-blue-600 hover:underline">
+          <Link href="/karte/map" className="text-blue-600 dark:text-blue-400 hover:underline">
             地図から探す →
           </Link>
-          <Link href="/karte/import" className="text-blue-600 hover:underline">
+          <Link href="/karte/import" className="text-blue-600 dark:text-blue-400 hover:underline">
             Excelから取込 →
           </Link>
-          <Link href="/karte/new" className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700">
+          <Link href="/karte/new" className="rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-white hover:bg-gray-700 dark:hover:bg-gray-600">
             ＋ 新規カルテ登録
           </Link>
         </div>
       </div>
 
-      <form className="grid grid-cols-1 gap-3 rounded border border-gray-300 bg-white p-4 sm:grid-cols-2 md:grid-cols-3">
+      <form className="grid grid-cols-1 gap-3 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 sm:grid-cols-2 md:grid-cols-3">
         <SearchField name="q" label="施設管理番号 / カルテ番号" defaultValue={params.q} />
         <SearchField name="routeName" label="路線名" defaultValue={params.routeName} />
         <SearchField name="routeNo" label="路線番号" defaultValue={params.routeNo} />
         <SearchField name="location" label="所在地" defaultValue={params.location} />
         <div>
-          <label className="mb-1 block text-xs text-gray-500">カルテ区分</label>
-          <select name="karteType" defaultValue={params.karteType ?? ""} className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">カルテ区分</label>
+          <select
+            name="karteType"
+            defaultValue={params.karteType ?? ""}
+            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          >
             <option value="">すべて</option>
             {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
               <option key={value} value={value}>
@@ -100,11 +104,11 @@ export default async function KarteListPage({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">対応区分</label>
+          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
           <select
             name="responseCategory"
             defaultValue={params.responseCategory ?? ""}
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">すべて</option>
             {Object.entries(RESPONSE_META).map(([value, meta]) => (
@@ -115,22 +119,22 @@ export default async function KarteListPage({
           </select>
         </div>
         <div className="flex items-end gap-2 sm:col-span-2 md:col-span-3">
-          <button type="submit" className="rounded bg-gray-800 px-4 py-1.5 text-sm text-white hover:bg-gray-700">
+          <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
             検索
           </button>
           {hasCondition && (
-            <Link href="/karte" className="text-sm text-gray-500 hover:underline">
+            <Link href="/karte" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
               条件をクリア
             </Link>
           )}
         </div>
       </form>
 
-      <p className="text-sm text-gray-500">{kartes.length} 件のカルテ</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400">{kartes.length} 件のカルテ</p>
 
-      <div className="overflow-x-auto rounded border border-gray-300 bg-white">
+      <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
         <table className="w-full text-sm">
-          <thead className="bg-gray-100 text-left text-gray-600">
+          <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
             <tr>
               <th className="px-3 py-2">施設管理番号</th>
               <th className="px-3 py-2">カルテ種別</th>
@@ -145,9 +149,9 @@ export default async function KarteListPage({
             {kartes.map((k) => {
               const resp = responseMeta(k.responseCategory);
               return (
-                <tr key={k.id} className="border-t border-gray-200 hover:bg-gray-50">
+                <tr key={k.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-3 py-2">
-                    <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 hover:underline">
+                    <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                       {k.facilityNo}
                     </Link>
                   </td>
@@ -170,7 +174,7 @@ export default async function KarteListPage({
             })}
             {kartes.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-gray-400">
+                <td colSpan={7} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
                   {hasCondition
                     ? "条件に一致するカルテがありません。"
                     : <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>}
@@ -187,12 +191,12 @@ export default async function KarteListPage({
 function SearchField({ name, label, defaultValue }: { name: string; label: string; defaultValue?: string }) {
   return (
     <div>
-      <label className="mb-1 block text-xs text-gray-500">{label}</label>
+      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">{label}</label>
       <input
         type="text"
         name={name}
         defaultValue={defaultValue}
-        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       />
     </div>
   );

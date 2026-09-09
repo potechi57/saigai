@@ -6,3 +6,15 @@ body {
   color: #1a1a1a;
   background: #f7f7f5;
 }
+
+/* ダークモード（<html class="dark">）。カードや様式表の白背景(bg-white)より
+   ページ全体の背景を一段暗くして、ライトモードと同じ「カードが浮いて見える」
+   関係を保つ（ThemeToggle.tsx参照）。 */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  color: #e5e7eb;
+  background: #030712;
+}

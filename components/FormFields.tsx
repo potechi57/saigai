@@ -11,9 +11,9 @@ export function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded border border-gray-300 bg-white p-4">
-      <h2 className="mb-1 font-semibold text-gray-700">{title}</h2>
-      {note && <p className="mb-3 text-xs text-gray-400">{note}</p>}
+    <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+      <h2 className="mb-1 font-semibold text-gray-700 dark:text-gray-200">{title}</h2>
+      {note && <p className="mb-3 text-xs text-gray-400 dark:text-gray-500">{note}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">{children}</div>
     </section>
   );
@@ -30,9 +30,9 @@ type FieldProps = {
 export function TextField({ name, label, defaultValue, required, placeholder }: FieldProps) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-xs text-gray-500">
+      <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
         {label}
-        {required && <span className="text-red-500"> *</span>}
+        {required && <span className="text-red-500 dark:text-red-400"> *</span>}
       </span>
       <input
         type="text"
@@ -40,7 +40,7 @@ export function TextField({ name, label, defaultValue, required, placeholder }: 
         defaultValue={defaultValue ?? ""}
         required={required}
         placeholder={placeholder}
-        className="w-full rounded border border-gray-300 px-2 py-1.5"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       />
     </label>
   );
@@ -49,9 +49,9 @@ export function TextField({ name, label, defaultValue, required, placeholder }: 
 export function NumberField({ name, label, defaultValue, required, step = "any" }: FieldProps & { step?: string }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-xs text-gray-500">
+      <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
         {label}
-        {required && <span className="text-red-500"> *</span>}
+        {required && <span className="text-red-500 dark:text-red-400"> *</span>}
       </span>
       <input
         type="number"
@@ -59,7 +59,7 @@ export function NumberField({ name, label, defaultValue, required, step = "any" 
         name={name}
         defaultValue={defaultValue ?? ""}
         required={required}
-        className="w-full rounded border border-gray-300 px-2 py-1.5"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       />
     </label>
   );
@@ -68,16 +68,16 @@ export function NumberField({ name, label, defaultValue, required, step = "any" 
 export function DateField({ name, label, defaultValue, required }: FieldProps) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-xs text-gray-500">
+      <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
         {label}
-        {required && <span className="text-red-500"> *</span>}
+        {required && <span className="text-red-500 dark:text-red-400"> *</span>}
       </span>
       <input
         type="date"
         name={name}
         defaultValue={defaultValue ?? ""}
         required={required}
-        className="w-full rounded border border-gray-300 px-2 py-1.5"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       />
     </label>
   );
@@ -86,12 +86,12 @@ export function DateField({ name, label, defaultValue, required }: FieldProps) {
 export function TextAreaField({ name, label, defaultValue }: FieldProps) {
   return (
     <label className="block text-sm sm:col-span-2 md:col-span-3">
-      <span className="mb-1 block text-xs text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">{label}</span>
       <textarea
         name={name}
         defaultValue={defaultValue ?? ""}
         rows={3}
-        className="w-full rounded border border-gray-300 px-2 py-1.5"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       />
     </label>
   );
@@ -107,15 +107,15 @@ export function SelectField({
 }: FieldProps & { options: Record<string, string>; includeBlank?: boolean }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-xs text-gray-500">
+      <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
         {label}
-        {required && <span className="text-red-500"> *</span>}
+        {required && <span className="text-red-500 dark:text-red-400"> *</span>}
       </span>
       <select
         name={name}
         defaultValue={defaultValue ?? ""}
         required={required}
-        className="w-full rounded border border-gray-300 px-2 py-1.5"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       >
         {includeBlank && <option value="">（未選択）</option>}
         {Object.entries(options).map(([value, optLabel]) => (

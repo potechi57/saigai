@@ -66,24 +66,24 @@ export default async function KarteDetailPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/karte" className="text-sm text-blue-600 hover:underline">
+        <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
           ← 検索・一覧に戻る
         </Link>
         <Link
           href={`/karte/${karte.facilityNo}/edit`}
-          className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           カルテを編集
         </Link>
       </div>
 
       {/* ── 防災カルテ様式Ａ相当 ─────────────────────────────── */}
-      <section className="overflow-x-auto rounded border border-gray-400 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-400 bg-gray-50 px-3 py-2">
-          <h1 className="text-base font-bold text-gray-800">
+      <section className="overflow-x-auto rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900">
+        <div className="flex items-center justify-between border-b border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2">
+          <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">
             防災カルテ様式Ａ　（{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}）
           </h1>
-          <div className="text-right text-xs text-gray-600">
+          <div className="text-right text-xs text-gray-600 dark:text-gray-300">
             <div>管理機関名: {karte.manageOrgName || "—"}</div>
             <div>管理機関コード: {karte.manageOrgCode || "—"}</div>
           </div>
@@ -156,7 +156,7 @@ export default async function KarteDetailPage({
                 <br />
                 現況写真
               </Th>
-              <td colSpan={8} className="border border-gray-400 bg-white p-2 align-top">
+              <td colSpan={8} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top">
                 {karte.photos.length > 0 ? (
                   <div className="mb-2 flex flex-wrap gap-2">
                     {karte.photos.map((p) => (
@@ -165,30 +165,30 @@ export default async function KarteDetailPage({
                         <img
                           src={p.url}
                           alt={p.caption ?? "点検地点位置図"}
-                          className="h-28 w-28 rounded border border-gray-300 object-cover"
+                          className="h-28 w-28 rounded border border-gray-300 dark:border-gray-700 object-cover"
                         />
                       </a>
                     ))}
                   </div>
                 ) : (
-                  <p className="mb-2 text-gray-400">未登録（カルテ編集画面から追加できます）</p>
+                  <p className="mb-2 text-gray-400 dark:text-gray-500">未登録（カルテ編集画面から追加できます）</p>
                 )}
               </td>
             </tr>
 
             <tr>
               <Th className="align-top">着目すべき変状</Th>
-              <td colSpan={3} className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap">
+              <td colSpan={3} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top whitespace-pre-wrap">
                 {karte.keyDeformationSummary || "—"}
               </td>
               <Th className="align-top">点検内容の要点</Th>
-              <td colSpan={4} className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap">
+              <td colSpan={4} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top whitespace-pre-wrap">
                 {karte.inspectionContentSummary || "—"}
               </td>
             </tr>
             <tr>
               <Th className="align-top">専門技術者のコメント</Th>
-              <td colSpan={8} className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap">
+              <td colSpan={8} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top whitespace-pre-wrap">
                 {karte.specialistComment || "—"}
               </td>
             </tr>
@@ -202,32 +202,32 @@ export default async function KarteDetailPage({
               <Th>専門技術者</Th>
             </tr>
             <tr>
-              <td className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap">
+              <td className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top whitespace-pre-wrap">
                 {karte.keyDeformationSummary || "—"}
               </td>
-              <td className="border border-gray-400 bg-white p-2 align-top">
+              <td className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top">
                 {karte.inspectionPeriodType === "REGULAR"
                   ? "定期"
                   : karte.inspectionPeriodType === "IRREGULAR"
                     ? "不定期"
                     : "—"}
-                {karte.inspectionIntervalNote && <div className="text-gray-500">{karte.inspectionIntervalNote}</div>}
+                {karte.inspectionIntervalNote && <div className="text-gray-500 dark:text-gray-400">{karte.inspectionIntervalNote}</div>}
               </td>
-              <td colSpan={2} className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap">
+              <td colSpan={2} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top whitespace-pre-wrap">
                 {karte.assumedDisasterForm || "—"}
               </td>
-              <td colSpan={2} className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap">
+              <td colSpan={2} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top whitespace-pre-wrap">
                 {karte.responseWhenDeformed || "—"}
               </td>
-              <td colSpan={2} className="border border-gray-400 bg-white p-2 align-top">
+              <td colSpan={2} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top">
                 {karte.inspectorName || "—"}
-                {karte.inspectorCompany && <div className="text-gray-500">{karte.inspectorCompany}</div>}
-                {karte.inspectorTel && <div className="text-gray-500">{karte.inspectorTel}</div>}
+                {karte.inspectorCompany && <div className="text-gray-500 dark:text-gray-400">{karte.inspectorCompany}</div>}
+                {karte.inspectorTel && <div className="text-gray-500 dark:text-gray-400">{karte.inspectorTel}</div>}
               </td>
-              <td className="border border-gray-400 bg-white p-2 align-top">
+              <td className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 align-top">
                 {karte.specialistName || "—"}
-                {karte.specialistCompany && <div className="text-gray-500">{karte.specialistCompany}</div>}
-                {karte.specialistTel && <div className="text-gray-500">{karte.specialistTel}</div>}
+                {karte.specialistCompany && <div className="text-gray-500 dark:text-gray-400">{karte.specialistCompany}</div>}
+                {karte.specialistTel && <div className="text-gray-500 dark:text-gray-400">{karte.specialistTel}</div>}
               </td>
             </tr>
 
@@ -260,38 +260,38 @@ export default async function KarteDetailPage({
       </section>
 
       {/* ── 防災カルテ様式Ｃ相当（点検履歴） ─────────────────────── */}
-      <section className="overflow-x-auto rounded border border-gray-400 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-400 bg-gray-50 px-3 py-2">
-          <h2 className="text-base font-bold text-gray-800">防災カルテ様式Ｃ　（点検履歴）</h2>
+      <section className="overflow-x-auto rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2">
+          <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">防災カルテ様式Ｃ　（点検履歴）</h2>
           <div className="flex gap-3 text-sm">
-            <Link href={`/karte/${karte.facilityNo}/targets/new`} className="text-blue-600 hover:underline">
+            <Link href={`/karte/${karte.facilityNo}/targets/new`} className="text-blue-600 dark:text-blue-400 hover:underline">
               ＋ 点検対象を追加
             </Link>
-            <Link href={`/karte/${karte.facilityNo}/events/new`} className="text-blue-600 hover:underline">
+            <Link href={`/karte/${karte.facilityNo}/events/new`} className="text-blue-600 dark:text-blue-400 hover:underline">
               ＋ 点検記録を登録
             </Link>
           </div>
         </div>
 
         {karte.events.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">点検記録がまだありません</p>
+          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">点検記録がまだありません</p>
         ) : (
           <table className="w-full min-w-[700px] border-collapse text-xs">
             <thead>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">点検年月日</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検年月日</Th>
                 {karte.events.map((ev) => (
                   <Th key={ev.id}>{new Date(ev.inspectionDate).toLocaleDateString("ja-JP")}</Th>
                 ))}
               </tr>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">点検者名</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検者名</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id}>{ev.inspectorName || "—"}</Td>
                 ))}
               </tr>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">天候</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">天候</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id}>{ev.weather ? WEATHER_LABEL[ev.weather] : "—"}</Td>
                 ))}
@@ -303,43 +303,43 @@ export default async function KarteDetailPage({
                   <tr key={`${t.id}-label`}>
                     <td
                       colSpan={karte.events.length + 1}
-                      className={`border border-gray-400 bg-gray-50 px-2 py-1 font-medium text-gray-700 ${
+                      className={`border border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-2 py-1 font-medium text-gray-700 dark:text-gray-200 ${
                         !t.isActive ? "opacity-50" : ""
                       }`}
                     >
                       {karte.facilityNo}-T{String(t.sequenceNo).padStart(2, "0")} {t.name}
-                      {!t.isActive && <span className="ml-2 text-gray-500">（解消済み）</span>}
+                      {!t.isActive && <span className="ml-2 text-gray-500 dark:text-gray-400">（解消済み）</span>}
                       <Link
                         href={`/karte/${karte.facilityNo}/targets/${t.id}/edit`}
-                        className="ml-3 font-normal text-blue-600 hover:underline"
+                        className="ml-3 font-normal text-blue-600 dark:text-blue-400 hover:underline"
                       >
                         編集
                       </Link>
                     </td>
                   </tr>
                   <tr key={`${t.id}-diff`}>
-                    <Th className="sticky left-0 bg-gray-100">前回との差異</Th>
+                    <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">前回との差異</Th>
                     {karte.events.map((ev) => {
                       const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                       return <Td key={ev.id}>{r ? (r.diffFromPrevious ? "有" : "無") : "—"}</Td>;
                     })}
                   </tr>
                   <tr key={`${t.id}-disaster`}>
-                    <Th className="sticky left-0 bg-gray-100">被災履歴</Th>
+                    <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">被災履歴</Th>
                     {karte.events.map((ev) => {
                       const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                       return <Td key={ev.id}>{r ? (r.disasterHistory ? "有" : "無") : "—"}</Td>;
                     })}
                   </tr>
                   <tr key={`${t.id}-repair`}>
-                    <Th className="sticky left-0 bg-gray-100">補修履歴</Th>
+                    <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">補修履歴</Th>
                     {karte.events.map((ev) => {
                       const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                       return <Td key={ev.id}>{r ? (r.repairHistory ? "有" : "無") : "—"}</Td>;
                     })}
                   </tr>
                   <tr key={`${t.id}-comment`}>
-                    <Th className="sticky left-0 bg-gray-100">コメント</Th>
+                    <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">コメント</Th>
                     {karte.events.map((ev) => {
                       const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                       return (
@@ -350,8 +350,8 @@ export default async function KarteDetailPage({
                     })}
                   </tr>
                   <tr key={`${t.id}-photos`}>
-                    <Th className="sticky left-0 bg-gray-100">写真</Th>
-                    <td colSpan={karte.events.length} className="border border-gray-400 bg-white p-2">
+                    <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">写真</Th>
+                    <td colSpan={karte.events.length} className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 p-2">
                       {t.photos.length > 0 && (
                         <div className="mb-2 flex flex-wrap gap-2">
                           {t.photos.map((p) => (
@@ -360,7 +360,7 @@ export default async function KarteDetailPage({
                               <img
                                 src={p.url}
                                 alt={p.caption ?? "点検写真"}
-                                className="h-16 w-16 rounded border border-gray-200 object-cover"
+                                className="h-16 w-16 rounded border border-gray-200 dark:border-gray-700 object-cover"
                               />
                             </a>
                           ))}
@@ -373,13 +373,13 @@ export default async function KarteDetailPage({
               ))}
 
               <tr>
-                <Th className="sticky left-0 bg-gray-100">点検後の対応（専門技術者の判定）</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検後の対応（専門技術者の判定）</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id}>{ev.specialistJudgement ? RESPONSE_META[ev.specialistJudgement]?.label : "—"}</Td>
                 ))}
               </tr>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">専門技術者による点検年月日</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">専門技術者による点検年月日</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id}>
                     {ev.specialistInspectionDate
@@ -389,19 +389,19 @@ export default async function KarteDetailPage({
                 ))}
               </tr>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">専門技術者名</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">専門技術者名</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id}>{ev.specialistName || "—"}</Td>
                 ))}
               </tr>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">次回点検実施時期</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">次回点検実施時期</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id}>{ev.nextInspectionDueYear ? `${ev.nextInspectionDueYear}年度` : "—"}</Td>
                 ))}
               </tr>
               <tr>
-                <Th className="sticky left-0 bg-gray-100">点検時の特記事項</Th>
+                <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検時の特記事項</Th>
                 {karte.events.map((ev) => (
                   <Td key={ev.id} className="whitespace-pre-wrap">
                     {ev.specialTopics || "—"}
@@ -412,19 +412,19 @@ export default async function KarteDetailPage({
           </table>
         )}
         {karte.targets.length === 0 && (
-          <p className="p-4 text-sm text-gray-400">点検対象が登録されていません</p>
+          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">点検対象が登録されていません</p>
         )}
       </section>
 
       {/* ── 防災カルテ様式Ｄ相当（災害履歴） ─────────────────────── */}
-      <section className="rounded border border-gray-400 bg-white">
-        <div className="border-b border-gray-400 bg-gray-50 px-3 py-2">
-          <h2 className="text-base font-bold text-gray-800">防災カルテ様式Ｄ　（災害履歴）</h2>
+      <section className="rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900">
+        <div className="border-b border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2">
+          <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">防災カルテ様式Ｄ　（災害履歴）</h2>
         </div>
         {karte.disasterEvents.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">記録された災害履歴はありません</p>
+          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">記録された災害履歴はありません</p>
         ) : (
-          <div className="divide-y divide-gray-300">
+          <div className="divide-y divide-gray-300 dark:divide-gray-700">
             {karte.disasterEvents.map((d) => (
               <div key={d.id} className="overflow-x-auto p-2">
                 <table className="w-full min-w-[700px] border-collapse text-xs">
@@ -491,20 +491,20 @@ export default async function KarteDetailPage({
       </section>
 
       {/* ── カルテ資料 ─────────────────────────────────────── */}
-      <section className="rounded border border-gray-400 bg-white">
-        <div className="border-b border-gray-400 bg-gray-50 px-3 py-2">
-          <h2 className="text-base font-bold text-gray-800">カルテ資料</h2>
+      <section className="rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900">
+        <div className="border-b border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2">
+          <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">カルテ資料</h2>
         </div>
         {karte.attachments.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">登録された資料はありません</p>
+          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">登録された資料はありません</p>
         ) : (
           <ul className="space-y-1 p-3 text-sm">
             {karte.attachments.map((a) => (
               <li key={a.id}>
-                <a href={a.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                <a href={a.url} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
                   {a.title}
                 </a>
-                <span className="ml-2 text-xs text-gray-400">
+                <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
                   {new Date(a.uploadedAt).toLocaleDateString("ja-JP")}
                 </span>
               </li>
@@ -531,7 +531,7 @@ function Th({
     <th
       colSpan={colSpan}
       rowSpan={rowSpan}
-      className={`border border-gray-400 bg-gray-100 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 ${className}`}
+      className={`border border-gray-400 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 dark:text-gray-300 ${className}`}
     >
       {children}
     </th>
@@ -548,7 +548,7 @@ function Td({
   className?: string;
 }) {
   return (
-    <td colSpan={colSpan} className={`border border-gray-400 bg-white px-2 py-1 align-middle ${className}`}>
+    <td colSpan={colSpan} className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle ${className}`}>
       {children}
     </td>
   );

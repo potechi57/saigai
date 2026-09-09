@@ -8,10 +8,10 @@ export const dynamic = "force-dynamic";
 export default function NewKartePage() {
   return (
     <div className="space-y-4">
-      <Link href="/karte" className="text-sm text-blue-600 hover:underline">
+      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← 検索・一覧に戻る
       </Link>
-      <h1 className="text-xl font-bold text-gray-800">新規カルテ登録</h1>
+      <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">新規カルテ登録</h1>
       <KarteForm action={createKarte} submitLabel="登録する" />
     </div>
   );

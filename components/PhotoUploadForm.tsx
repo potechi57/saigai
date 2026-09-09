@@ -23,22 +23,26 @@ export default function PhotoUploadForm({
   return (
     <form action={formAction} className={`flex flex-wrap items-end gap-2 ${compact ? "text-xs" : "text-sm"}`}>
       <input type="file" name="file" accept="image/*" required className="text-xs" />
-      <input type="date" name="takenAt" className="rounded border border-gray-300 px-1.5 py-1 text-xs" />
+      <input
+        type="date"
+        name="takenAt"
+        className="rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+      />
       <input
         type="text"
         name="caption"
         placeholder="キャプション（任意）"
-        className="rounded border border-gray-300 px-1.5 py-1 text-xs"
+        className="rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
       />
       <button
         type="submit"
         disabled={isPending}
-        className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+        className="rounded border border-gray-300 dark:border-gray-700 px-2 py-1 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
       >
         {isPending ? "アップロード中..." : "写真を追加"}
       </button>
-      {state && !state.ok && <span className="text-red-600">{state.error}</span>}
-      {state && state.ok && <span className="text-green-700">追加しました</span>}
+      {state && !state.ok && <span className="text-red-600 dark:text-red-400">{state.error}</span>}
+      {state && state.ok && <span className="text-green-700 dark:text-green-400">追加しました</span>}
     </form>
   );
 }

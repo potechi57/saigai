@@ -121,7 +121,7 @@ export default function MapView({ kartes }: { kartes: MapKarte[] }) {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+        <div className="flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-300">
           {Object.entries(RESPONSE_META).map(([key, meta]) => (
             <span key={key} className="flex items-center gap-1">
               <span
@@ -138,13 +138,13 @@ export default function MapView({ kartes }: { kartes: MapKarte[] }) {
           type="button"
           onClick={handleLocate}
           disabled={locating}
-          className="rounded border border-gray-300 bg-white px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
         >
           {locating ? "取得中..." : "📍 現在地"}
         </button>
       </div>
-      {locateError && <p className="mb-2 text-xs text-red-600">{locateError}</p>}
-      <div ref={containerRef} className="h-[70vh] w-full rounded border border-gray-300" />
+      {locateError && <p className="mb-2 text-xs text-red-600 dark:text-red-400">{locateError}</p>}
+      <div ref={containerRef} className="h-[70vh] w-full rounded border border-gray-300 dark:border-gray-700" />
     </div>
   );
 }

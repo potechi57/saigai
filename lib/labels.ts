@@ -38,11 +38,36 @@ export const ROAD_TYPE_LABEL: Record<string, string> = {
 // 対応区分のメタ情報。地図マーカーは色だけに依存しないUIにするため（指示書7章）、
 // 色に加えて短い記号（mark）も持たせ、マーカー内のテキストとして表示する。
 export const RESPONSE_META: Record<string, { label: string; color: string; badgeColor: string; mark: string }> = {
-  UNEVALUATED: { label: "未評価", color: "#9ca3af", badgeColor: "bg-gray-200 text-gray-700", mark: "・" },
-  COUNTERMEASURE_NEEDED: { label: "対策工が必要", color: "#dc2626", badgeColor: "bg-red-100 text-red-700", mark: "急" },
-  HANDLED_BY_KARTE: { label: "カルテ対応", color: "#d97706", badgeColor: "bg-yellow-100 text-yellow-800", mark: "注" },
-  NO_COUNTERMEASURE_NEEDED: { label: "対策不要", color: "#16a34a", badgeColor: "bg-green-100 text-green-700", mark: "良" },
-  COUNTERMEASURE_COMPLETED: { label: "対策完了", color: "#2563eb", badgeColor: "bg-blue-100 text-blue-700", mark: "済" },
+  UNEVALUATED: {
+    label: "未評価",
+    color: "#9ca3af",
+    badgeColor: "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+    mark: "・",
+  },
+  COUNTERMEASURE_NEEDED: {
+    label: "対策工が必要",
+    color: "#dc2626",
+    badgeColor: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+    mark: "急",
+  },
+  HANDLED_BY_KARTE: {
+    label: "カルテ対応",
+    color: "#d97706",
+    badgeColor: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
+    mark: "注",
+  },
+  NO_COUNTERMEASURE_NEEDED: {
+    label: "対策不要",
+    color: "#16a34a",
+    badgeColor: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+    mark: "良",
+  },
+  COUNTERMEASURE_COMPLETED: {
+    label: "対策完了",
+    color: "#2563eb",
+    badgeColor: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+    mark: "済",
+  },
 };
 
 export function responseMeta(category: string) {

@@ -39,14 +39,14 @@ export default async function KarteMapPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800">地図から探す</h1>
-        <Link href="/karte" className="text-sm text-blue-600 hover:underline">
+        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">地図から探す</h1>
+        <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
           ← 検索・一覧に戻る
         </Link>
       </div>
 
       {withCoords.length === 0 ? (
-        <p className="rounded border border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
+        <p className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-8 text-center text-sm text-gray-400 dark:text-gray-500">
           座標が登録されているカルテがありません。
         </p>
       ) : (
@@ -54,7 +54,7 @@ export default async function KarteMapPage() {
       )}
 
       {withoutCoordsCount > 0 && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-gray-400 dark:text-gray-500">
           ※ 座標未登録のため地図に表示できないカルテが {withoutCoordsCount} 件あります（一覧からは確認できます）。
         </p>
       )}

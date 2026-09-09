@@ -11,7 +11,7 @@ import dynamic from "next/dynamic";
 const MapView = dynamic(() => import("./MapView"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[70vh] w-full items-center justify-center rounded border border-gray-300 bg-gray-50 text-sm text-gray-400">
+    <div className="flex h-[70vh] w-full items-center justify-center rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-400 dark:text-gray-500">
       地図を読み込み中...
     </div>
   ),

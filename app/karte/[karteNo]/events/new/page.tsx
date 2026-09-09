@@ -32,13 +32,13 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
 
   return (
     <div className="space-y-4">
-      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 hover:underline">
+      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>
-      <h1 className="text-xl font-bold text-gray-800">点検記録の登録: {karte.routeName}</h1>
+      <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">点検記録の登録: {karte.routeName}</h1>
 
       {karte.targets.length === 0 && (
-        <p className="rounded border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800">
+        <p className="rounded border border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950 p-3 text-sm text-yellow-800 dark:text-yellow-300">
           追跡中の点検対象がまだありません。先に
           <Link href={`/karte/${karte.facilityNo}/targets/new`} className="mx-1 underline">
             点検対象を追加
@@ -48,8 +48,8 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
       )}
 
       <form action={action} className="space-y-4">
-        <section className="rounded border border-gray-300 bg-white p-4">
-          <h2 className="mb-3 font-semibold text-gray-700">点検の概要</h2>
+        <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+          <h2 className="mb-3 font-semibold text-gray-700 dark:text-gray-200">点検の概要</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <DateField name="inspectionDate" label="点検日" required />
             <TextField name="inspectorName" label="点検者名" />
@@ -63,12 +63,12 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
         </section>
 
         {karte.targets.length > 0 && (
-          <section className="rounded border border-gray-300 bg-white p-4">
-            <h2 className="mb-3 font-semibold text-gray-700">点検対象ごとの結果</h2>
+          <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+            <h2 className="mb-3 font-semibold text-gray-700 dark:text-gray-200">点検対象ごとの結果</h2>
             <div className="space-y-4">
               {karte.targets.map((t) => (
-                <div key={t.id} className="border-t border-gray-200 pt-4 first:border-t-0 first:pt-0">
-                  <h3 className="mb-2 text-sm font-medium text-gray-800">
+                <div key={t.id} className="border-t border-gray-200 dark:border-gray-700 pt-4 first:border-t-0 first:pt-0">
+                  <h3 className="mb-2 text-sm font-medium text-gray-800 dark:text-gray-100">
                     {karte.facilityNo}-T{String(t.sequenceNo).padStart(2, "0")} {t.name}
                   </h3>
                   <div className="flex flex-wrap gap-4 text-sm">
@@ -89,7 +89,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
                     name={`result_${t.id}_comment`}
                     placeholder="コメント（任意）"
                     rows={2}
-                    className="mt-2 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="mt-2 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                   />
                 </div>
               ))}
@@ -97,7 +97,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
           </section>
         )}
 
-        <button type="submit" className="rounded bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700">
+        <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
           登録する
         </button>
       </form>

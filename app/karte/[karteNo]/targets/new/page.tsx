@@ -18,14 +18,14 @@ export default async function NewInspectionTargetPage({ params }: { params: Prom
 
   return (
     <div className="space-y-4">
-      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 hover:underline">
+      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>
-      <h1 className="text-xl font-bold text-gray-800">点検対象の追加: {karte.routeName}</h1>
-      <form action={action} className="space-y-4 rounded border border-gray-300 bg-white p-4">
+      <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">点検対象の追加: {karte.routeName}</h1>
+      <form action={action} className="space-y-4 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
         <TextField name="name" label="対象名称" placeholder="例: 起点側法面、P-3付近の浮石 等" required />
         <TextAreaField name="description" label="説明" />
-        <button type="submit" className="rounded bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700">
+        <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
           追加する
         </button>
       </form>
