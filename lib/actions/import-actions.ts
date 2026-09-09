@@ -5,8 +5,9 @@ import * as officeCrypto from "officecrypto-tool";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
-import { KarteType, ProjectCategory, RoadStatus, GeodeticSystem, Weather } from "@prisma/client";
+import { KarteType, ProjectCategory, RoadType, RoadStatus, GeodeticSystem, Weather } from "@prisma/client";
 import { extractKarte, extractInspectionEvents } from "@/lib/excel/karte-import";
+import { ROAD_TYPE_LABEL } from "@/lib/labels";
 
 const KARTE_TYPE_BY_LABEL: Record<string, KarteType> = {
   "落石・崩壊": KarteType.ROCKFALL_COLLAPSE,
@@ -28,6 +29,12 @@ const ROAD_STATUS_BY_LABEL: Record<string, RoadStatus> = {
   "新新道": RoadStatus.NEWEST,
 };
 const GEODETIC_BY_LABEL: Record<string, GeodeticSystem> = { "世界測地系": GeodeticSystem.WORLD, "日本測地系": GeodeticSystem.JAPAN };
+// ROAD_TYPE_LABEL（enum→表記）の逆引き（表記→enum）。lib/labels.tsに定義済みの表記と
+// 完全一致した場合のみ変換し、一致しないものはnullのまま（想定外の表記を誤って
+// 別のenum値に丸めてしまわないため）。
+const ROAD_TYPE_BY_LABEL: Record<string, RoadType> = Object.fromEntries(
+  Object.entries(ROAD_TYPE_LABEL).map(([value, label]) => [label, value as RoadType])
+);
 const WEATHER_BY_LABEL: Record<string, Weather> = { "晴": Weather.SUNNY, "曇": Weather.CLOUDY, "雨": Weather.RAIN, "雪": Weather.SNOW };
 
 // 防災カルテ様式の一部（全国地質調査業協会連合会版）は、シート保護のために
@@ -118,17 +125,30 @@ export async function importKarteExcel(
 
   const commonData = {
     karteType,
+    manageOrgName: extracted.manageOrgName,
+    manageOrgCode: extracted.manageOrgCode,
+    ledgerNo: extracted.ledgerNo,
     routeName: extracted.routeName ?? "（取込・路線名未設定）",
     distanceMarkerFromKm: extracted.distanceMarkerFromKm,
     distanceMarkerToKm: extracted.distanceMarkerToKm,
     sideOfRoad: extracted.sideOfRoad,
     extensionLengthM: extracted.extensionLengthM,
     projectCategory: extracted.projectCategoryLabel ? PROJECT_CATEGORY_BY_LABEL[extracted.projectCategoryLabel] ?? null : null,
+    roadType: extracted.roadTypeLabel ? ROAD_TYPE_BY_LABEL[extracted.roadTypeLabel] ?? null : null,
     roadStatus: extracted.roadStatusLabel ? ROAD_STATUS_BY_LABEL[extracted.roadStatusLabel] ?? null : null,
+    locationDistrict: extracted.locationDistrict,
+    locationTown: extracted.locationTown,
     landmark: extracted.landmark,
     latitude: extracted.latitude,
     longitude: extracted.longitude,
     geodeticSystem: extracted.geodeticSystemLabel ? GEODETIC_BY_LABEL[extracted.geodeticSystemLabel] ?? null : null,
+    preTrafficRestriction: extracted.preTrafficRestriction,
+    trafficVolumeWeekday: extracted.trafficVolumeWeekday,
+    trafficVolumeHoliday: extracted.trafficVolumeHoliday,
+    didArea: extracted.didArea,
+    busRoute: extracted.busRoute,
+    detour: extracted.detour,
+    emergencyRoadCategory: extracted.emergencyRoadCategory,
   };
 
   const karte = await prisma.karte.upsert({

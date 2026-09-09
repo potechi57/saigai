@@ -149,6 +149,30 @@ export default async function KarteDetailPage({
                   : "—"}
               </Td>
             </tr>
+            <tr>
+              <Th>台帳番号</Th>
+              <Td>{karte.ledgerNo || "—"}</Td>
+              <Th>事前通行規制区間指定</Th>
+              <Td>{yesNo(karte.preTrafficRestriction)}</Td>
+              <Th>緊急輸送道路区分</Th>
+              <Td colSpan={3}>{karte.emergencyRoadCategory || "—"}</Td>
+            </tr>
+            <tr>
+              <Th>交通量</Th>
+              <Td>
+                {karte.trafficVolumeWeekday != null
+                  ? `平日 ${karte.trafficVolumeWeekday} 台/12h`
+                  : karte.trafficVolumeHoliday != null
+                    ? `休日 ${karte.trafficVolumeHoliday} 台/12h`
+                    : "—"}
+              </Td>
+              <Th>ＤＩＤ区間</Th>
+              <Td>{yesNoLabel(karte.didArea, "該当", "非該当")}</Td>
+              <Th>バス路線</Th>
+              <Td>{yesNoLabel(karte.busRoute, "該当", "非該当")}</Td>
+              <Th>迂回路</Th>
+              <Td>{yesNo(karte.detour)}</Td>
+            </tr>
 
             <tr>
               <Th rowSpan={1} className="align-top">
@@ -552,4 +576,15 @@ function Td({
       {children}
     </td>
   );
+}
+
+// Boolean?項目の表示用（未登録はnull=—、それ以外はtrueLabel/falseLabel）。
+// 既定は様式の「有/無」表記。ＤＩＤ区間・バス路線は「該当/非該当」表記のため
+// yesNoLabelで個別に指定する。
+function yesNo(v: boolean | null): string {
+  return yesNoLabel(v, "有", "無");
+}
+
+function yesNoLabel(v: boolean | null, trueLabel: string, falseLabel: string): string {
+  return v === null ? "—" : v ? trueLabel : falseLabel;
 }

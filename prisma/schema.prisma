@@ -110,6 +110,7 @@ model Karte {
 
   manageOrgName String? // 管理機関名
   manageOrgCode String? // 管理機関コード
+  ledgerNo      String? // 台帳番号
 
   routeName String // 路線名
   routeNo   String? // 路線番号（指示書3.1に記載あり、様式上は路線名に含まれるため任意）

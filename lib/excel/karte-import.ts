@@ -15,15 +15,22 @@ import { utils } from "xlsx";
 // 疑いようのないフィールド」だけである。以下は意図的に対象外にしている
 // （誤った位置のデータをそれらしく取り込んでしまう方が、何も取り込まないより
 // 害が大きいため）:
-//   - 所在地（郡・町名）: 「郡」「町」というラベルが値の前に来るのか後に来るのか
-//     （＝選択した行政区分の種別を表す語なのか、単なる項目ラベルなのか）を、
-//     実際に記入された例が無く確認できていない。
-//   - 道路種別: ブランクのテンプレートでしか位置を確認できておらず、値セルの
-//     正確な列位置を実データで検証できていない。
+//   - 規制基準等（連続雨量・時間雨量）: ラベルと単位セルの位置は実データで確認できたが、
+//     3件とも値セルが未記入だったため、値セルの正確な列位置が確認できていない。
 //   - 様式Ａの「着目すべき変状」等の自由記述欄、様式Ｂ（点検対象名）、
 //     様式Ｄ（災害履歴）: 今回のテストファイルに記入例が無かったため未対応。
 //     様式Ｃ（点検年月日・点検者名等の点検履歴）のみを対象にしている。
 // 記入例が増え次第、対応フィールドを広げる。
+//
+// 【所在地・道路種別・管理機関・台帳番号・交通量・DID区間・バス路線・迂回路・
+// 緊急輸送道路区分について】島根県の実データ複数件で値セルの位置を確認し対応した。
+//   - 所在地は「（都道府県）（市郡）（市郡の種別）（町村）（町村の種別）（大字等）」の
+//     6セル構成だった（例:"島根県"+"安来"+"市"+"広瀬"+"町"+"祖父谷"）。
+//     Karte.locationDistrict/locationTownの2カラムしか無いため、
+//     都道府県〜町村の種別までをlocationDistrictに、大字等をlocationTownに入れている。
+//   - 交通量は「平日／休日」の種別セル＋値セルが1組しか無く、様式は片方のみの記入を
+//     想定しているらしい（3件とも「平日」だった）。種別セルの文字列を見て
+//     trafficVolumeWeekday／trafficVolumeHolidayのどちらに入れるか決めている。
 
 const FORM_A_SHEET_NAME = "様式Ａ";
 const FORM_C_SHEET_NAME = "様式Ｃ";
@@ -82,6 +89,14 @@ function distanceMarker(ws: WorkSheet, r: number, kmCols: number[], mCols: numbe
   return digits(kmCols) + digits(mCols) / 1000;
 }
 
+// "有"/"該当" → true, "無"/"非該当" → false, それ以外（未記入等）→ null。
+function boolLabel(ws: WorkSheet, r: number, c: number, trueLabel: string, falseLabel: string): boolean | null {
+  const text = cellText(ws, r, c);
+  if (text === trueLabel) return true;
+  if (text === falseLabel) return false;
+  return null;
+}
+
 function dms(ws: WorkSheet, r: number, degCol: number, minCol: number, secCol: number): number | null {
   const deg = Number(cellValue(ws, r, degCol)) || 0;
   const min = Number(cellValue(ws, r, minCol)) || 0;
@@ -93,27 +108,58 @@ function dms(ws: WorkSheet, r: number, degCol: number, minCol: number, secCol: n
 export type ExtractedKarte = {
   facilityNo: string | null;
   karteTypeLabel: string | null; // 様式の表記そのまま（例:"落石・崩壊"）。呼び出し側でenumに変換する
+  manageOrgName: string | null; // 管理機関名
+  manageOrgCode: string | null; // 管理機関コード
+  ledgerNo: string | null; // 台帳番号
   routeName: string | null;
   distanceMarkerFromKm: number | null;
   distanceMarkerToKm: number | null;
   sideOfRoad: string | null;
   extensionLengthM: number | null;
   projectCategoryLabel: string | null; // "一般" | "有料"
+  roadTypeLabel: string | null; // 様式の表記そのまま（例:"一般国道（指定区間外）"）
   roadStatusLabel: string | null; // "現道" | "旧道" | "新道" | "新新道"
+  locationDistrict: string | null; // 都道府県〜町村の種別まで（例:"島根県安来市広瀬町"）
+  locationTown: string | null; // 大字等（例:"祖父谷"）
   landmark: string | null;
   latitude: number | null;
   longitude: number | null;
   geodeticSystemLabel: string | null; // "世界測地系" | "日本測地系"
+  preTrafficRestriction: boolean | null; // 事前通行規制区間指定 有/無
+  trafficVolumeWeekday: number | null; // 交通量：平日(台/12h)
+  trafficVolumeHoliday: number | null; // 交通量：休日(台/12h)
+  didArea: boolean | null; // ＤＩＤ区間 該当/非該当
+  busRoute: boolean | null; // バス路線 該当/非該当
+  detour: boolean | null; // 迂回路 有/無
+  emergencyRoadCategory: string | null; // 緊急輸送道路区分（様式の表記そのまま。例:"１次"）
 };
 
 export function extractKarte(wb: WorkBook): ExtractedKarte | null {
   const ws = wb.Sheets[FORM_A_SHEET_NAME];
   if (!ws) return null;
 
+  // 所在地：（都道府県）（市郡名）（市郡の種別）（町村名）（町村の種別）（大字等）の6セル。
+  // 例: "島根県"+"安来"+"市"+"広瀬"+"町"+"祖父谷" → locationDistrict="島根県安来市広瀬町"、
+  // locationTown="祖父谷"（Karteが2カラムしか持たないため、末尾の大字等だけ分ける）。
+  const locationDistrict =
+    joinChars(ws, 5, [28, 31, 34, 35, 38]) /* 都道府県+市郡+市郡種別+町村+町村種別 */ || null;
+  const locationTown = cellText(ws, 5, 39) || null;
+
+  // 交通量：「平日」「休日」いずれかの種別セル＋値セルが1組だけ様式にあり、
+  // 実データ3件はいずれも「平日」だった。種別セルの表記を見てどちらのカラムに
+  // 入れるか決める（両方埋まっている想定はしていない）。
+  const trafficTypeLabel = cellText(ws, 6, 40);
+  const trafficVolumeValue = joinDigits(ws, 6, [42]);
+
   return {
     // 施設管理番号は9マス（例:"B1432A279"）。実データ検証前は8マスだと誤認していた。
     facilityNo: joinChars(ws, 4, [6, 7, 8, 9, 10, 11, 12, 13, 14]),
     karteTypeLabel: cellText(ws, 4, 20) || null,
+    // 管理機関名は2行に分かれて入力される（例:1行目"島根県"、2行目"広瀬土木事業所"）。
+    manageOrgName: (cellText(ws, 1, 74) + cellText(ws, 2, 74)).trim() || null,
+    // 管理機関コードは1マスに半角1文字ずつ、7マス（1マスおき）で入力される。
+    manageOrgCode: joinChars(ws, 3, [74, 76, 78, 80, 82, 84, 86]),
+    ledgerNo: cellText(ws, 4, 51) || null,
     routeName: cellText(ws, 4, 29) || null,
     // 距離標（自）＝ 2桁（km）＋3桁（m）、距離標（至）＝ 同様の2桁＋3桁。
     // （実データ検証前は4桁＋2桁と誤認していた）
@@ -122,11 +168,21 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
     sideOfRoad: cellText(ws, 4, 78) || null,
     extensionLengthM: joinDigits(ws, 4, [83]),
     projectCategoryLabel: cellText(ws, 5, 4) || null,
+    roadTypeLabel: cellText(ws, 5, 10) || null,
     roadStatusLabel: cellText(ws, 5, 22) || null,
+    locationDistrict,
+    locationTown,
     landmark: cellText(ws, 5, 48) || null,
     latitude: dms(ws, 5, 60, 63, 66),
     longitude: dms(ws, 5, 71, 74, 77),
     geodeticSystemLabel: cellText(ws, 5, 83) || null,
+    preTrafficRestriction: boolLabel(ws, 6, 9, "有", "無"),
+    trafficVolumeWeekday: trafficTypeLabel === "休日" ? null : trafficVolumeValue,
+    trafficVolumeHoliday: trafficTypeLabel === "休日" ? trafficVolumeValue : null,
+    didArea: boolLabel(ws, 6, 60, "該当", "非該当"),
+    busRoute: boolLabel(ws, 6, 68, "該当", "非該当"),
+    detour: boolLabel(ws, 6, 75, "有", "無"),
+    emergencyRoadCategory: cellText(ws, 6, 84) || null,
   };
 }
 
