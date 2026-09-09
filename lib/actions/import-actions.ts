@@ -5,9 +5,18 @@ import * as officeCrypto from "officecrypto-tool";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
-import { KarteType, ProjectCategory, RoadType, RoadStatus, GeodeticSystem, Weather } from "@prisma/client";
+import {
+  KarteType,
+  ProjectCategory,
+  RoadType,
+  RoadStatus,
+  GeodeticSystem,
+  Weather,
+  ResponseCategory,
+  InspectionPeriodType,
+} from "@prisma/client";
 import { extractKarte, extractInspectionEvents } from "@/lib/excel/karte-import";
-import { ROAD_TYPE_LABEL } from "@/lib/labels";
+import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
 const KARTE_TYPE_BY_LABEL: Record<string, KarteType> = {
   "落石・崩壊": KarteType.ROCKFALL_COLLAPSE,
@@ -36,6 +45,15 @@ const ROAD_TYPE_BY_LABEL: Record<string, RoadType> = Object.fromEntries(
   Object.entries(ROAD_TYPE_LABEL).map(([value, label]) => [label, value as RoadType])
 );
 const WEATHER_BY_LABEL: Record<string, Weather> = { "晴": Weather.SUNNY, "曇": Weather.CLOUDY, "雨": Weather.RAIN, "雪": Weather.SNOW };
+// RESPONSE_META（enum→表記）の逆引き。ROAD_TYPE_BY_LABELと同じ理由で完全一致のみ変換する。
+const RESPONSE_CATEGORY_BY_LABEL: Record<string, ResponseCategory> = Object.fromEntries(
+  Object.entries(RESPONSE_META).map(([value, meta]) => [meta.label, value as ResponseCategory])
+);
+// 様式の「点検の時期」は"定期"の行のみ対応している（karte-import.tsのコメント参照）。
+const INSPECTION_PERIOD_TYPE_BY_LABEL: Record<string, InspectionPeriodType> = {
+  "定期": InspectionPeriodType.REGULAR,
+  "不定期": InspectionPeriodType.IRREGULAR,
+};
 
 // 防災カルテ様式の一部（全国地質調査業協会連合会版）は、シート保護のために
 // "VelvetSweatshop" という固定パスワードで暗号化されている。これはExcelが
@@ -149,6 +167,30 @@ export async function importKarteExcel(
     busRoute: extracted.busRoute,
     detour: extracted.detour,
     emergencyRoadCategory: extracted.emergencyRoadCategory,
+    specialistInspectionRequired: extracted.specialistInspectionRequired,
+    keyDeformationSummary: extracted.keyDeformationSummary,
+    inspectionContentSummary: extracted.inspectionContentSummary,
+    specialistComment: extracted.specialistComment,
+    responseCategory: extracted.responseCategoryLabel
+      ? RESPONSE_CATEGORY_BY_LABEL[extracted.responseCategoryLabel] ?? ResponseCategory.UNEVALUATED
+      : ResponseCategory.UNEVALUATED,
+    responseEvaluatedAt: extracted.responseEvaluatedAt,
+    inspectionPeriodType: extracted.inspectionPeriodTypeLabel
+      ? INSPECTION_PERIOD_TYPE_BY_LABEL[extracted.inspectionPeriodTypeLabel] ?? null
+      : null,
+    inspectionIntervalNote: extracted.inspectionIntervalNote,
+    assumedDisasterForm: extracted.assumedDisasterForm,
+    responseWhenDeformed: extracted.responseWhenDeformed,
+    inspectorName: extracted.inspectorName,
+    inspectorCompany: extracted.inspectorCompany,
+    inspectorTel: extracted.inspectorTel,
+    specialistName: extracted.specialistName,
+    specialistCompany: extracted.specialistCompany,
+    specialistTel: extracted.specialistTel,
+    createdOnSiteDate: extracted.createdOnSiteDate,
+    createdOnSiteWeather: extracted.createdOnSiteWeatherLabel
+      ? WEATHER_BY_LABEL[extracted.createdOnSiteWeatherLabel] ?? null
+      : null,
   };
 
   const karte = await prisma.karte.upsert({
@@ -156,6 +198,24 @@ export async function importKarteExcel(
     create: { facilityNo, ...commonData },
     update: commonData,
   });
+
+  // 落石・崩壊カルテ固有の詳細（主な災害形態）。karte-actions.tsのupdateKarteと同じ方針で、
+  // カルテ区分が落石・崩壊の場合のみ作成・更新する（新規作成・上書き更新のどちらも
+  // このupsertで賄えるため、上のkarte.upsertとは別ステップにしている）。
+  const rockfallDetailData =
+    karteType === KarteType.ROCKFALL_COLLAPSE
+      ? { mainFormRockfall: extracted.mainForm.rockfall, mainFormCollapse: extracted.mainForm.collapse }
+      : null;
+
+  if (rockfallDetailData) {
+    await prisma.karteRockfallDetail.upsert({
+      where: { karteId: karte.id },
+      create: { karteId: karte.id, ...rockfallDetailData },
+      update: rockfallDetailData,
+    });
+  } else {
+    await prisma.karteRockfallDetail.deleteMany({ where: { karteId: karte.id } });
+  }
 
   // 様式Ｂに変状（点検対象）の定義が無いファイルが多いため、点検記録の受け皿として
   // 最初の1件だけプレースホルダの点検対象を用意する（複数変状には未対応、上記の通り）。

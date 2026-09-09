@@ -31,6 +31,30 @@ import { utils } from "xlsx";
 //   - 交通量は「平日／休日」の種別セル＋値セルが1組しか無く、様式は片方のみの記入を
 //     想定しているらしい（3件とも「平日」だった）。種別セルの文字列を見て
 //     trafficVolumeWeekday／trafficVolumeHolidayのどちらに入れるか決めている。
+//
+// 【専門技術者による点検・着目すべき変状・点検内容の要点・専門技術者のコメント・
+// 対応区分／評価年月日・点検の時期・想定される災害形態・変状が出たときの対応・
+// 主な災害形態・点検者/専門技術者の氏名・会社名・連絡先・作成年月日・天候について】
+// これも実データ複数件で位置を確認した。
+//   - 「着目すべき変状」というラベルは様式内に2箇所ある（①専門技術者による点検欄の
+//     すぐ下の短い一言、②点検の時期等と並ぶ表の中の欄）。実データではこの2箇所の内容が
+//     異なっていた（例:①"様式B-①・②浮石" ②"①・②浮石の安定度の進展"）。
+//     Karte.keyDeformationSummaryは1カラムしか無いため①（点検内容の要点と対になっている方）
+//     を採用し、②は取り込んでいない。
+//   - 対応区分は「①対策工が必要／②カルテ対応／③対策不要／④対策完了」の4行表になっており、
+//     選択された行にのみ"○"と評価年月日が入る（実データで行の位置＝選択される対応区分は
+//     カルテごとに異なることを確認済み）。4行を順に見て"○"がある行を採用する。
+//   - 点検の時期は「①定期・(頻度)」「②不定期・豪雨・(固定文言)」「③不定期・震度・(固定文言)」
+//     の3行があるが、②③は実データ3件とも一字一句ほぼ同じ固定的な参考文言（フォーム上の
+//     デフォルト注記）で、①だけがカルテごとに異なる値（例:"1年に1回"）を持っていた。
+//     そのため①の行のみを取り込み、常にinspectionPeriodType=REGULARとしている
+//     （②③が選択されているケースの実データが無いため、不定期側の判定方法は未確認）。
+//   - 主な災害形態（落石／崩壊）は、2箇所ある固定位置のどちらかに"○"が入る形式
+//     （実データで両方のパターンを確認済み）。
+export type ExtractedRockfallMainForm = {
+  rockfall: boolean;
+  collapse: boolean;
+};
 
 const FORM_A_SHEET_NAME = "様式Ａ";
 const FORM_C_SHEET_NAME = "様式Ｃ";
@@ -132,6 +156,25 @@ export type ExtractedKarte = {
   busRoute: boolean | null; // バス路線 該当/非該当
   detour: boolean | null; // 迂回路 有/無
   emergencyRoadCategory: string | null; // 緊急輸送道路区分（様式の表記そのまま。例:"１次"）
+  specialistInspectionRequired: boolean | null; // 専門技術者による点検 有/無
+  keyDeformationSummary: string | null; // 着目すべき変状（専門技術者による点検欄の下の一言）
+  inspectionContentSummary: string | null; // 点検内容の要点
+  specialistComment: string | null; // 専門技術者のコメント
+  responseCategoryLabel: string | null; // 対応区分（様式の表記そのまま。例:"対策工が必要"）
+  responseEvaluatedAt: Date | null; // 評価年月日
+  inspectionPeriodTypeLabel: string | null; // 点検の時期（"定期"のみ対応。上記コメント参照）
+  inspectionIntervalNote: string | null; // 例:"1年に1回"
+  assumedDisasterForm: string | null; // 想定される災害形態
+  responseWhenDeformed: string | null; // 変状が出たときの対応
+  mainForm: ExtractedRockfallMainForm; // 主な災害形態（落石・崩壊）
+  inspectorName: string | null; // 点検者名
+  inspectorCompany: string | null;
+  inspectorTel: string | null;
+  specialistName: string | null; // 専門技術者名
+  specialistCompany: string | null;
+  specialistTel: string | null;
+  createdOnSiteDate: Date | null; // 様式作成年月日
+  createdOnSiteWeatherLabel: string | null; // 天候（"晴"|"曇"|"雨"|"雪"）
 };
 
 export function extractKarte(wb: WorkBook): ExtractedKarte | null {
@@ -150,6 +193,26 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
   // 入れるか決める（両方埋まっている想定はしていない）。
   const trafficTypeLabel = cellText(ws, 6, 40);
   const trafficVolumeValue = joinDigits(ws, 6, [42]);
+
+  // 対応区分（①〜④）は行28〜31（0始まりでr=27〜30）に並ぶ4択で、選択された行にだけ
+  // "○"（列67）と評価年月日（列77/81/84＝年/月/日）が入る。選択行は施設ごとに異なるため、
+  // 4行を順に見て"○"がある行を採用する（見つからなければ両方null＝未評価のまま）。
+  let responseCategoryLabel: string | null = null;
+  let responseEvaluatedAt: Date | null = null;
+  for (let i = 0; i < 4; i++) {
+    const r = 27 + i;
+    if (cellText(ws, r, 67) === "○") {
+      responseCategoryLabel = cellText(ws, r, 71) || null;
+      responseEvaluatedAt = toUtcDate(cellValue(ws, r, 77), cellValue(ws, r, 81), cellValue(ws, r, 84));
+      break;
+    }
+  }
+
+  // 主な災害形態（落石／崩壊）。2箇所ある固定位置のどちらかに"○"が入る。
+  const mainForm: ExtractedRockfallMainForm = {
+    rockfall: cellText(ws, 40, 50) === "○",
+    collapse: cellText(ws, 40, 55) === "○",
+  };
 
   return {
     // 施設管理番号は9マス（例:"B1432A279"）。実データ検証前は8マスだと誤認していた。
@@ -183,6 +246,26 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
     busRoute: boolLabel(ws, 6, 68, "該当", "非該当"),
     detour: boolLabel(ws, 6, 75, "有", "無"),
     emergencyRoadCategory: cellText(ws, 6, 84) || null,
+    specialistInspectionRequired: boolLabel(ws, 7, 85, "有", "無"),
+    keyDeformationSummary: cellText(ws, 9, 62) || null,
+    inspectionContentSummary: cellText(ws, 9, 70) || null,
+    specialistComment: cellText(ws, 27, 2) || null,
+    responseCategoryLabel,
+    responseEvaluatedAt,
+    // 点検の時期は「定期」の行（列23）のみ対応。上記コメント参照。
+    inspectionPeriodTypeLabel: cellText(ws, 33, 23) || null,
+    inspectionIntervalNote: cellText(ws, 33, 26) || null,
+    assumedDisasterForm: cellText(ws, 33, 44) || null,
+    responseWhenDeformed: cellText(ws, 33, 65) || null,
+    mainForm,
+    inspectorName: cellText(ws, 41, 30) || null,
+    inspectorCompany: cellText(ws, 41, 48) || null,
+    inspectorTel: cellText(ws, 41, 72) || null,
+    specialistName: cellText(ws, 42, 30) || null,
+    specialistCompany: cellText(ws, 42, 48) || null,
+    specialistTel: cellText(ws, 42, 72) || null,
+    createdOnSiteDate: toUtcDate(cellValue(ws, 42, 6), cellValue(ws, 42, 10), cellValue(ws, 42, 13)),
+    createdOnSiteWeatherLabel: cellText(ws, 42, 20) || null,
   };
 }
 
