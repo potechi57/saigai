@@ -14,8 +14,10 @@ import {
   Weather,
   ResponseCategory,
   InspectionPeriodType,
+  PhotoSourceForm,
 } from "@prisma/client";
 import { extractKarte, extractInspectionEvents } from "@/lib/excel/karte-import";
+import { extractFormAImages } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
 const KARTE_TYPE_BY_LABEL: Record<string, KarteType> = {
@@ -112,8 +114,9 @@ export async function importKarteExcel(
   }
 
   let wb: XLSX.WorkBook;
+  let sourceBuffer: Buffer;
   try {
-    const sourceBuffer = officeCrypto.isEncrypted(buffer)
+    sourceBuffer = officeCrypto.isEncrypted(buffer)
       ? await officeCrypto.decrypt(buffer, { password: KNOWN_TEMPLATE_PASSWORD })
       : buffer;
     wb = XLSX.read(sourceBuffer, { type: "buffer", cellDates: true });
@@ -215,6 +218,41 @@ export async function importKarteExcel(
     });
   } else {
     await prisma.karteRockfallDetail.deleteMany({ where: { karteId: karte.id } });
+  }
+
+  // 様式Ａの「点検地点位置図・現況写真」欄に埋め込まれた画像を自動で取り込む（ベストエフォート）。
+  // 対象は様式Ａシートに埋め込まれたJPEG/PNG等のラスター画像のみ。EMF等のベクター画像、
+  // 様式Ｂ・「R7現状記録写真」等ほかのシートの画像は対象外にしている
+  // （理由はlib/excel/karte-image-extract.tsのコメント参照）。
+  if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN) {
+    const formAImages = extractFormAImages(sourceBuffer);
+    if (formAImages.length > 0) {
+      try {
+        // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の様式Ａ写真
+        // （sourceForm=FORM_A）は入れ替える。手動アップロード分（sourceForm=OTHER）は
+        // 対象外なので消えない。
+        await prisma.photo.deleteMany({
+          where: {
+            karteId: karte.id,
+            targetId: null,
+            eventId: null,
+            disasterEventId: null,
+            sourceForm: PhotoSourceForm.FORM_A,
+          },
+        });
+        for (const [i, img] of formAImages.entries()) {
+          const blob = await put(`karte-imports/${facilityNo}-formA-${Date.now()}-${i}.${img.ext}`, img.data, {
+            access: "public",
+            contentType: `image/${img.ext}`,
+          });
+          await prisma.photo.create({
+            data: { karteId: karte.id, url: blob.url, sourceForm: PhotoSourceForm.FORM_A },
+          });
+        }
+      } catch {
+        // 写真取込はベストエフォート。失敗してもインポート結果には影響させない。
+      }
+    }
   }
 
   // 様式Ｂに変状（点検対象）の定義が無いファイルが多いため、点検記録の受け皿として
