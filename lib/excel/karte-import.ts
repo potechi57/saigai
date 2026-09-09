@@ -278,6 +278,13 @@ export type ExtractedInspectionEvent = {
   diffFromPrevious: boolean;
   disasterHistory: boolean;
   repairHistory: boolean;
+  specialTopics: string | null; // 点検時の特記事項（点検時の対応）
+  // 点検後の対応（専門技術者の判定）。様式の表記そのまま（例:"対策工が必要"）。
+  // 【注記】実データ3件はいずれもこの項目が未記入だったため、値セルの位置
+  // （行のみ・列はbase固定）は「点検者名と同じく同一行に値が入る」という
+  // 直前の項目の並びから類推した未確認の位置。記入例が見つかり次第要検証。
+  specialistJudgementLabel: string | null;
+  nextInspectionDueYear: number | null; // 次回点検実施時期（年度）
 };
 
 // 様式Ｃは1シートあたり最大7回分の点検日を横方向に持つ（それ以上はシート複製）。
@@ -325,6 +332,9 @@ export function extractInspectionEvents(wb: WorkBook): ExtractedInspectionEvent[
       diffFromPrevious: cellText(ws, 8, base) === "有",
       disasterHistory: cellText(ws, 9, base) === "有",
       repairHistory: cellText(ws, 10, base) === "有",
+      specialTopics: cellText(ws, 27, base) || null,
+      specialistJudgementLabel: cellText(ws, 34, base) || null,
+      nextInspectionDueYear: joinDigits(ws, 42, [base]),
     });
   }
   return events;

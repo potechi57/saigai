@@ -17,7 +17,7 @@ export default async function NewInspectionTargetPage({ params }: { params: Prom
   const action = createInspectionTarget.bind(null, karte.id, karte.facilityNo);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>

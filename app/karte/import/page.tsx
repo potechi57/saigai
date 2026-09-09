@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // から、様式Ａ・様式Ｃの内容を読み取ってカルテを新規登録／更新する。
 export default function ImportKartePage() {
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← 検索・一覧に戻る
       </Link>

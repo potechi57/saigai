@@ -31,7 +31,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
   const action = createInspectionEvent.bind(null, karte.id, karte.facilityNo, targetIds);
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>

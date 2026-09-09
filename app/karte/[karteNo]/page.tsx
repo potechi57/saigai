@@ -153,22 +153,24 @@ export default async function KarteDetailPage({
               <br />
               現況写真
             </Th>
-            <td colSpan={13} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
+            <td colSpan={13} className="border border-gray-400 bg-white p-3 align-top dark:border-gray-600 dark:bg-gray-900">
               {karte.photos.length > 0 ? (
-                <div className="mb-2 flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-3">
                   {karte.photos.map((p) => (
                     <a key={p.id} href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={p.url}
                         alt={p.caption ?? "点検地点位置図"}
-                        className="h-28 w-28 rounded border border-gray-300 object-cover dark:border-gray-700"
+                        className="h-56 w-56 rounded border border-gray-300 object-cover dark:border-gray-700"
                       />
                     </a>
                   ))}
                 </div>
               ) : (
-                <p className="mb-2 text-gray-400 dark:text-gray-500">未登録（カルテ編集画面から追加できます）</p>
+                <p className="flex h-24 items-center justify-center rounded border border-dashed border-gray-300 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                  写真なし（カルテ編集画面から追加できます）
+                </p>
               )}
             </td>
           </tr>
@@ -277,14 +279,14 @@ export default async function KarteDetailPage({
             </tr>
           )}
 
-          {/* 点検者名／専門技術者名（Excel上でもこの並び） */}
+          {/* 点検者名／専門技術者名（Excel上でもこの並び。会社名・連絡先は別セルで分ける） */}
           <tr>
             <Th>点検者名</Th>
-            <td colSpan={13} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
-              {karte.inspectorName || "—"}
-              {karte.inspectorCompany && <span className="ml-2 text-gray-500 dark:text-gray-400">{karte.inspectorCompany}</span>}
-              {karte.inspectorTel && <span className="ml-2 text-gray-500 dark:text-gray-400">TEL: {karte.inspectorTel}</span>}
-            </td>
+            <Td colSpan={3}>{karte.inspectorName || "—"}</Td>
+            <Th>会社名</Th>
+            <Td colSpan={4}>{karte.inspectorCompany || "—"}</Td>
+            <Th>連絡先</Th>
+            <Td colSpan={4}>{karte.inspectorTel || "—"}</Td>
           </tr>
           <tr>
             <Th>作成年月日</Th>
@@ -294,11 +296,11 @@ export default async function KarteDetailPage({
             <Th>天候</Th>
             <Td colSpan={2}>{karte.createdOnSiteWeather ? WEATHER_LABEL[karte.createdOnSiteWeather] : "—"}</Td>
             <Th>専門技術者名</Th>
-            <td colSpan={7} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
-              {karte.specialistName || "—"}
-              {karte.specialistCompany && <span className="ml-2 text-gray-500 dark:text-gray-400">{karte.specialistCompany}</span>}
-              {karte.specialistTel && <span className="ml-2 text-gray-500 dark:text-gray-400">TEL: {karte.specialistTel}</span>}
-            </td>
+            <Td colSpan={2}>{karte.specialistName || "—"}</Td>
+            <Th>会社名</Th>
+            <Td colSpan={2}>{karte.specialistCompany || "—"}</Td>
+            <Th>連絡先</Th>
+            <Td colSpan={2}>{karte.specialistTel || "—"}</Td>
           </tr>
         </tbody>
       </table>
@@ -566,7 +568,10 @@ export default async function KarteDetailPage({
   );
 
   return (
-    <div className="space-y-6">
+    // 様式Ａ・様式Ｃ等はExcelを模した横に広い表になるため、他ページより広い上限にする
+    // （検索・一覧やフォーム主体の画面は要素が少なく、広げるとかえって間延びするため
+    // ページごとに幅を決めている。app/layout.tsxのコメント参照）。
+    <div className="mx-auto max-w-[1800px] space-y-6">
       <div className="flex items-center justify-between">
         <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
           ← 検索・一覧に戻る

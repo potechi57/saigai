@@ -144,7 +144,11 @@ export default function MapView({ kartes }: { kartes: MapKarte[] }) {
         </button>
       </div>
       {locateError && <p className="mb-2 text-xs text-red-600 dark:text-red-400">{locateError}</p>}
-      <div ref={containerRef} className="h-[70vh] w-full rounded border border-gray-300 dark:border-gray-700" />
+      {/* 検索フォーム等、地図より上にある要素の高さを差し引いた残り全体を使う
+          （固定で70vh等にすると、フォーム分の高さが余分に効いて画面に収まらず
+          縦スクロールが必要になっていたため）。極端に低い画面でも最低限の
+          高さは確保する。 */}
+      <div ref={containerRef} className="h-[calc(100vh-28rem)] min-h-[320px] w-full rounded border border-gray-300 dark:border-gray-700" />
     </div>
   );
 }

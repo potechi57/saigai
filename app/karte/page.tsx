@@ -39,12 +39,12 @@ export default async function KarteListPage({
   if (params.routeNo) {
     where.routeNo = { contains: params.routeNo, mode: "insensitive" };
   }
-  if (params.location) {
-    where.OR = [
-      { locationDistrict: { contains: params.location, mode: "insensitive" } },
-      { locationTown: { contains: params.location, mode: "insensitive" } },
-    ];
-  }
+  // 所在地はlocationDistrict（郡・市〜町村種別まで）とlocationTown（大字等）の2カラムに
+  // 分けて格納しているが、一覧・検索条件では{district}{town}を結合した1つの文字列として
+  // 見せている。locationDistrict/locationTownをそれぞれ別々にcontains検索すると、
+  // 表示上の「所在地」欄でしか繋がらない検索語（districtの末尾〜townの先頭にまたがる語、
+  // 例:"広瀬町 祖父谷"）を拾えない不具合があったため、DBのwhereでは絞り込まず、
+  // 他の条件で絞り込んだ結果に対して結合済み文字列でJS側フィルタする（下記）。
   // <select>のoption値はKARTE_TYPE_LABEL/RESPONSE_METAのキー（＝enumのメンバー名そのもの）
   // からしか生成していないため、想定外の値が来ることはない前提でキャストする。
   if (params.karteType && params.karteType in KarteType) {
@@ -66,7 +66,7 @@ export default async function KarteListPage({
   });
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
 
-  const kartes = await prisma.karte.findMany({
+  const kartesBeforeLocationFilter = await prisma.karte.findMany({
     where,
     orderBy: { updatedAt: "desc" },
     include: {
@@ -78,6 +78,14 @@ export default async function KarteListPage({
       },
     },
   });
+
+  // 所在地検索は上記コメントの通り、結合済み文字列に対するJS側フィルタで行う。
+  const kartes = params.location
+    ? kartesBeforeLocationFilter.filter((k) => {
+        const combined = [k.locationDistrict, k.locationTown].filter(Boolean).join(" ").toLowerCase();
+        return combined.includes(params.location!.toLowerCase());
+      })
+    : kartesBeforeLocationFilter;
 
   // 地図タブ用データ。検索フォームと同じ絞り込み結果からそのまま作る
   // （地図だけ別条件になってしまっていた従来の問題を防ぐ）。
@@ -95,7 +103,7 @@ export default async function KarteListPage({
   const withoutCoordsCount = kartes.length - mapKartes.length;
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">カルテ検索・一覧</h1>
         <div className="flex items-center gap-4 text-sm">

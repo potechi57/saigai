@@ -241,12 +241,22 @@ export async function importKarteExcel(
         weather: ev.weatherLabel ? WEATHER_BY_LABEL[ev.weatherLabel] ?? null : null,
         specialistInspectionDate: ev.specialistInspectionDate,
         specialistName: ev.specialistName,
+        specialTopics: ev.specialTopics,
+        specialistJudgement: ev.specialistJudgementLabel
+          ? RESPONSE_CATEGORY_BY_LABEL[ev.specialistJudgementLabel] ?? null
+          : null,
+        nextInspectionDueYear: ev.nextInspectionDueYear,
       },
       update: {
         inspectorName: ev.inspectorName,
         weather: ev.weatherLabel ? WEATHER_BY_LABEL[ev.weatherLabel] ?? null : null,
         specialistInspectionDate: ev.specialistInspectionDate,
         specialistName: ev.specialistName,
+        specialTopics: ev.specialTopics,
+        specialistJudgement: ev.specialistJudgementLabel
+          ? RESPONSE_CATEGORY_BY_LABEL[ev.specialistJudgementLabel] ?? null
+          : null,
+        nextInspectionDueYear: ev.nextInspectionDueYear,
       },
     });
 
