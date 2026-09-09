@@ -269,15 +269,70 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
   };
 }
 
+// 様式Ｂのシート名は変状（点検対象）が1件だけの場合は"様式Ｂ"、複数ある場合は
+// "様式Ｂ (1)"「様式Ｂ(2)"のように連番が付く（実データで確認済み。括弧の前の
+// 半角スペース有無が統一されていないため、両方にマッチする正規表現にしている）。
+const FORM_B_SHEET_PATTERN = /^様式Ｂ(?:\s*\(\d+\))?$/;
+
+export function findFormBSheetNames(wb: WorkBook): string[] {
+  return wb.SheetNames.filter((name) => FORM_B_SHEET_PATTERN.test(name));
+}
+
+export type ExtractedFormBTarget = {
+  sheetName: string;
+  sequenceLabel: string | null; // 変状No.（"①"等）そのまま
+  keyPoints: string | null; // 着目すべき点
+  checkItems: string | null; // チェック項目
+  createdOnSiteDate: Date | null;
+  createdOnSiteWeatherLabel: string | null;
+};
+
+// 様式Ｂ1シート分（＝変状/点検対象1件分）の内容を抽出する。
+// 様式Ａの施設管理番号・路線名・距離標等はここにも重複して入っているが、
+// カルテ側で既に取得済みのため対象外にしている。
+export function extractFormBTarget(wb: WorkBook, sheetName: string): ExtractedFormBTarget | null {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return null;
+  return {
+    sheetName,
+    sequenceLabel: cellText(ws, 5, 8) || null,
+    keyPoints: cellText(ws, 32, 45) || null,
+    checkItems: cellText(ws, 38, 45) || null,
+    createdOnSiteDate: toUtcDate(cellValue(ws, 42, 6), cellValue(ws, 42, 10), cellValue(ws, 42, 13)),
+    createdOnSiteWeatherLabel: cellText(ws, 42, 20) || null,
+  };
+}
+
+// 変状No.（①②③④）の丸数字→通し番号。様式Ｂ・様式Ｃで共通して使う
+// （InspectionTarget.sequenceNoの決め方）。丸数字以外の表記が来た場合はnullを返し、
+// 呼び出し側で「見つかった順に1,2,3...を振る」フォールバックに任せる。
+const CIRCLED_NUMBERS: Record<string, number> = {
+  "①": 1,
+  "②": 2,
+  "③": 3,
+  "④": 4,
+  "⑤": 5,
+  "⑥": 6,
+};
+export function circledNumberToSeq(label: string | null): number | null {
+  if (!label) return null;
+  return CIRCLED_NUMBERS[label] ?? null;
+}
+
+export type ExtractedInspectionEventTargetResult = {
+  sequenceNo: number; // 変状No.（①→1等）
+  comment: string | null; // 状況欄（実データでは"スプレーでマーキング"等の自由記述）
+  diffFromPrevious: boolean;
+  disasterHistory: boolean;
+  repairHistory: boolean;
+};
+
 export type ExtractedInspectionEvent = {
   inspectionDate: Date;
   inspectorName: string | null;
   weatherLabel: string | null; // "晴" | "曇" | "雨" | "雪"
   specialistInspectionDate: Date | null;
   specialistName: string | null;
-  diffFromPrevious: boolean;
-  disasterHistory: boolean;
-  repairHistory: boolean;
   specialTopics: string | null; // 点検時の特記事項（点検時の対応）
   // 点検後の対応（専門技術者の判定）。様式の表記そのまま（例:"対策工が必要"）。
   // 【注記】実データ3件はいずれもこの項目が未記入だったため、値セルの位置
@@ -285,6 +340,7 @@ export type ExtractedInspectionEvent = {
   // 直前の項目の並びから類推した未確認の位置。記入例が見つかり次第要検証。
   specialistJudgementLabel: string | null;
   nextInspectionDueYear: number | null; // 次回点検実施時期（年度）
+  targetResults: ExtractedInspectionEventTargetResult[];
 };
 
 // 様式Ｃは1シートあたり最大7回分の点検日を横方向に持つ（それ以上はシート複製）。
@@ -292,6 +348,14 @@ export type ExtractedInspectionEvent = {
 const DATE_SLOT_COUNT = 7;
 function slotBaseCol(i: number): number {
   return 18 + i * 10;
+}
+
+// 変状（点検対象）ごとの結果は縦方向に最大4件まで、1件あたり5行を占める
+// （実データで確認済み: 1件目は行6〜10＝変状No.・状況行＋前回との差異・被災履歴・補修履歴、
+// 2件目は行11〜15、3件目は行16〜20、4件目は行21〜25、という5行おきの並び）。
+const FORM_C_MAX_TARGET_BLOCKS = 4;
+function targetBlockLabelRow(blockIndex: number): number {
+  return 6 + blockIndex * 5;
 }
 
 function toUtcDate(y: unknown, m: unknown, d: unknown): Date | null {
@@ -302,9 +366,6 @@ function toUtcDate(y: unknown, m: unknown, d: unknown): Date | null {
   return new Date(Date.UTC(yn, mn - 1, dn));
 }
 
-// 「着目すべき変状が複数ある場合の変状ごとの結果（4件まで/シート）」には未対応で、
-// 常に1件目のブロック（行8〜10）だけを見る。シート複製・変状追加された実データが
-// 手に入り次第、対応を広げる（当面はシングルターゲットの単純なケースのみ）。
 export function extractInspectionEvents(wb: WorkBook): ExtractedInspectionEvent[] {
   const ws = wb.Sheets[FORM_C_SHEET_NAME];
   if (!ws) return [];
@@ -319,6 +380,21 @@ export function extractInspectionEvents(wb: WorkBook): ExtractedInspectionEvent[
     );
     if (!inspectionDate) continue; // このスロットは未使用（点検日が入っていない）
 
+    const targetResults: ExtractedInspectionEventTargetResult[] = [];
+    for (let b = 0; b < FORM_C_MAX_TARGET_BLOCKS; b++) {
+      const labelRow = targetBlockLabelRow(b);
+      // 変状No.（①等）は列1に固定（点検日の列に関わらず1箇所だけ）。未記入＝この変状枠は未使用。
+      const marker = cellText(ws, labelRow, 1);
+      if (!marker) continue;
+      targetResults.push({
+        sequenceNo: circledNumberToSeq(marker) ?? b + 1,
+        comment: cellText(ws, labelRow, base) || null,
+        diffFromPrevious: cellText(ws, labelRow + 2, base) === "有",
+        disasterHistory: cellText(ws, labelRow + 3, base) === "有",
+        repairHistory: cellText(ws, labelRow + 4, base) === "有",
+      });
+    }
+
     events.push({
       inspectionDate,
       inspectorName: cellText(ws, 33, base) || null,
@@ -329,12 +405,10 @@ export function extractInspectionEvents(wb: WorkBook): ExtractedInspectionEvent[
         cellValue(ws, 40, base + 7)
       ),
       specialistName: cellText(ws, 41, base) || null,
-      diffFromPrevious: cellText(ws, 8, base) === "有",
-      disasterHistory: cellText(ws, 9, base) === "有",
-      repairHistory: cellText(ws, 10, base) === "有",
       specialTopics: cellText(ws, 27, base) || null,
       specialistJudgementLabel: cellText(ws, 34, base) || null,
       nextInspectionDueYear: joinDigits(ws, 42, [base]),
+      targetResults,
     });
   }
   return events;

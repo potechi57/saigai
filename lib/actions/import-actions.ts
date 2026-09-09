@@ -16,9 +16,16 @@ import {
   InspectionPeriodType,
   PhotoSourceForm,
 } from "@prisma/client";
-import { extractKarte, extractInspectionEvents } from "@/lib/excel/karte-import";
-import { extractFormAImages } from "@/lib/excel/karte-image-extract";
+import {
+  extractKarte,
+  extractInspectionEvents,
+  findFormBSheetNames,
+  extractFormBTarget,
+  circledNumberToSeq,
+} from "@/lib/excel/karte-import";
+import { extractFormAImages, extractSheetImages } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
+import type { InspectionTarget } from "@prisma/client";
 
 const KARTE_TYPE_BY_LABEL: Record<string, KarteType> = {
   "落石・崩壊": KarteType.ROCKFALL_COLLAPSE,
@@ -255,16 +262,79 @@ export async function importKarteExcel(
     }
   }
 
-  // 様式Ｂに変状（点検対象）の定義が無いファイルが多いため、点検記録の受け皿として
-  // 最初の1件だけプレースホルダの点検対象を用意する（複数変状には未対応、上記の通り）。
-  let target = await prisma.inspectionTarget.findFirst({
-    where: { karteId: karte.id },
-    orderBy: { sequenceNo: "asc" },
-  });
-  if (!target) {
-    target = await prisma.inspectionTarget.create({
-      data: { karteId: karte.id, sequenceNo: 1, name: "点検対象1（Excel取込・要確認）", displayOrder: 0 },
+  // 変状（点検対象）ごとの点検対象を、様式Ｂのシート数に応じて作成・更新する。
+  // 様式Ｂのシート名は変状No.が1件だけなら"様式Ｂ"、複数あれば"様式Ｂ (1)"のように
+  // 連番が付く（findFormBSheetNames参照）。1シートも見つからない場合（様式ファイルの
+  // 構成が想定と異なる等）は、従来どおり1件だけプレースホルダを作る。
+  //
+  // sequenceNoは様式Ｂ・様式Ｃに共通の「変状No.」（①②③④の丸数字）から決める。
+  // 様式Ｃには様式Ｂが存在しない変状（過去に追跡していたが今は様式Ｂページが
+  // 無くなっている等）の履歴が残っていることがある実データを確認したため、
+  // 様式Ｃの処理側でも見つからないsequenceNoがあれば追加でプレースホルダを作る
+  // （getOrCreateTarget、点検履歴を取りこぼさないため）。
+  const targetsBySeq = new Map<number, InspectionTarget>();
+
+  const formBSheetNames = findFormBSheetNames(wb);
+  for (const [i, sheetName] of formBSheetNames.entries()) {
+    const fb = extractFormBTarget(wb, sheetName);
+    if (!fb) continue;
+    const seq = circledNumberToSeq(fb.sequenceLabel) ?? i + 1;
+    const target = await prisma.inspectionTarget.upsert({
+      where: { karteId_sequenceNo: { karteId: karte.id, sequenceNo: seq } },
+      create: {
+        karteId: karte.id,
+        sequenceNo: seq,
+        name: `点検対象${seq}（Excel取込・要確認）`,
+        displayOrder: seq - 1,
+        keyPoints: fb.keyPoints,
+        checkItems: fb.checkItems,
+        createdOnSiteDate: fb.createdOnSiteDate,
+        createdOnSiteWeather: fb.createdOnSiteWeatherLabel ? WEATHER_BY_LABEL[fb.createdOnSiteWeatherLabel] ?? null : null,
+      },
+      update: {
+        // 名称はEdit画面で手動修正されている可能性があるため上書きしない。
+        keyPoints: fb.keyPoints,
+        checkItems: fb.checkItems,
+        createdOnSiteDate: fb.createdOnSiteDate,
+        createdOnSiteWeather: fb.createdOnSiteWeatherLabel ? WEATHER_BY_LABEL[fb.createdOnSiteWeatherLabel] ?? null : null,
+      },
     });
+    targetsBySeq.set(seq, target);
+
+    // 様式Ｂの写真（<詳細スケッチ欄>2枚＋<写真張付欄>1枚、計3枚という配置を実データで
+    // 確認済み。karte-image-extract.tsのアンカー座標ソートで自然にこの順になる）。
+    if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN) {
+      const formBImages = extractSheetImages(sourceBuffer, sheetName);
+      if (formBImages.length > 0) {
+        try {
+          await prisma.photo.deleteMany({ where: { targetId: target.id, sourceForm: PhotoSourceForm.FORM_B } });
+          for (const [j, img] of formBImages.entries()) {
+            const blob = await put(
+              `karte-imports/${facilityNo}-formB-${seq}-${Date.now()}-${j}.${img.ext}`,
+              img.data,
+              { access: "public", contentType: `image/${img.ext}` }
+            );
+            await prisma.photo.create({
+              data: { karteId: karte.id, targetId: target.id, url: blob.url, sourceForm: PhotoSourceForm.FORM_B },
+            });
+          }
+        } catch {
+          // 写真取込はベストエフォート。失敗してもインポート結果には影響させない。
+        }
+      }
+    }
+  }
+
+  async function getOrCreateTarget(seq: number): Promise<InspectionTarget> {
+    const existing = targetsBySeq.get(seq);
+    if (existing) return existing;
+    const target = await prisma.inspectionTarget.upsert({
+      where: { karteId_sequenceNo: { karteId: karte.id, sequenceNo: seq } },
+      create: { karteId: karte.id, sequenceNo: seq, name: `点検対象${seq}（Excel取込・要確認）`, displayOrder: seq - 1 },
+      update: {},
+    });
+    targetsBySeq.set(seq, target);
+    return target;
   }
 
   const events = extractInspectionEvents(wb);
@@ -298,21 +368,30 @@ export async function importKarteExcel(
       },
     });
 
-    await prisma.inspectionResult.upsert({
-      where: { eventId_targetId: { eventId: event.id, targetId: target.id } },
-      create: {
-        eventId: event.id,
-        targetId: target.id,
-        diffFromPrevious: ev.diffFromPrevious,
-        disasterHistory: ev.disasterHistory,
-        repairHistory: ev.repairHistory,
-      },
-      update: {
-        diffFromPrevious: ev.diffFromPrevious,
-        disasterHistory: ev.disasterHistory,
-        repairHistory: ev.repairHistory,
-      },
-    });
+    // targetResultsが空（様式Ｃの変状No.マーカーがどの枠にも無い＝実データ非対応の
+    // レイアウト）の場合でも、少なくとも1件は点検記録を残せるよう、targetsBySeqの
+    // 最初の点検対象（無ければ新規プレースホルダ）に結果無しで登録する。
+    const results = ev.targetResults.length > 0 ? ev.targetResults : [{ sequenceNo: 1, comment: null, diffFromPrevious: false, disasterHistory: false, repairHistory: false }];
+    for (const r of results) {
+      const target = await getOrCreateTarget(r.sequenceNo);
+      await prisma.inspectionResult.upsert({
+        where: { eventId_targetId: { eventId: event.id, targetId: target.id } },
+        create: {
+          eventId: event.id,
+          targetId: target.id,
+          comment: r.comment,
+          diffFromPrevious: r.diffFromPrevious,
+          disasterHistory: r.disasterHistory,
+          repairHistory: r.repairHistory,
+        },
+        update: {
+          comment: r.comment,
+          diffFromPrevious: r.diffFromPrevious,
+          disasterHistory: r.disasterHistory,
+          repairHistory: r.repairHistory,
+        },
+      });
+    }
     imported++;
   }
 
