@@ -162,7 +162,7 @@ export default async function KarteDetailPage({
                       <img
                         src={p.url}
                         alt={p.caption ?? "点検地点位置図"}
-                        className="h-56 w-56 rounded border border-gray-300 object-cover dark:border-gray-700"
+                        className="h-[28rem] w-[28rem] rounded border border-gray-300 object-cover dark:border-gray-700"
                       />
                     </a>
                   ))}
