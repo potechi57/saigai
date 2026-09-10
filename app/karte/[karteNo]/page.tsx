@@ -828,10 +828,16 @@ export default async function KarteDetailPage({
             id: `group-${g.sheetIndex}`,
             label: seqToCircledNumber(i + 1),
             content: (
-              // 様式Ｂの写真（列幅の2/3。おおむね全体の1/3幅）と大きさを揃えるため、
-              // 1行あたり最大3枚（lg:grid-cols-3）に抑えている。PhotoSlotを使うことで
-              // 縦横比（aspect-video）・fit="contain"（切れずに全体を表示）も様式Ｂと統一。
-              <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+              // 実データでは基本4枚（Excel上もG23/AY23/G41/AY41の4箇所）なので、
+              // 既定は2列（2×2）で並べる。3枚しかない場合のみ、横一列（3列）に
+              // する（4枚時に2×2、3枚時に横3つ、という指示に合わせた特例）。
+              // PhotoSlotを使うことで縦横比（aspect-video）・fit="contain"
+              // （切れずに全体を表示）を様式Ｂと統一している。
+              <div
+                className={`grid grid-cols-1 gap-3 p-3 ${
+                  g.photos.length === 3 ? "sm:grid-cols-3" : g.photos.length >= 2 ? "sm:grid-cols-2" : ""
+                }`}
+              >
                 {g.photos.map((p) => (
                   <div key={p.id}>
                     <PhotoSlot photo={p} />
