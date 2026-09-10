@@ -32,7 +32,12 @@ export default async function FavoritesPage({
       where: groupId ? { groupItems: { some: { groupId } } } : {},
       orderBy: { createdAt: "desc" },
       include: {
-        karte: true,
+        karte: {
+          include: {
+            // 地図ポップアップの「最終点検日時」表示用（app/karte/page.tsxと同じ考え方）
+            events: { orderBy: { inspectionDate: "desc" }, take: 1, select: { inspectionDate: true } },
+          },
+        },
         groupItems: { include: { group: true } },
       },
     }),
@@ -63,6 +68,11 @@ export default async function FavoritesPage({
     isFavorite: true,
     startPhotoUrl: startEndPhotos.get(f.karte.id)?.startPhotoUrl,
     endPhotoUrl: startEndPhotos.get(f.karte.id)?.endPhotoUrl,
+    extensionLengthM: f.karte.extensionLengthM != null ? Number(f.karte.extensionLengthM) : null,
+    location: [f.karte.locationDistrict, f.karte.locationTown].filter(Boolean).join(" ") || null,
+    lastInspectionDateLabel: f.karte.events[0]?.inspectionDate
+      ? new Date(f.karte.events[0].inspectionDate).toLocaleDateString("ja-JP")
+      : null,
   }));
 
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));

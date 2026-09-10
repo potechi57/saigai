@@ -133,6 +133,11 @@ export default async function KarteListPage({
     isFavorite: k.favorite != null,
     startPhotoUrl: startEndPhotos.get(k.id)?.startPhotoUrl,
     endPhotoUrl: startEndPhotos.get(k.id)?.endPhotoUrl,
+    extensionLengthM: k.extensionLengthM != null ? Number(k.extensionLengthM) : null,
+    location: [k.locationDistrict, k.locationTown].filter(Boolean).join(" ") || null,
+    lastInspectionDateLabel: k.events[0]?.inspectionDate
+      ? new Date(k.events[0].inspectionDate).toLocaleDateString("ja-JP")
+      : null,
   }));
   const withoutCoordsCount = kartes.length - mapKartes.length;
 
