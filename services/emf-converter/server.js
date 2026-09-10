@@ -13,7 +13,9 @@
 // ImageMagickのEMF対応は内部的にLibreOffice等の外部ツールに委譲する作りで、
 // 特にLinux環境では変換に失敗する報告が多い（ImageMagick自体がEMF用の
 // まともなネイティブデリゲートを持たないため）。素直にLibreOffice headlessを
-// 直接使う方が確実。
+// 直接使う方が確実。ただしImageMagick自体は、変換後のPNGの余白除去
+// （-trim。下記convertToPng参照）という、EMF形式とは無関係な単純な
+// PNG→PNG処理には問題なく使えるため、その用途でのみ併用している。
 //
 // 【想定する利用形態】
 // - リクエスト頻度は低い（カルテExcel取込時、EMF/WMFスケッチが埋め込まれている
@@ -109,8 +111,27 @@ async function convertToPng(inputBuffer, ext) {
     });
 
     const outputPath = path.join(workDir, "input.png");
-    const png = await fs.readFile(outputPath);
-    return png;
+
+    // LibreOfficeはEMF/WMFを「描画ページ」として書き出すため、実際の絵よりも
+    // 大きい既定サイズのキャンバスになり、絵が入っていない部分が白い余白として
+    // 残ることがある（横長の絵なのに正方形に近いPNGになる、等）。ImageMagickの
+    // -trimで背景と同色の外周を切り落とし、実際に描画された範囲だけを取り出す。
+    const trimmedPath = path.join(workDir, "trimmed.png");
+    try {
+      await new Promise((resolve, reject) => {
+        execFile(
+          "convert",
+          [outputPath, "-trim", "+repage", trimmedPath],
+          { timeout: CONVERT_TIMEOUT_MS },
+          (error) => (error ? reject(error) : resolve(undefined))
+        );
+      });
+      return await fs.readFile(trimmedPath);
+    } catch {
+      // トリミングに失敗した場合（ImageMagick未導入・真っ白画像でtrim結果が
+      // 空になる等）は、余白付きでも元の変換結果をそのまま返す（ベストエフォート）。
+      return await fs.readFile(outputPath);
+    }
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }

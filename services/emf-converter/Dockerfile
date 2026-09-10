@@ -8,11 +8,16 @@ FROM node:20-bookworm-slim
 #   MVPとして「まず確実に動く」ことを優先し、必要な機能だけに絞った軽量化は
 #   動作確認後の課題としている）。
 # fonts-noto-cjk: 日本語のカルテに含まれるスケッチ内の文字を正しく描画するため。
+# imagemagick: LibreOfficeが書き出したPNGの周囲の余白（実際の絵より大きい
+#   既定サイズのキャンバスになることがある）をトリミングするために使う
+#   （EMF自体の変換には使っていない。PNG→PNGの単純なトリミングのみで、
+#   server.jsコメントに記載のEMF変換に関する信頼性の懸念とは無関係）。
 # 各種依存ライブラリ: LibreOfficeの実行に必要なフォント・レンダリング関連ライブラリ。
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libreoffice \
       fonts-noto-cjk \
       fonts-dejavu \
+      imagemagick \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
