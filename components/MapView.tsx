@@ -109,7 +109,10 @@ export default function MapView({
              道路距離を調べる（試験的）
            </button>
            <div style="margin-top:6px;"><a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;">詳細を見る →</a></div>
-         </div>`
+         </div>`,
+        // 起点/終点サムネイル（下記buildStartEndPhotosHtml）を大きめに表示する分、
+        // Leaflet既定のポップアップ幅（300px）だと窮屈になるため広げている。
+        { maxWidth: 360 }
       );
 
       // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離・
@@ -509,19 +512,19 @@ async function fetchRoadRouteDistance(
   }
 }
 
-// 起点／終点の参考写真を、ポップアップ内の小さなサムネイルとして組み立てる
-// （「現状記録写真タブほど大きくする必要はない。なんとなくこんな場所かと分かる
-// レベルの大きさで」という要望に合わせ、幅56px程度に留めている）。クリックすると
-// 元画像を別タブで開ける（拡大して詳しく見たい場合のため）。どちらも無ければ
-// 何も表示しない。
+// 起点／終点の参考写真を、ポップアップ内のサムネイルとして組み立てる。
+// 「現状記録写真タブほど大きくする必要はないが、様式Bの写真の半分くらいの
+// 大きさで」という要望に合わせ、様式Ｂの写真（PhotoSlot、aspect-video＝16:9）と
+// 同じ縦横比のまま、幅150px（高さ84px）にしている。クリックすると元画像を
+// 別タブで開ける（拡大して詳しく見たい場合のため）。どちらも無ければ何も表示しない。
 function buildStartEndPhotosHtml(k: MapKarte): string {
   if (!k.startPhotoUrl && !k.endPhotoUrl) return "";
   const thumb = (url: string, label: string) => `
     <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;">
-      <img src="${escapeHtml(url)}" style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
-      <span style="font-size:10px;color:#6b7280;">${escapeHtml(label)}</span>
+      <img src="${escapeHtml(url)}" style="width:150px;height:84px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      <span style="font-size:11px;color:#6b7280;">${escapeHtml(label)}</span>
     </a>`;
-  return `<div style="margin-top:6px;display:flex;gap:8px;">
+  return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
       ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
       ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
     </div>`;
