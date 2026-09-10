@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { convertEmfToPng, hasAsposeCredentials } from "@/lib/excel/emf-convert";
 
 // 指定したシートに埋め込まれた画像（写真）を抽出する共通処理。
 // 様式Ａの「点検地点位置図・現況写真」欄、様式Ｂの「詳細スケッチ欄・写真張付欄」で使う。
@@ -9,11 +10,11 @@ import * as XLSX from "xlsx";
 // 生バッファから直接開けることを確認済みのため、これを使ってxl/drawings・xl/media
 // を辿り画像バイナリを取り出す（新規の依存ライブラリは追加していない）。
 //
-// 【対象】指定シートのdrawingにひもづくJPEG/PNG/GIF/BMP/WEBPのみ。
-// 【対象外（実データで確認した上での判断）】
-//   - ベクター形式（EMF/WMF）: ブラウザで直接表示できないため対象外にしている。
-//     実データでは様式Ａの「点検地点位置図」にスケッチ画像がEMF形式で埋め込まれて
-//     いることを確認したが、変換には別途重いライブラリが必要なため見送っている。
+// 【対象】指定シートのdrawingにひもづくJPEG/PNG/GIF/BMP/WEBP、およびEMF/WMF
+//   （Aspose Cloud経由でPNGに変換できた場合のみ。lib/excel/emf-convert.ts参照）。
+// 【対象外】
+//   - EMF/WMFのうち、Aspose Cloudの認証情報（環境変数）が未設定、または変換に
+//     失敗したもの: 従来どおり黙ってスキップする（ベストエフォート）。
 //   - 「R7現状記録写真」等、様式Ａ・様式Ｂ以外のシートに埋め込まれた画像は今のところ対象外。
 //   - .xls（レガシーBIFF8形式）: ZIP構造ではないため、この抽出方法は使えない
 //     （xl/workbook.xmlが見つからず、その時点で空配列を返す。写真は従来どおり
@@ -29,6 +30,7 @@ export type ExtractedImage = {
 };
 
 const RASTER_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "bmp", "webp"]);
+const VECTOR_EXTENSIONS = new Set(["emf", "wmf"]);
 
 function attr(tag: string, name: string): string | null {
   const re = new RegExp(name.replace(/:/g, "\\:") + '="([^"]*)"');
@@ -53,7 +55,9 @@ function resolveRelative(basePath: string, relativeTarget: string): string {
   return baseDir.join("/");
 }
 
-export function extractSheetImages(buffer: Buffer, sheetName: string): ExtractedImage[] {
+// EMF/WMFのクラウド変換（ネットワークI/O）を伴いうるためasyncにしている
+// （呼び出し側は全てlib/actions/import-actions.tsの中の既にasync/awaitな処理）。
+export async function extractSheetImages(buffer: Buffer, sheetName: string): Promise<ExtractedImage[]> {
   try {
     const cfb = XLSX.CFB.read(buffer, { type: "buffer" });
 
@@ -126,6 +130,10 @@ export function extractSheetImages(buffer: Buffer, sheetName: string): Extracted
       if (id) mediaByRid.set(id, resolveRelative(drawingPath, target));
     }
 
+    // EMF/WMFの変換はAspose Cloudへの通信を伴うため、認証情報が無い環境では
+    // 最初から試行しない（従来どおりEMF/WMFは無視する）。
+    const canConvertVector = hasAsposeCredentials();
+
     // 各アンカー（<xdr:twoCellAnchor>等）から、貼り付け位置（from列・行）と
     // 参照している画像（r:embed）を取り出す。
     const anchorBlocks = drawingXml.match(/<xdr:(?:two|one)CellAnchor\b[^]*?<\/xdr:(?:two|one)CellAnchor>/g) || [];
@@ -136,14 +144,25 @@ export function extractSheetImages(buffer: Buffer, sheetName: string): Extracted
       const mediaPath = mediaByRid.get(embedMatch[1]);
       if (!mediaPath) continue;
       const ext = (mediaPath.split(".").pop() || "").toLowerCase();
-      if (!RASTER_EXTENSIONS.has(ext)) continue; // EMF/WMF等はここで除外
+      if (!RASTER_EXTENSIONS.has(ext) && !VECTOR_EXTENSIONS.has(ext)) continue; // それ以外の形式は対象外
 
       const fromMatch = block.match(/<xdr:from>\s*<xdr:col>(\d+)<\/xdr:col>[^]*?<xdr:row>(\d+)<\/xdr:row>/);
       const fromCol = fromMatch ? Number(fromMatch[1]) : 0;
       const fromRow = fromMatch ? Number(fromMatch[2]) : 0;
 
       const data = getBin(mediaPath);
-      if (data) images.push({ data, ext: ext === "jpg" ? "jpeg" : ext, fromCol, fromRow });
+      if (!data) continue;
+
+      if (RASTER_EXTENSIONS.has(ext)) {
+        images.push({ data, ext: ext === "jpg" ? "jpeg" : ext, fromCol, fromRow });
+        continue;
+      }
+
+      // ここに来るのはEMF/WMF。認証情報が無い、またはAPI呼び出しに失敗した場合は
+      // 従来どおり黙ってスキップする（ベストエフォート。lib/excel/emf-convert.ts参照）。
+      if (!canConvertVector) continue;
+      const png = await convertEmfToPng(data, ext as "emf" | "wmf");
+      if (png) images.push({ data: png, ext: "png", fromCol, fromRow });
     }
 
     // 列→行の順に並べる。様式Ｂは左（列が小さい）に2枚縦並び・右（列が大きい）に
@@ -158,6 +177,6 @@ export function extractSheetImages(buffer: Buffer, sheetName: string): Extracted
 }
 
 // 様式Ａ用の薄いラッパー（呼び出し側の互換性のため）。
-export function extractFormAImages(buffer: Buffer): ExtractedImage[] {
+export async function extractFormAImages(buffer: Buffer): Promise<ExtractedImage[]> {
   return extractSheetImages(buffer, "様式Ａ");
 }

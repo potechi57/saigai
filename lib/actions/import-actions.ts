@@ -217,11 +217,12 @@ export async function importPhase1KarteAndFormA(blobUrl: string, fileName: strin
   }
 
   // 様式Ａの「点検地点位置図・現況写真」欄に埋め込まれた画像を自動で取り込む（ベストエフォート）。
-  // 対象は様式Ａシートに埋め込まれたJPEG/PNG等のラスター画像のみ。EMF等のベクター画像、
-  // 「R7現状記録写真」等ほかのシートの画像は対象外にしている
-  // （理由はlib/excel/karte-image-extract.tsのコメント参照）。
+  // 対象は様式ＡシートのJPEG/PNG等のラスター画像、およびEMF/WMF（Aspose Cloud経由で
+  // PNGに変換できた場合のみ。認証情報未設定時は従来どおり無視される）。
+  // 「R7現状記録写真」等ほかのシートの画像はまだ対象外にしている
+  // （詳細はlib/excel/karte-image-extract.ts・lib/excel/emf-convert.tsのコメント参照）。
   if (hasBlobCredentials()) {
-    const formAImages = extractFormAImages(sourceBuffer);
+    const formAImages = await extractFormAImages(sourceBuffer);
     if (formAImages.length > 0) {
       try {
         // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の様式Ａ写真
@@ -309,7 +310,7 @@ export async function importPhase2FormBTarget(
   // 様式Ｂの写真（<詳細スケッチ欄>2枚＋<写真張付欄>1枚、計3枚という配置を実データで
   // 確認済み。karte-image-extract.tsのアンカー座標ソートで自然にこの順になる）。
   if (hasBlobCredentials()) {
-    const formBImages = extractSheetImages(sourceBuffer, sheetName);
+    const formBImages = await extractSheetImages(sourceBuffer, sheetName);
     if (formBImages.length > 0) {
       try {
         await prisma.photo.deleteMany({ where: { targetId: target.id, sourceForm: PhotoSourceForm.FORM_B } });
@@ -560,7 +561,7 @@ export async function importKarteExcel(
   }
 
   if (hasBlobCredentials()) {
-    const formAImages = extractFormAImages(sourceBuffer);
+    const formAImages = await extractFormAImages(sourceBuffer);
     if (formAImages.length > 0) {
       try {
         await prisma.photo.deleteMany({
@@ -607,7 +608,7 @@ export async function importKarteExcel(
     targetsBySeq.set(seq, target);
 
     if (hasBlobCredentials()) {
-      const formBImages = extractSheetImages(sourceBuffer, sheetName);
+      const formBImages = await extractSheetImages(sourceBuffer, sheetName);
       if (formBImages.length > 0) {
         try {
           await prisma.photo.deleteMany({ where: { targetId: target.id, sourceForm: PhotoSourceForm.FORM_B } });
