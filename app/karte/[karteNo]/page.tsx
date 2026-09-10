@@ -80,22 +80,19 @@ export default async function KarteDetailPage({
     }
   }
 
-  // ── 様式Ａ ─────────────────────────────────────────────
-  const formA = (
-    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
-      <div className="flex items-center justify-between border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
-        <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">
-          防災カルテ様式Ａ　（{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}）
-        </h1>
-        <div className="text-right text-xs text-gray-600 dark:text-gray-300">
-          <div>管理機関名: {karte.manageOrgName || "—"}</div>
-          <div>管理機関コード: {karte.manageOrgCode || "—"}</div>
-        </div>
-      </div>
-
+  // ── カルテ共通ヘッダー（様式Ａ／Ｂ／Ｃを切り替えても常に上に表示） ─────────────
+  // 元々は様式Ａの表の一部（1〜4行目）だったが、「様式Ａ・Ｂ・Ｃを切り替えても
+  // 施設管理番号等の基本情報が常に見えるようにしてほしい」という要望を受けて、
+  // SheetTabsの外（＝タブ切替の影響を受けない場所）に独立させた。様式Ｄは元々
+  // 自分のタブ内に同じ情報を再掲する作り（実際のExcelでも様式Ｄは別シートとして
+  // 同じヘッダーを持つ）のため、そちらは変更していない。
+  // 規制基準等（連続雨量・時間雨量）は、以前はどの画面にも表示していなかった項目
+  // （データはKarte.continuousRainfallMm／hourlyRainfallMmとして保存済みだったが
+  // 表示側が未実装だった）ため、このタイミングで追加している。
+  const commonHeader = (
+    <section className="overflow-x-auto rounded border border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
       <table className="w-full border-collapse text-xs">
         <tbody>
-          {/* 実際のExcelの1行目（施設管理番号〜延長）と同じ並び */}
           <tr>
             <Th>施設管理番号</Th>
             <Td>{karte.facilityNo}</Td>
@@ -114,7 +111,6 @@ export default async function KarteDetailPage({
             <Th>延長</Th>
             <Td>{karte.extensionLengthM ? `${karte.extensionLengthM} m` : "—"}</Td>
           </tr>
-          {/* Excelの2行目（事業区分〜測地系） */}
           <tr>
             <Th>事業区分</Th>
             <Td>{karte.projectCategory ? PROJECT_CATEGORY_LABEL[karte.projectCategory] : "—"}</Td>
@@ -124,8 +120,6 @@ export default async function KarteDetailPage({
             <Td>{karte.roadStatus ? ROAD_STATUS_LABEL[karte.roadStatus] : "—"}</Td>
             <Th>所在地</Th>
             <Td colSpan={3}>{[karte.locationDistrict, karte.locationTown].filter(Boolean).join(" ") || "—"}</Td>
-            <Th>位置目印</Th>
-            <Td colSpan={2}>{karte.landmark || "—"}</Td>
             <Th>北緯・東経</Th>
             <Td colSpan={2}>
               {karte.latitude && karte.longitude ? `${karte.latitude}, ${karte.longitude}` : "—"}
@@ -133,12 +127,17 @@ export default async function KarteDetailPage({
           </tr>
           <tr>
             <Th className="whitespace-normal">測地系</Th>
-            <Td colSpan={13}>{karte.geodeticSystem ? GEODETIC_LABEL[karte.geodeticSystem] : "—"}</Td>
+            <Td colSpan={11}>{karte.geodeticSystem ? GEODETIC_LABEL[karte.geodeticSystem] : "—"}</Td>
           </tr>
-          {/* Excelの3行目（事前通行規制区間指定〜緊急輸送道路区分） */}
           <tr>
             <Th>事前通行規制区間指定</Th>
             <Td>{yesNo(karte.preTrafficRestriction)}</Td>
+            <Th>規制基準等</Th>
+            <Td colSpan={2}>
+              {karte.continuousRainfallMm != null || karte.hourlyRainfallMm != null
+                ? `連続雨量 ${karte.continuousRainfallMm ?? "—"}mm ／ 時間雨量 ${karte.hourlyRainfallMm ?? "—"}mm`
+                : "—"}
+            </Td>
             <Th>交通量</Th>
             <Td colSpan={2}>
               {karte.trafficVolumeWeekday != null
@@ -155,6 +154,32 @@ export default async function KarteDetailPage({
             <Td>{yesNo(karte.detour)}</Td>
             <Th colSpan={2}>緊急輸送道路区分</Th>
             <Td colSpan={2}>{karte.emergencyRoadCategory || "—"}</Td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  );
+
+  // ── 様式Ａ ─────────────────────────────────────────────
+  const formA = (
+    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <div className="flex items-center justify-between border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">
+          防災カルテ様式Ａ　（{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}）
+        </h1>
+        <div className="text-right text-xs text-gray-600 dark:text-gray-300">
+          <div>管理機関名: {karte.manageOrgName || "—"}</div>
+          <div>管理機関コード: {karte.manageOrgCode || "—"}</div>
+        </div>
+      </div>
+
+      <table className="w-full border-collapse text-xs">
+        <tbody>
+          {/* 位置目印は共通ヘッダーには含めていない（施設管理番号等と違い様式Ａ固有の
+              自由記述項目という位置づけのため）。 */}
+          <tr>
+            <Th>位置目印</Th>
+            <Td colSpan={13}>{karte.landmark || "—"}</Td>
           </tr>
 
           {/* 点検地点位置図・現況写真、専門技術者による点検（Excel上でも隣接） */}
@@ -838,6 +863,11 @@ export default async function KarteDetailPage({
           </Link>
         </div>
       </div>
+
+      {/* 施設管理番号等の基本情報は様式Ａ／Ｂ／Ｃを切り替えても常に見えるよう、
+          タブ切替（SheetTabs）の外に独立させている。様式Ｄは元々自分のタブ内に
+          同じ情報を再掲する作りのため対象外（コメント参照）。 */}
+      {commonHeader}
 
       <SheetTabs
         tabs={[
