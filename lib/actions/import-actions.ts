@@ -5,6 +5,7 @@ import * as officeCrypto from "officecrypto-tool";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 import {
   KarteType,
   ProjectCategory,
@@ -424,6 +425,13 @@ export async function importPhase3Events(
     imported++;
   }
 
+  await logAudit({
+    action: "UPDATE",
+    entityType: "Excel取込",
+    summary: `${facilityNo} にExcelから点検記録 ${imported} 件を取込`,
+    karteFacilityNo: facilityNo,
+  });
+
   revalidatePath(`/karte/${facilityNo}`);
   revalidatePath("/karte");
 
@@ -702,6 +710,13 @@ export async function importKarteExcel(
       // ベストエフォート
     }
   }
+
+  await logAudit({
+    action: "UPDATE",
+    entityType: "Excel取込",
+    summary: `${facilityNo} にExcel（${fileName}）を取込（点検記録 ${imported} 件）`,
+    karteFacilityNo: facilityNo,
+  });
 
   revalidatePath(`/karte/${facilityNo}`);
   revalidatePath("/karte");

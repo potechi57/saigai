@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createInspectionEvent } from "@/lib/actions/karte-actions";
 import { TextField, NumberField, DateField, TextAreaField, SelectField } from "@/components/FormFields";
+import SubmitButton from "@/components/SubmitButton";
 import { RESPONSE_META } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
   const action = createInspectionEvent.bind(null, karte.id, karte.facilityNo, targetIds);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4 p-6">
       <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>
@@ -97,9 +98,9 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
           </section>
         )}
 
-        <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+        <SubmitButton pendingLabel="登録中..." className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
           登録する
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

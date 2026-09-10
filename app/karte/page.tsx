@@ -2,8 +2,10 @@ import Link from "next/link";
 import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
-import KarteResultsTabs from "@/components/KarteResultsTabs";
-import type { MapKarte } from "@/components/MapLoader";
+import MapView from "@/components/MapLoader";
+import type { MapKarte, HomeLocation } from "@/components/MapLoader";
+import ViewToggleField from "@/components/ViewToggleField";
+import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
@@ -16,18 +18,30 @@ type SearchParams = {
   location?: string;
   karteType?: string;
   responseCategory?: string;
+  view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
 };
 
-// 検索画面（指示書6章）・カルテ一覧画面（8章）・地図検索画面（7章）を1画面に統合している。
-// 指示書19章「これらを16個の完全に独立したページとして実装する必要はない」の方針に沿う。
-// 検索フォームを1つに共有し、結果を「一覧」「地図」タブで切り替える（KarteResultsTabs）。
-// 従来は地図が検索条件を無視してDB全件を表示していた（実質バグ）が、統合により解消。
+// 「地図を中心とした画面」（ホーム画面）。指示書19章の方針に沿い、検索画面（6章）・
+// カルテ一覧画面（8章）・地図検索画面（7章）を1画面に統合している。
+//
+// 以前は検索フォームの下に「一覧」「地図」タブを並べて表示していたが、
+// 「地図を中心とした画面にしてほしい。初期表示は地図だけ、一覧は表示しない」
+// という要望を受けて、次のレイアウトに刷新した:
+//   - 画面いっぱい（ヘッダー直下〜画面下端）を使い、左に検索条件パネル、
+//     中央（残り全体）に地図を常時表示する（PCでの基本レイアウト）。
+//   - 初期表示（条件無し）では地図だけを見せ、カルテの一覧テーブルは出さない。
+//     地図には現在の検索条件に一致するカルテのピンだけを最小限の情報で表示し、
+//     詳細はピンをクリックした時のポップアップに追い出す（components/MapView.tsx）。
+//   - 「一覧」表示に切り替えられる唯一の入り口は検索条件パネル内の
+//     「検索結果を一覧で表示する」チェックボックス（ViewToggleField）。
+//     チェックすると地図の代わりにカルテ一覧テーブルを表示する。
 export default async function KarteListPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
+  const view: "map" | "list" = params.view === "list" ? "list" : "map";
 
   const where: Prisma.KarteWhereInput = {};
   if (params.q) {
@@ -54,17 +68,31 @@ export default async function KarteListPage({
     where.responseCategory = params.responseCategory as ResponseCategory;
   }
 
-  const hasCondition = Object.keys(params).some((k) => params[k as keyof SearchParams]);
+  const hasCondition = ["q", "routeName", "routeNo", "location", "karteType", "responseCategory"].some(
+    (k) => params[k as keyof SearchParams]
+  );
 
   // 路線名は自由入力だと表記ゆれ（全角/半角、送り仮名等）で検索漏れが起きやすいため、
   // 実際に登録されている路線名から選ぶセレクトボックスにしている（フィルタ条件に関わらず
   // 全カルテから候補を集める。「今の検索結果に無い路線名」も選べた方が使い勝手が良いため）。
-  const routeNameRows = await prisma.karte.findMany({
-    distinct: ["routeName"],
-    select: { routeName: true },
-    orderBy: { routeName: "asc" },
-  });
+  const [routeNameRows, settings] = await Promise.all([
+    prisma.karte.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true },
+      orderBy: { routeName: "asc" },
+    }),
+    prisma.appSettings.findUnique({ where: { id: "singleton" } }),
+  ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
+
+  const home: HomeLocation =
+    settings?.homeLatitude != null && settings?.homeLongitude != null
+      ? {
+          latitude: Number(settings.homeLatitude),
+          longitude: Number(settings.homeLongitude),
+          label: settings.homeLabel,
+        }
+      : null;
 
   const kartesBeforeLocationFilter = await prisma.karte.findMany({
     where,
@@ -76,6 +104,7 @@ export default async function KarteListPage({
         take: 1,
         select: { inspectionDate: true },
       },
+      favorite: { select: { id: true } },
     },
   });
 
@@ -87,7 +116,7 @@ export default async function KarteListPage({
       })
     : kartesBeforeLocationFilter;
 
-  // 地図タブ用データ。検索フォームと同じ絞り込み結果からそのまま作る
+  // 地図用データ。検索フォームと同じ絞り込み結果からそのまま作る
   // （地図だけ別条件になってしまっていた従来の問題を防ぐ）。
   const mapKartes: MapKarte[] = kartes
     .filter((k) => k.latitude != null && k.longitude != null)
@@ -99,138 +128,178 @@ export default async function KarteListPage({
       responseCategory: k.responseCategory,
       latitude: Number(k.latitude),
       longitude: Number(k.longitude),
+      isFavorite: k.favorite != null,
     }));
   const withoutCoordsCount = kartes.length - mapKartes.length;
 
+  // 「最近の検索」（左パネル下部）に記録する内容。表示方法（view）は検索条件では
+  // ないため、記録対象からは除外する（一覧⇔地図の切替だけでは履歴を増やさない）。
+  const historyParams = new URLSearchParams();
+  if (params.q) historyParams.set("q", params.q);
+  if (params.routeName) historyParams.set("routeName", params.routeName);
+  if (params.routeNo) historyParams.set("routeNo", params.routeNo);
+  if (params.location) historyParams.set("location", params.location);
+  if (params.karteType) historyParams.set("karteType", params.karteType);
+  if (params.responseCategory) historyParams.set("responseCategory", params.responseCategory);
+  const currentQueryString = historyParams.toString();
+
+  const conditionLabels: string[] = [];
+  if (params.q) conditionLabels.push(`番号:${params.q}`);
+  if (params.routeName) conditionLabels.push(`路線:${params.routeName}`);
+  if (params.routeNo) conditionLabels.push(`路線番号:${params.routeNo}`);
+  if (params.location) conditionLabels.push(`所在地:${params.location}`);
+  if (params.karteType && params.karteType in KarteType) {
+    conditionLabels.push(KARTE_TYPE_LABEL[params.karteType as KarteType] ?? params.karteType);
+  }
+  if (params.responseCategory && params.responseCategory in ResponseCategory) {
+    conditionLabels.push(RESPONSE_META[params.responseCategory as ResponseCategory]?.label ?? params.responseCategory);
+  }
+  const currentSearchLabel = conditionLabels.length > 0 ? conditionLabels.join(" ・ ") : null;
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">カルテ検索・一覧</h1>
-        <div className="flex items-center gap-4 text-sm">
-          <Link href="/karte/import" className="text-blue-600 dark:text-blue-400 hover:underline">
-            Excelから取込 →
-          </Link>
-          <Link href="/karte/new" className="rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-white hover:bg-gray-700 dark:hover:bg-gray-600">
-            ＋ 新規カルテ登録
-          </Link>
-        </div>
-      </div>
+    // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
+    // 分け合う（このページだけの都合のレイアウトのため、他ページのようなmx-auto
+    // max-w-*や余白は持たせず、<main>にも一律のpaddingを付けていない。
+    // app/layout.tsxのコメント参照）。
+    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
+      <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-r border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 lg:w-96">
+        <h1 className="mb-3 text-lg font-bold text-gray-800 dark:text-gray-100">カルテ検索</h1>
+        <form className="space-y-3">
+          <SearchField name="q" label="施設管理番号 / カルテ番号" defaultValue={params.q} />
+          <div>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+            <select
+              name="routeName"
+              defaultValue={params.routeName ?? ""}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">すべて</option>
+              {routeNameOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <SearchField name="routeNo" label="路線番号" defaultValue={params.routeNo} />
+          <SearchField name="location" label="所在地" defaultValue={params.location} />
+          <div>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">カルテ区分</label>
+            <select
+              name="karteType"
+              defaultValue={params.karteType ?? ""}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">すべて</option>
+              {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
+            <select
+              name="responseCategory"
+              defaultValue={params.responseCategory ?? ""}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">すべて</option>
+              {Object.entries(RESPONSE_META).map(([value, meta]) => (
+                <option key={value} value={value}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      <form className="grid grid-cols-1 gap-3 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 sm:grid-cols-2 md:grid-cols-3">
-        <SearchField name="q" label="施設管理番号 / カルテ番号" defaultValue={params.q} />
-        <div>
-          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
-          <select
-            name="routeName"
-            defaultValue={params.routeName ?? ""}
-            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-          >
-            <option value="">すべて</option>
-            {routeNameOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <SearchField name="routeNo" label="路線番号" defaultValue={params.routeNo} />
-        <SearchField name="location" label="所在地" defaultValue={params.location} />
-        <div>
-          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">カルテ区分</label>
-          <select
-            name="karteType"
-            defaultValue={params.karteType ?? ""}
-            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-          >
-            <option value="">すべて</option>
-            {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
-          <select
-            name="responseCategory"
-            defaultValue={params.responseCategory ?? ""}
-            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-          >
-            <option value="">すべて</option>
-            {Object.entries(RESPONSE_META).map(([value, meta]) => (
-              <option key={value} value={value}>
-                {meta.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end gap-2 sm:col-span-2 md:col-span-3">
-          <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
-            検索
-          </button>
-          {hasCondition && (
-            <Link href="/karte" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-              条件をクリア
-            </Link>
-          )}
-        </div>
-      </form>
+          <div className="border-t border-gray-200 pt-3 dark:border-gray-700">
+            <ViewToggleField defaultChecked={view === "list"} />
+          </div>
 
-      <KarteResultsTabs count={kartes.length} mapKartes={mapKartes} withoutCoordsCount={withoutCoordsCount}>
-        <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
-              <tr>
-                <th className="px-3 py-2">施設管理番号</th>
-                <th className="px-3 py-2">カルテ種別</th>
-                <th className="px-3 py-2">路線名</th>
-                <th className="px-3 py-2">所在地</th>
-                <th className="px-3 py-2">対象数</th>
-                <th className="px-3 py-2">最新点検日</th>
-                <th className="px-3 py-2">対応区分</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kartes.map((k) => {
-                const resp = responseMeta(k.responseCategory);
-                return (
-                  <tr key={k.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-3 py-2">
-                      <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
-                        {k.facilityNo}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">{KARTE_TYPE_LABEL[k.karteType] ?? k.karteType}</td>
-                    <td className="px-3 py-2">{k.routeName}</td>
-                    <td className="px-3 py-2">
-                      {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
-                    </td>
-                    <td className="px-3 py-2">{k.targets.length}</td>
-                    <td className="px-3 py-2">
-                      {k.events[0]?.inspectionDate
-                        ? new Date(k.events[0].inspectionDate).toLocaleDateString("ja-JP")
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={`rounded px-2 py-0.5 text-xs ${resp.badgeColor}`}>{resp.label}</span>
-                    </td>
+          <div className="flex items-center gap-3 pt-1">
+            <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+              検索
+            </button>
+            {hasCondition && (
+              <Link href="/karte" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+                条件をクリア
+              </Link>
+            )}
+          </div>
+        </form>
+
+        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+          {hasCondition ? `検索結果 ${kartes.length} 件` : `全 ${kartes.length} 件を地図に表示中`}
+          {withoutCoordsCount > 0 && `（うち座標未登録 ${withoutCoordsCount} 件は地図に表示できません）`}
+        </p>
+
+        <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
+      </aside>
+
+      <main className="relative flex-1 bg-gray-100 dark:bg-gray-950">
+        {view === "list" ? (
+          <div className="h-full overflow-y-auto p-4">
+            <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
+                  <tr>
+                    <th className="px-3 py-2"></th>
+                    <th className="px-3 py-2">施設管理番号</th>
+                    <th className="px-3 py-2">カルテ種別</th>
+                    <th className="px-3 py-2">路線名</th>
+                    <th className="px-3 py-2">所在地</th>
+                    <th className="px-3 py-2">対象数</th>
+                    <th className="px-3 py-2">最新点検日</th>
+                    <th className="px-3 py-2">対応区分</th>
                   </tr>
-                );
-              })}
-              {kartes.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
-                    {hasCondition
-                      ? "条件に一致するカルテがありません。"
-                      : <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </KarteResultsTabs>
+                </thead>
+                <tbody>
+                  {kartes.map((k) => {
+                    const resp = responseMeta(k.responseCategory);
+                    return (
+                      <tr key={k.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-yellow-500">{k.favorite ? "★" : ""}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {k.facilityNo}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">{KARTE_TYPE_LABEL[k.karteType] ?? k.karteType}</td>
+                        <td className="px-3 py-2">{k.routeName}</td>
+                        <td className="px-3 py-2">
+                          {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
+                        </td>
+                        <td className="px-3 py-2">{k.targets.length}</td>
+                        <td className="px-3 py-2">
+                          {k.events[0]?.inspectionDate
+                            ? new Date(k.events[0].inspectionDate).toLocaleDateString("ja-JP")
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`rounded px-2 py-0.5 text-xs ${resp.badgeColor}`}>{resp.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {kartes.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                        {hasCondition
+                          ? "条件に一致するカルテがありません。"
+                          : <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <MapView kartes={mapKartes} home={home} allowSetHome />
+        )}
+      </main>
     </div>
   );
 }

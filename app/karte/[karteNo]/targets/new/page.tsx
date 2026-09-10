@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createInspectionTarget } from "@/lib/actions/karte-actions";
 import { TextField, TextAreaField } from "@/components/FormFields";
+import SubmitButton from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function NewInspectionTargetPage({ params }: { params: Prom
   const action = createInspectionTarget.bind(null, karte.id, karte.facilityNo);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4 p-6">
       <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>
@@ -25,9 +26,9 @@ export default async function NewInspectionTargetPage({ params }: { params: Prom
       <form action={action} className="space-y-4 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
         <TextField name="name" label="対象名称" placeholder="例: 起点側法面、P-3付近の浮石 等" required />
         <TextAreaField name="description" label="説明" />
-        <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+        <SubmitButton pendingLabel="追加中..." className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
           追加する
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // カルテ新規登録画面（指示書4.9「新規登録」）。
 export default function NewKartePage() {
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4 p-6">
       <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← 検索・一覧に戻る
       </Link>

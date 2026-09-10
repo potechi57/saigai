@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { updateInspectionTarget, setInspectionTargetActive } from "@/lib/actions/karte-actions";
 import { TextField, TextAreaField, DateField, SelectField } from "@/components/FormFields";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import SubmitButton from "@/components/SubmitButton";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
 import { KARTE_TYPE_LABEL, WEATHER_LABEL } from "@/lib/labels";
@@ -49,7 +50,7 @@ export default async function EditInspectionTargetPage({
   const overflowPhotos = target.photos.slice(3);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4 p-6">
       <Link href={`/karte/${karteNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← カルテ詳細に戻る
       </Link>
@@ -109,9 +110,9 @@ export default async function EditInspectionTargetPage({
               <p className="text-xs text-gray-400 dark:text-gray-500">以下はWeb版独自の項目（様式Ｂには無い）</p>
               <TextField name="name" label="対象名称" defaultValue={target.name} required />
               <TextAreaField name="description" label="説明" defaultValue={target.description} />
-              <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+              <SubmitButton pendingLabel="保存中..." className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
                 保存する
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>
@@ -152,6 +153,7 @@ export default async function EditInspectionTargetPage({
           <form action={deactivateAction}>
             <ConfirmSubmitButton
               message="この点検対象を「解消済み」にしますか？記録は削除されず、一覧から非表示になるだけです。"
+              pendingLabel="処理中..."
               className="rounded border border-red-300 dark:border-red-800 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
             >
               解消済みにする（論理削除）
@@ -159,9 +161,9 @@ export default async function EditInspectionTargetPage({
           </form>
         ) : (
           <form action={reactivateAction}>
-            <button type="submit" className="rounded border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <SubmitButton pendingLabel="処理中..." className="rounded border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
               追跡を再開する
-            </button>
+            </SubmitButton>
           </form>
         )}
       </div>

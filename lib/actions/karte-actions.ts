@@ -12,6 +12,7 @@ import {
   Weather,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 // ── FormDataから安全に値を取り出す小さなヘルパー群 ──────────────────
 // zod等は導入せず、必要最小限の手作業パースにとどめている
@@ -97,6 +98,13 @@ export async function createKarte(formData: FormData) {
     },
   });
 
+  await logAudit({
+    action: "CREATE",
+    entityType: "カルテ",
+    summary: `${karte.routeName}（${karte.facilityNo}）を新規登録`,
+    karteFacilityNo: karte.facilityNo,
+  });
+
   revalidatePath("/karte");
   redirect(`/karte/${karte.facilityNo}`);
 }
@@ -129,6 +137,13 @@ export async function updateKarte(karteId: string, formData: FormData) {
     }
   });
 
+  await logAudit({
+    action: "UPDATE",
+    entityType: "カルテ",
+    summary: `${data.routeName}（${data.facilityNo}）を更新`,
+    karteFacilityNo: data.facilityNo,
+  });
+
   revalidatePath(`/karte/${data.facilityNo}`);
   revalidatePath("/karte");
   redirect(`/karte/${data.facilityNo}`);
@@ -144,7 +159,15 @@ export async function updateKarte(karteId: string, formData: FormData) {
 // かえって一覧を汚してしまうと判断した。確認ダイアログ（ConfirmSubmitButton）
 // で誤操作を防ぐ。
 export async function deleteKarte(karteId: string) {
-  await prisma.karte.delete({ where: { id: karteId } });
+  // deleteは削除した行そのものを返すため、削除後でもfacilityNo等をログに残せる。
+  const karte = await prisma.karte.delete({ where: { id: karteId } });
+
+  await logAudit({
+    action: "DELETE",
+    entityType: "カルテ",
+    summary: `${karte.routeName}（${karte.facilityNo}）を削除`,
+    karteFacilityNo: karte.facilityNo,
+  });
 
   revalidatePath("/karte");
   redirect("/karte");
@@ -172,6 +195,13 @@ export async function createInspectionTarget(karteId: string, karteFacilityNo: s
     },
   });
 
+  await logAudit({
+    action: "CREATE",
+    entityType: "点検対象",
+    summary: `${karteFacilityNo} に点検対象「${name}」を追加`,
+    karteFacilityNo,
+  });
+
   revalidatePath(`/karte/${karteFacilityNo}`);
   redirect(`/karte/${karteFacilityNo}`);
 }
@@ -193,6 +223,13 @@ export async function updateInspectionTarget(targetId: string, karteFacilityNo: 
     },
   });
 
+  await logAudit({
+    action: "UPDATE",
+    entityType: "点検対象",
+    summary: `${karteFacilityNo} の点検対象「${name}」を更新`,
+    karteFacilityNo,
+  });
+
   revalidatePath(`/karte/${karteFacilityNo}`);
   redirect(`/karte/${karteFacilityNo}`);
 }
@@ -200,9 +237,16 @@ export async function updateInspectionTarget(targetId: string, karteFacilityNo: 
 // 削除については誤操作防止のため物理削除ではなく論理削除にする（指示書12章の方針）。
 // 確認ダイアログはクライアント側（ConfirmSubmitButton）で挟む。
 export async function setInspectionTargetActive(targetId: string, karteFacilityNo: string, isActive: boolean) {
-  await prisma.inspectionTarget.update({
+  const target = await prisma.inspectionTarget.update({
     where: { id: targetId },
     data: { isActive },
+  });
+
+  await logAudit({
+    action: "UPDATE",
+    entityType: "点検対象",
+    summary: `${karteFacilityNo} の点検対象「${target.name}」を${isActive ? "追跡再開" : "解消済みに変更"}`,
+    karteFacilityNo,
   });
 
   revalidatePath(`/karte/${karteFacilityNo}`);
@@ -220,7 +264,7 @@ export async function createInspectionEvent(
   const inspectionDate = dateVal(formData, "inspectionDate");
   if (!inspectionDate) throw new Error("点検日は必須です");
 
-  await prisma.inspectionEvent.create({
+  const event = await prisma.inspectionEvent.create({
     data: {
       karteId,
       inspectionDate,
@@ -241,6 +285,13 @@ export async function createInspectionEvent(
         })),
       },
     },
+  });
+
+  await logAudit({
+    action: "CREATE",
+    entityType: "点検記録",
+    summary: `${karteFacilityNo} に点検記録（${event.inspectionDate.toLocaleDateString("ja-JP")}）を登録`,
+    karteFacilityNo,
   });
 
   revalidatePath(`/karte/${karteFacilityNo}`);

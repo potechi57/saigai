@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
+import ViewHistoryButton from "@/components/ViewHistoryButton";
 
 export const metadata: Metadata = {
   title: "道路防災カルテ Web GIS (MVP)",
@@ -30,26 +31,45 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-screen">
-        <header className="flex items-center justify-between border-b border-gray-300 bg-white px-6 py-3 dark:border-gray-700 dark:bg-gray-900">
+      <body className="flex min-h-screen flex-col">
+        {/* h-14固定にしているのは、地図中心のカルテ検索画面（app/karte/page.tsx）が
+            ヘッダー分を差し引いた高さ(h-[calc(100vh-3.5rem)])で地図を敷き詰めるため、
+            ヘッダーの実高さを正確に把握できる必要があるため（曖昧なpy-*任せにすると
+            ずれて二重スクロールが発生する）。 */}
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-300 bg-white px-6 dark:border-gray-700 dark:bg-gray-900">
           <a href="/karte" className="text-lg font-bold text-gray-800 dark:text-gray-100">
             道路防災カルテ Web GIS{" "}
             <span className="text-sm font-normal text-gray-500 dark:text-gray-400">MVP</span>
           </a>
+          {/* 「設定やらいろいろ」置き場。カルテ検索画面自体には検索条件パネルしか
+              置かない方針にしたため、そこに間借りしていたExcel取込・新規登録の導線を
+              含め、画面をまたいで常に使う操作はすべてここへ集約している。 */}
           <nav className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
-            <a href="/karte" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-              検索・一覧
+            <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+              ★ お気に入り
+            </a>
+            <a href="/karte/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+              編集履歴
+            </a>
+            <ViewHistoryButton />
+            <a href="/karte/import" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+              Excelから取込
+            </a>
+            <a
+              href="/karte/new"
+              className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
+            >
+              ＋ 新規カルテ登録
             </a>
             <ThemeToggle />
           </nav>
         </header>
-        {/* 幅の最大値はページごとに決める（各ページのトップレベル要素に
-            mx-auto max-w-*を指定する）。検索・一覧や各種フォームのように
-            表示要素が少ないページまで一律に広げると、逆に縦方向の余白が
-            間延びして使いにくくなるため、ここでは幅を制限しない。
-            様式Ａ等の横に広い表を持つカルテ詳細画面だけが、自身の判断で
-            広い上限（max-w-[1800px]）を指定している。 */}
-        <main className="p-6">{children}</main>
+        {/* 幅・余白の決め方はページごとに任せる（mainには一律のpaddingを付けない）。
+            地図中心のカルテ検索画面はヘッダー直下を隙間なく使いたいため何も足さず、
+            それ以外のページは自身のトップレベル要素にp-6を指定して余白を作る
+            （様式Ａ等の横に広い表を持つカルテ詳細画面のように、幅の上限
+            （max-w-[1800px]等）も含めて各ページが自分で決める）。 */}
+        <main className="min-h-0 flex-1">{children}</main>
       </body>
     </html>
   );

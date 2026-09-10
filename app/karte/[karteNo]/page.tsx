@@ -6,6 +6,8 @@ import { KARTE_TYPE_LABEL, ROAD_TYPE_LABEL, WEATHER_LABEL, responseMeta, RESPONS
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
 import SheetTabs from "@/components/SheetTabs";
+import FavoriteToggleButton from "@/components/FavoriteToggleButton";
+import RecordViewHistory from "@/components/RecordViewHistory";
 
 // 一覧画面と同じ理由で静的プリレンダリングを無効化する。
 export const dynamic = "force-dynamic";
@@ -58,6 +60,7 @@ export default async function KarteDetailPage({
         include: { photos: true },
       },
       attachments: { orderBy: { uploadedAt: "desc" } },
+      favorite: { select: { id: true } },
     },
   });
 
@@ -663,17 +666,26 @@ export default async function KarteDetailPage({
     // 様式Ａ・様式Ｃ等はExcelを模した横に広い表になるため、他ページより広い上限にする
     // （検索・一覧やフォーム主体の画面は要素が少なく、広げるとかえって間延びするため
     // ページごとに幅を決めている。app/layout.tsxのコメント参照）。
-    <div className="mx-auto max-w-[1800px] space-y-6">
+    <div className="mx-auto max-w-[1800px] space-y-6 p-6">
+      {/* 閲覧履歴（ヘッダーの🕘閲覧履歴ボタン）に記録するだけの非表示コンポーネント */}
+      <RecordViewHistory facilityNo={karte.facilityNo} routeName={karte.routeName} />
       <div className="flex items-center justify-between">
         <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
           ← 検索・一覧に戻る
         </Link>
-        <Link
-          href={`/karte/${karte.facilityNo}/edit`}
-          className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-        >
-          カルテを編集
-        </Link>
+        <div className="flex items-center gap-2">
+          <FavoriteToggleButton
+            karteId={karte.id}
+            karteFacilityNo={karte.facilityNo}
+            initialIsFavorite={karte.favorite != null}
+          />
+          <Link
+            href={`/karte/${karte.facilityNo}/edit`}
+            className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            カルテを編集
+          </Link>
+        </div>
       </div>
 
       <SheetTabs

@@ -183,6 +183,7 @@ model Karte {
   disasterEvents DisasterEvent[]
   photos         Photo[]
   attachments    AttachmentDocument[]
+  favorite       Favorite?
 
   @@index([karteType])
   @@index([routeName])
@@ -372,6 +373,94 @@ model Photo {
 
   @@index([karteId])
   @@index([targetId])
+}
+
+// ── アプリ設定（ホーム位置等） ────────────────────────────────
+// 現時点ではログイン機能が無いMVPのため、ユーザーごとではなく事務所で1つだけ共有する
+// シングルトン行（id="singleton"固定）として保持する。県土整備事務所など、点検の
+// 起点となる拠点の緯度経度を保存し、各カルテ地点までの距離表示に使う
+// （lib/geo.ts参照）。将来ログイン機能が入った場合は、ユーザーごとのテーブルに分割する。
+model AppSettings {
+  id String @id @default("singleton")
+
+  homeLatitude  Decimal? @db.Decimal(9, 6)
+  homeLongitude Decimal? @db.Decimal(9, 6)
+  homeLabel     String? // 例:「○○県土整備事務所」（任意のメモ、地図上のホームピンの表示にも使う）
+
+  updatedAt DateTime @updatedAt
+}
+
+// ── お気に入り ──────────────────────────────────────────────
+// ログイン機能が無いMVPのため、ホーム位置（AppSettings）同様、事務所全体で1つを
+// 共有するお気に入りリストとして実装する（ユーザーごとの分離は将来ログイン機能が
+// 入ってから対応する）。
+// カルテ1件につきお気に入りは高々1件（Favorite.karteIdをunique）とし、
+// グルーピングは別テーブルFavoriteGroupへの多対多とすることで、
+// 「1件のお気に入りを複数のグループ（例:『今年の点検場所』『要注意箇所』）に
+// 同時に所属させる」を許容しつつ、グループ無し（未分類）のお気に入りも表現できる。
+// 中間テーブルはPrismaの暗黙的m:n（生成されるテーブル名・カラム名が推測しづらく、
+// 手書きマイグレーションと相性が悪い）ではなく、明示的なFavoriteGroupItemとして持つ
+// （InspectionResult等、このプロジェクトの他のm:nも同じ方針で明示テーブル化している）。
+model Favorite {
+  id      String @id @default(cuid())
+  karteId String @unique
+  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  note String? // お気に入りに追加した際の任意メモ
+
+  createdAt DateTime @default(now())
+
+  groupItems FavoriteGroupItem[]
+}
+
+model FavoriteGroup {
+  id   String @id @default(cuid())
+  name String @unique // 例:「今年の点検場所」
+
+  createdAt DateTime @default(now())
+
+  items FavoriteGroupItem[]
+}
+
+model FavoriteGroupItem {
+  id String @id @default(cuid())
+
+  favoriteId String
+  favorite   Favorite @relation(fields: [favoriteId], references: [id], onDelete: Cascade)
+
+  groupId String
+  group   FavoriteGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([favoriteId, groupId])
+}
+
+// ── 編集履歴（簡易監査ログ） ────────────────────────────────────
+// ヘッダーの「編集履歴」から直近の編集操作を確認できるようにするための簡易ログ。
+// ログイン機能が無いMVPのため「誰が」は記録できず、「いつ・何を・どう変更したか」の
+// サマリ文字列のみを保持する（詳細な差分は持たない。lib/audit.ts参照）。
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  action     AuditAction
+  entityType String // 例:「カルテ」「点検対象」「点検記録」「Excel取込」
+  summary    String // 例:「サンプル県道１号線（SAMPLE-0001）を更新」
+
+  // カルテ削除等で参照先が無くなっても記録自体は残したいため、Karteへの外部キーは
+  // 張らずファシリティ番号の文字列だけを保持する（リンクが無効になった場合は
+  // 履歴画面側で単なるテキスト表示にフォールバックする）。
+  karteFacilityNo String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // ── カルテ資料（元カルテPDF等） ───────────────────────────────

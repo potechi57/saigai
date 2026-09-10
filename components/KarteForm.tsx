@@ -8,6 +8,7 @@ import {
   SelectField,
   CheckboxField,
 } from "@/components/FormFields";
+import SubmitButton from "@/components/SubmitButton";
 
 const PROJECT_CATEGORY_LABEL = { GENERAL: "一般", TOLL: "有料" };
 const ROAD_STATUS_LABEL = { CURRENT: "現道", OLD: "旧道", NEW: "新道", NEWEST: "新新道" };
@@ -118,9 +119,9 @@ export default function KarteForm({
       </Section>
 
       <div>
-        <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+        <SubmitButton className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
           {submitLabel}
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

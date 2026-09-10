@@ -10,12 +10,14 @@ import dynamic from "next/dynamic";
 // この "use client" ファイルを間に挟んでいる。
 const MapView = dynamic(() => import("./MapView"), {
   ssr: false,
+  // 親要素（地図中心画面ではh-[calc(100vh-...)]、お気に入り画面等では固定高さ）が
+  // 高さを決めるので、ロード中プレースホルダーもh-full w-fullで親に追従させる。
   loading: () => (
-    <div className="flex h-[calc(100vh-28rem)] min-h-[320px] w-full items-center justify-center rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-400 dark:text-gray-500">
+    <div className="flex h-full min-h-[240px] w-full items-center justify-center bg-gray-50 dark:bg-gray-800 text-sm text-gray-400 dark:text-gray-500">
       地図を読み込み中...
     </div>
   ),
 });
 
 export default MapView;
-export type { MapKarte } from "./MapView";
+export type { MapKarte, HomeLocation } from "./MapView";
