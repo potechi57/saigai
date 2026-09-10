@@ -79,8 +79,8 @@ export default async function EditInspectionTargetPage({
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
             <div className="space-y-3">
-              <PhotoSlot photo={sketchPhoto1} heightClass="h-56" fit="contain" />
-              <PhotoSlot photo={sketchPhoto2} heightClass="h-56" fit="contain" />
+              <PhotoSlot photo={sketchPhoto1} />
+              <PhotoSlot photo={sketchPhoto2} />
             </div>
           </div>
 
@@ -89,7 +89,7 @@ export default async function EditInspectionTargetPage({
             <form action={updateAction} className="space-y-3 text-sm">
               <div>
                 <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h2>
-                <PhotoSlot photo={pastePhoto} heightClass="h-[29rem]" />
+                <PhotoSlot photo={pastePhoto} />
               </div>
               <TextAreaField name="keyPoints" label="着目すべき点" defaultValue={target.keyPoints} />
               <TextAreaField name="checkItems" label="チェック項目" defaultValue={target.checkItems} />

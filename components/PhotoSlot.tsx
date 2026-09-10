@@ -1,28 +1,29 @@
 // 様式Ｂの<詳細スケッチ欄>・<写真張付欄>用の写真枠。1枚固定表示で、無ければ
 // 「写真なし」と明示する（カルテ詳細画面の様式Ｂタブ、点検対象編集画面の両方で使う）。
 //
-// fit="cover"（既定）は指定した高さの枠いっぱいに写真を敷き詰める代わりに、
-// 縦横比が枠と合わない写真の一部が切れる（<写真張付欄>のような1枚だけ大きく
-// 見せたい用途向け）。
-// fit="contain"は逆に、写真の一部が切れて見えなくなることを避けたい用途向け
-// （<詳細スケッチ欄>の2枚等）。ただし高さを写真の縦横比に完全に合わせてしまうと
-// （以前試した`h-auto`）、縦長の写真1枚で様式Ｂ全体が非常に大きくなってしまったため、
-// heightClassで高さは固定したまま、object-containで余白（レターボックス）を
-// 許容してトリミング無しに全体を収める方式にしている（＝写真が何枚・どんな縦横比でも
-// 全体の高さは常に一定になる）。
+// サイズ指定は固定px（例:`h-56`）ではなく、Tailwindのaspect-ratioユーティリティ
+// （既定`aspect-[4/3]`）にしている。固定pxだと「枠の縦横比」と「実際にアップロード
+// された写真の縦横比」がほぼ確実にズレるため、fit="contain"と組み合わせても
+// 余白（レターボックス）が目立つ、あるいはfit="cover"だと大きく切れる、という
+// 問題が起きていた。aspect-ratioなら枠の縦横比自体は写真によらず常に一定
+// （＝「全体の大きさを固定」）にしつつ、幅は親要素いっぱい（w-full）に追従する
+// （＝レスポンシブ）。4:3はサンプル画像や一般的な写真によく合う比率として選んでいる。
+// 実際にアップロードされる写真の縦横比は様々なため、これでも合わない写真では
+// 依然として余白または切れが生じうる点は変わらない（トレードオフ。fit="contain"なら
+// 余白、fit="cover"なら切れになる）。
 export default function PhotoSlot({
   photo,
-  heightClass,
-  fit = "cover",
+  aspectClass = "aspect-[4/3]",
+  fit = "contain",
 }: {
   photo?: { id: string; url: string; caption: string | null } | null;
-  heightClass: string;
+  aspectClass?: string;
   fit?: "cover" | "contain";
 }) {
   if (!photo) {
     return (
       <div
-        className={`flex ${heightClass} items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500`}
+        className={`flex ${aspectClass} w-full items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500`}
       >
         写真なし
       </div>
@@ -34,7 +35,7 @@ export default function PhotoSlot({
       <img
         src={photo.url}
         alt={photo.caption ?? "写真"}
-        className={`${heightClass} w-full rounded border border-gray-300 dark:border-gray-700 ${
+        className={`${aspectClass} w-full rounded border border-gray-300 dark:border-gray-700 ${
           fit === "contain" ? "bg-gray-50 object-contain dark:bg-gray-800" : "object-cover"
         }`}
       />

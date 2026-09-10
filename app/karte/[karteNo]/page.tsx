@@ -372,15 +372,15 @@ export default async function KarteDetailPage({
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
                       <div className="space-y-3">
-                        <PhotoSlot photo={sketchPhoto1} heightClass="h-56" fit="contain" />
-                        <PhotoSlot photo={sketchPhoto2} heightClass="h-56" fit="contain" />
+                        <PhotoSlot photo={sketchPhoto1} />
+                        <PhotoSlot photo={sketchPhoto2} />
                       </div>
                     </div>
                     {/* 右: <写真張付欄>（実データでは大きめの写真1枚）＋着目すべき点／チェック項目 */}
                     <div className="space-y-3 p-3 text-sm">
                       <div>
                         <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h3>
-                        <PhotoSlot photo={pastePhoto} heightClass="h-[29rem]" />
+                        <PhotoSlot photo={pastePhoto} />
                       </div>
                       <div>
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">着目すべき点</h3>
@@ -573,6 +573,51 @@ export default async function KarteDetailPage({
   // 現況写真・スケッチの割当順は様式の並び順からの推測（要検証）。
   // 実際のExcelでも災害ごとにブロックが分かれる（1件の被災・対策実績＝1ブロック）ため、
   // 複数件ある場合は様式Ｂと同じくSheetTabsを入れ子にして切り替える。
+  //
+  // 災害履歴が1件も無い場合でも、様式Ａ同様「まだ何も無いこと」より「様式のレイアウト
+  // 自体」を見せる方針にしている（実際のExcelも、被災実績が無いカルテでは空欄のまま
+  // 様式Ｄのシート自体は存在する）。そのため0件のときは「記録なし」メッセージだけを
+  // 出すのではなく、全項目が空欄（—・写真なし）のブランクな1件分として同じレイアウトを
+  // そのまま表示する。
+  const disasterEventsForDisplay: (typeof karte.disasterEvents)[number][] =
+    karte.disasterEvents.length > 0
+      ? karte.disasterEvents
+      : [
+          {
+            id: "__blank__",
+            karteId: karte.id,
+            targetId: null,
+            disasterType: null,
+            occurredDate: null,
+            scaleWidthM: null,
+            scaleLengthM: null,
+            scaleDepthM: null,
+            scaleComment: null,
+            rainContinuousMm: null,
+            rainMaxHourlyMm: null,
+            seismicIntensity: null,
+            seismicAccelerationGal: null,
+            snowTemperatureC: null,
+            snowDepthM: null,
+            causeComment: null,
+            damageDeaths: null,
+            damageInjured: null,
+            propertyDamageComment: null,
+            propertyDamageAmountMillionYen: null,
+            closureFullHours: null,
+            closurePartialHours: null,
+            shoulderRestriction: null,
+            countermeasureFiscalYear: null,
+            countermeasureType: null,
+            countermeasureCostMillionYen: null,
+            comment: null,
+            createdOnSiteDate: null,
+            createdOnSiteWeather: null,
+            createdAt: new Date(0),
+            photos: [],
+            target: null,
+          },
+        ];
   const formD = (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
       <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
@@ -580,11 +625,8 @@ export default async function KarteDetailPage({
           防災カルテ様式Ｄ　（{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}）
         </h2>
       </div>
-      {karte.disasterEvents.length === 0 ? (
-        <p className="p-4 text-sm text-gray-400 dark:text-gray-500">記録された災害履歴はありません</p>
-      ) : (
-        <SheetTabs
-          tabs={karte.disasterEvents.map((d, i) => {
+      <SheetTabs
+        tabs={disasterEventsForDisplay.map((d, i) => {
             const [planPhoto, sectionPhoto, sitePhoto] = d.photos;
             const dateLabel = d.occurredDate ? new Date(d.occurredDate).toLocaleDateString("ja-JP") : "発生日未登録";
             return {
@@ -633,13 +675,13 @@ export default async function KarteDetailPage({
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                           &lt;平面図（被災・対策）&gt;
                         </h3>
-                        <PhotoSlot photo={planPhoto} heightClass="h-48" fit="contain" />
+                        <PhotoSlot photo={planPhoto} />
                       </div>
                       <div>
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                           &lt;現況写真・スケッチ（被災・対策）&gt;
                         </h3>
-                        <PhotoSlot photo={sitePhoto} heightClass="h-48" fit="contain" />
+                        <PhotoSlot photo={sitePhoto} />
                       </div>
                     </div>
 
@@ -649,7 +691,7 @@ export default async function KarteDetailPage({
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                           &lt;断面図（被災・対策）&gt;
                         </h3>
-                        <PhotoSlot photo={sectionPhoto} heightClass="h-48" fit="contain" />
+                        <PhotoSlot photo={sectionPhoto} />
                       </div>
 
                       <table className="w-full table-fixed border-collapse">
@@ -743,7 +785,6 @@ export default async function KarteDetailPage({
             };
           })}
         />
-      )}
     </section>
   );
 
