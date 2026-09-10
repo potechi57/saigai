@@ -89,74 +89,49 @@ export default async function KarteDetailPage({
   // 規制基準等（連続雨量・時間雨量）は、以前はどの画面にも表示していなかった項目
   // （データはKarte.continuousRainfallMm／hourlyRainfallMmとして保存済みだったが
   // 表示側が未実装だった）ため、このタイミングで追加している。
+  // 表（<table>）だとExcelそのままの横幅になり、実際に横スクロールバーが出て
+  // 読みにくいという指摘を受けたため、常時表示のこのヘッダーだけは折り返し可能な
+  // flex-wrapの「ラベル：値」の並びにしている（様式Ａ〜Ｄ自体はExcel再現を優先して
+  // 横スクロール可の表のままだが、常時表示するここは可読性を優先。入り切らなければ
+  // 自然に何行にでも折り返す＝横スクロールは発生しない）。
   const commonHeader = (
-    <section className="overflow-x-auto rounded border border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
-      <table className="w-full border-collapse text-xs">
-        <tbody>
-          <tr>
-            <Th>施設管理番号</Th>
-            <Td>{karte.facilityNo}</Td>
-            <Th>カルテ区分</Th>
-            <Td>{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}</Td>
-            <Th>路線名</Th>
-            <Td>{karte.routeName}</Td>
-            <Th>台帳番号</Th>
-            <Td>{karte.ledgerNo || "—"}</Td>
-            <Th>距離標</Th>
-            <Td>
-              自 {karte.distanceMarkerFromKm?.toString() ?? "—"} km 〜 至 {karte.distanceMarkerToKm?.toString() ?? "—"} km
-            </Td>
-            <Th>上下線の別</Th>
-            <Td>{karte.sideOfRoad || "—"}</Td>
-            <Th>延長</Th>
-            <Td>{karte.extensionLengthM ? `${karte.extensionLengthM} m` : "—"}</Td>
-          </tr>
-          <tr>
-            <Th>事業区分</Th>
-            <Td>{karte.projectCategory ? PROJECT_CATEGORY_LABEL[karte.projectCategory] : "—"}</Td>
-            <Th>道路種別</Th>
-            <Td>{karte.roadType ? ROAD_TYPE_LABEL[karte.roadType] ?? karte.roadType : "—"}</Td>
-            <Th>現道・旧道区分</Th>
-            <Td>{karte.roadStatus ? ROAD_STATUS_LABEL[karte.roadStatus] : "—"}</Td>
-            <Th>所在地</Th>
-            <Td colSpan={3}>{[karte.locationDistrict, karte.locationTown].filter(Boolean).join(" ") || "—"}</Td>
-            <Th>北緯・東経</Th>
-            <Td colSpan={2}>
-              {karte.latitude && karte.longitude ? `${karte.latitude}, ${karte.longitude}` : "—"}
-            </Td>
-          </tr>
-          <tr>
-            <Th className="whitespace-normal">測地系</Th>
-            <Td colSpan={11}>{karte.geodeticSystem ? GEODETIC_LABEL[karte.geodeticSystem] : "—"}</Td>
-          </tr>
-          <tr>
-            <Th>事前通行規制区間指定</Th>
-            <Td>{yesNo(karte.preTrafficRestriction)}</Td>
-            <Th>規制基準等</Th>
-            <Td colSpan={2}>
-              {karte.continuousRainfallMm != null || karte.hourlyRainfallMm != null
-                ? `連続雨量 ${karte.continuousRainfallMm ?? "—"}mm ／ 時間雨量 ${karte.hourlyRainfallMm ?? "—"}mm`
-                : "—"}
-            </Td>
-            <Th>交通量</Th>
-            <Td colSpan={2}>
-              {karte.trafficVolumeWeekday != null
-                ? `平日 ${karte.trafficVolumeWeekday} 台/12h`
-                : karte.trafficVolumeHoliday != null
-                  ? `休日 ${karte.trafficVolumeHoliday} 台/12h`
-                  : "—"}
-            </Td>
-            <Th>ＤＩＤ区間</Th>
-            <Td>{yesNoLabel(karte.didArea, "該当", "非該当")}</Td>
-            <Th>バス路線</Th>
-            <Td>{yesNoLabel(karte.busRoute, "該当", "非該当")}</Td>
-            <Th>迂回路</Th>
-            <Td>{yesNo(karte.detour)}</Td>
-            <Th colSpan={2}>緊急輸送道路区分</Th>
-            <Td colSpan={2}>{karte.emergencyRoadCategory || "—"}</Td>
-          </tr>
-        </tbody>
-      </table>
+    <section className="rounded border border-gray-400 bg-white px-3 py-1.5 dark:border-gray-600 dark:bg-gray-900">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] leading-5">
+        <HeaderItem label="施設管理番号">{karte.facilityNo}</HeaderItem>
+        <HeaderItem label="カルテ区分">{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}</HeaderItem>
+        <HeaderItem label="路線名">{karte.routeName}</HeaderItem>
+        <HeaderItem label="台帳番号">{karte.ledgerNo || "—"}</HeaderItem>
+        <HeaderItem label="距離標">
+          自 {karte.distanceMarkerFromKm?.toString() ?? "—"} km 〜 至 {karte.distanceMarkerToKm?.toString() ?? "—"} km
+        </HeaderItem>
+        <HeaderItem label="上下線の別">{karte.sideOfRoad || "—"}</HeaderItem>
+        <HeaderItem label="延長">{karte.extensionLengthM ? `${karte.extensionLengthM} m` : "—"}</HeaderItem>
+        <HeaderItem label="事業区分">{karte.projectCategory ? PROJECT_CATEGORY_LABEL[karte.projectCategory] : "—"}</HeaderItem>
+        <HeaderItem label="道路種別">{karte.roadType ? ROAD_TYPE_LABEL[karte.roadType] ?? karte.roadType : "—"}</HeaderItem>
+        <HeaderItem label="現道・旧道区分">{karte.roadStatus ? ROAD_STATUS_LABEL[karte.roadStatus] : "—"}</HeaderItem>
+        <HeaderItem label="所在地">{[karte.locationDistrict, karte.locationTown].filter(Boolean).join(" ") || "—"}</HeaderItem>
+        <HeaderItem label="北緯・東経">
+          {karte.latitude && karte.longitude ? `${karte.latitude}, ${karte.longitude}` : "—"}
+        </HeaderItem>
+        <HeaderItem label="測地系">{karte.geodeticSystem ? GEODETIC_LABEL[karte.geodeticSystem] : "—"}</HeaderItem>
+        <HeaderItem label="事前通行規制区間指定">{yesNo(karte.preTrafficRestriction)}</HeaderItem>
+        <HeaderItem label="規制基準等">
+          {karte.continuousRainfallMm != null || karte.hourlyRainfallMm != null
+            ? `連続雨量 ${karte.continuousRainfallMm ?? "—"}mm ／ 時間雨量 ${karte.hourlyRainfallMm ?? "—"}mm`
+            : "—"}
+        </HeaderItem>
+        <HeaderItem label="交通量">
+          {karte.trafficVolumeWeekday != null
+            ? `平日 ${karte.trafficVolumeWeekday} 台/12h`
+            : karte.trafficVolumeHoliday != null
+              ? `休日 ${karte.trafficVolumeHoliday} 台/12h`
+              : "—"}
+        </HeaderItem>
+        <HeaderItem label="ＤＩＤ区間">{yesNoLabel(karte.didArea, "該当", "非該当")}</HeaderItem>
+        <HeaderItem label="バス路線">{yesNoLabel(karte.busRoute, "該当", "非該当")}</HeaderItem>
+        <HeaderItem label="迂回路">{yesNo(karte.detour)}</HeaderItem>
+        <HeaderItem label="緊急輸送道路区分">{karte.emergencyRoadCategory || "—"}</HeaderItem>
+      </div>
     </section>
   );
 
@@ -879,6 +854,18 @@ export default async function KarteDetailPage({
         ]}
       />
     </div>
+  );
+}
+
+// commonHeader（常時表示の基本情報バー）用の「ラベル：値」1項目。flex-wrapの
+// 子要素として使うため、項目自体は折り返さない（whitespace-nowrap）が、
+// 項目同士は幅が足りなければ次の行に折り返す。
+function HeaderItem({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="whitespace-nowrap text-gray-700 dark:text-gray-200">
+      <span className="text-gray-400 dark:text-gray-500">{label}: </span>
+      {children}
+    </span>
   );
 }
 
