@@ -143,6 +143,12 @@ model Karte {
   trafficVolumeWeekday Int? // 交通量：平日(台/12h)
   trafficVolumeHoliday Int? // 交通量：休日(台/12h)
 
+  // 交通量の出典となる道路交通センサスの調査年度・観測地点番号。実データで
+  // 「H27」（元号＋年）「Q11990」（観測地点番号）という書式を確認済み。年度・番号とも
+  // 単純な数値ではない（元号付き・英字混じり）ため文字列のまま保持する。
+  trafficCensusYear      String? // センサス調査年度（例:「H27」）
+  trafficCensusPointCode String? // センサス観測地点番号（例:「Q11990」）
+
   didArea               Boolean? // DID区間 該当/非該当
   busRoute              Boolean? // バス路線 該当/非該当
   detour                Boolean? // 迂回路 有/無

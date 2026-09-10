@@ -23,10 +23,12 @@ import {
   extractInspectionEvents,
   findFormBSheetNames,
   findRecordPhotoSheetNames,
+  extractRecordPhotoCaptions,
   extractFormBTarget,
   circledNumberToSeq,
 } from "@/lib/excel/karte-import";
 import { extractFormAImages, extractSheetImages } from "@/lib/excel/karte-image-extract";
+import type { ExtractedImage } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
 const KARTE_TYPE_BY_LABEL: Record<string, KarteType> = {
@@ -93,6 +95,33 @@ function hasBlobCredentials(): boolean {
 // 1シート内に最大4枚＝2列×2行の配置を確認）ため、位置から機械的に対応付けるのが
 // 様式Ｂほど単純ではなく、今回は画像の取込のみに範囲を絞った（要改善点）。
 // 呼び出し側と同じくBlob未設定環境では何もしない（ベストエフォート）。
+// 「現状記録写真」シートの画像は、貼り付け位置（列・行）から左上/右上/左下/右下の
+// いずれかに機械的に振り分ける（extractRecordPhotoCaptionsのG23/AY23/G41/AY41と
+// 同じ4区画）。しきい値は実データ（左列col6〜7・右列col50〜51、上段row6〜7・
+// 下段row24〜25）に余裕を持たせた値。稀に5枚目以降が埋め込まれている実データも
+// 確認しているため、4区画に収まらない分はextraとして順序維持のまま末尾に回す
+// （キャプションは対応付けられない）。
+const RECORD_PHOTO_COL_THRESHOLD = 30;
+const RECORD_PHOTO_ROW_THRESHOLD = 15;
+
+function assignRecordPhotoGrid(images: ExtractedImage[]): {
+  topLeft?: ExtractedImage;
+  topRight?: ExtractedImage;
+  bottomLeft?: ExtractedImage;
+  bottomRight?: ExtractedImage;
+  extra: ExtractedImage[];
+} {
+  const grid: ReturnType<typeof assignRecordPhotoGrid> = { extra: [] };
+  for (const img of images) {
+    const isTop = img.fromRow < RECORD_PHOTO_ROW_THRESHOLD;
+    const isLeft = img.fromCol < RECORD_PHOTO_COL_THRESHOLD;
+    const key = isTop ? (isLeft ? "topLeft" : "topRight") : isLeft ? "bottomLeft" : "bottomRight";
+    if (!grid[key]) grid[key] = img;
+    else grid.extra.push(img);
+  }
+  return grid;
+}
+
 async function importRecordPhotos(
   wb: XLSX.WorkBook,
   sourceBuffer: Buffer,
@@ -114,23 +143,38 @@ async function importRecordPhotos(
         sourceForm: PhotoSourceForm.GENERAL_RECORD,
       },
     });
-    // captionには元シート名（"R7現状記録写真"「〜(2)"等）をそのまま入れておく。
-    // カルテ詳細画面側はこの値で写真をグループ化し、シートごとにタブを分けて表示する
-    // （どのシート由来かが分かるようにする狙いもある。個々の写真の実際のキャプション
-    // ＝Excel上の「起点側全景」等のセル文字列までは取り込んでいない。理由は
-    // このファイル冒頭のimportRecordPhotosのコメント参照）。
-    let i = 0;
-    for (const sheetName of sheetNames) {
+    // captionには実際のキャプション文字列（Excel上の「起点側全景」等）を入れる。
+    // displayOrderには元シートの通し番号（0始まり）を入れ、カルテ詳細画面側は
+    // これで写真をグループ化してシートごとにタブを分けて表示する
+    // （どのシート由来かの区別だけが目的で、表示上の並び順としての意味は無い）。
+    let photoIndex = 0;
+    for (const [sheetIndex, sheetName] of sheetNames.entries()) {
       const images = await extractSheetImages(sourceBuffer, sheetName);
-      for (const img of images) {
-        const blob = await put(`karte-imports/${facilityNo}-record-${Date.now()}-${i}.${img.ext}`, img.data, {
+      const captions = extractRecordPhotoCaptions(wb, sheetName);
+      const grid = assignRecordPhotoGrid(images);
+      const ordered: { img: ExtractedImage; caption: string | null }[] = [
+        grid.topLeft && { img: grid.topLeft, caption: captions.topLeft },
+        grid.topRight && { img: grid.topRight, caption: captions.topRight },
+        grid.bottomLeft && { img: grid.bottomLeft, caption: captions.bottomLeft },
+        grid.bottomRight && { img: grid.bottomRight, caption: captions.bottomRight },
+        ...grid.extra.map((img) => ({ img, caption: null })),
+      ].filter((v): v is { img: ExtractedImage; caption: string | null } => Boolean(v));
+
+      for (const { img, caption } of ordered) {
+        const blob = await put(`karte-imports/${facilityNo}-record-${Date.now()}-${photoIndex}.${img.ext}`, img.data, {
           access: "public",
           contentType: `image/${img.ext}`,
         });
         await prisma.photo.create({
-          data: { karteId, url: blob.url, sourceForm: PhotoSourceForm.GENERAL_RECORD, caption: sheetName },
+          data: {
+            karteId,
+            url: blob.url,
+            sourceForm: PhotoSourceForm.GENERAL_RECORD,
+            caption,
+            displayOrder: sheetIndex,
+          },
         });
-        i++;
+        photoIndex++;
       }
     }
   } catch {
@@ -215,8 +259,12 @@ export async function importPhase1KarteAndFormA(blobUrl: string, fileName: strin
     longitude: extracted.longitude,
     geodeticSystem: extracted.geodeticSystemLabel ? GEODETIC_BY_LABEL[extracted.geodeticSystemLabel] ?? null : null,
     preTrafficRestriction: extracted.preTrafficRestriction,
+    continuousRainfallMm: extracted.continuousRainfallMm,
+    hourlyRainfallMm: extracted.hourlyRainfallMm,
     trafficVolumeWeekday: extracted.trafficVolumeWeekday,
     trafficVolumeHoliday: extracted.trafficVolumeHoliday,
+    trafficCensusYear: extracted.trafficCensusYear,
+    trafficCensusPointCode: extracted.trafficCensusPointCode,
     didArea: extracted.didArea,
     busRoute: extracted.busRoute,
     detour: extracted.detour,
@@ -563,8 +611,12 @@ export async function importKarteExcel(
     longitude: extracted.longitude,
     geodeticSystem: extracted.geodeticSystemLabel ? GEODETIC_BY_LABEL[extracted.geodeticSystemLabel] ?? null : null,
     preTrafficRestriction: extracted.preTrafficRestriction,
+    continuousRainfallMm: extracted.continuousRainfallMm,
+    hourlyRainfallMm: extracted.hourlyRainfallMm,
     trafficVolumeWeekday: extracted.trafficVolumeWeekday,
     trafficVolumeHoliday: extracted.trafficVolumeHoliday,
+    trafficCensusYear: extracted.trafficCensusYear,
+    trafficCensusPointCode: extracted.trafficCensusPointCode,
     didArea: extracted.didArea,
     busRoute: extracted.busRoute,
     detour: extracted.detour,

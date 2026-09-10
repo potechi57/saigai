@@ -78,7 +78,9 @@ export default async function EditInspectionTargetPage({
           {/* 左: <詳細スケッチ欄>（実データでは写真2枚が縦に並ぶ） */}
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
-            <div className="space-y-3">
+            {/* 「様式Ｂの写真が大きすぎる」という指摘を受け、既定サイズ（列幅いっぱい）の
+                2/3程度に縮小している（w-2/3。aspect-videoで縦横比は保ったまま）。 */}
+            <div className="mx-auto w-2/3 space-y-3">
               <PhotoSlot photo={sketchPhoto1} />
               <PhotoSlot photo={sketchPhoto2} />
             </div>
@@ -89,7 +91,9 @@ export default async function EditInspectionTargetPage({
             <form action={updateAction} className="space-y-3 text-sm">
               <div>
                 <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h2>
-                <PhotoSlot photo={pastePhoto} />
+                <div className="mx-auto w-2/3">
+                  <PhotoSlot photo={pastePhoto} />
+                </div>
               </div>
               <TextAreaField name="keyPoints" label="着目すべき点" defaultValue={target.keyPoints} />
               <TextAreaField name="checkItems" label="チェック項目" defaultValue={target.checkItems} />

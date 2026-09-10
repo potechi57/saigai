@@ -150,8 +150,12 @@ export type ExtractedKarte = {
   longitude: number | null;
   geodeticSystemLabel: string | null; // "世界測地系" | "日本測地系"
   preTrafficRestriction: boolean | null; // 事前通行規制区間指定 有/無
+  continuousRainfallMm: number | null; // 規制基準等：連続雨量(mm)
+  hourlyRainfallMm: number | null; // 規制基準等：時間雨量(mm)
   trafficVolumeWeekday: number | null; // 交通量：平日(台/12h)
   trafficVolumeHoliday: number | null; // 交通量：休日(台/12h)
+  trafficCensusYear: string | null; // センサス調査年度（様式の表記そのまま。例:"H27"）
+  trafficCensusPointCode: string | null; // センサス観測地点番号（例:"Q11990"）
   didArea: boolean | null; // ＤＩＤ区間 該当/非該当
   busRoute: boolean | null; // バス路線 該当/非該当
   detour: boolean | null; // 迂回路 有/無
@@ -187,6 +191,16 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
   const locationDistrict =
     joinChars(ws, 5, [28, 31, 34, 35, 38]) /* 都道府県+市郡+市郡種別+町村+町村種別 */ || null;
   const locationTown = cellText(ws, 5, 39) || null;
+
+  // 規制基準等（連続雨量・時間雨量）・交通量のセンサス情報は、記入済みの実データ
+  // （08_B1432A020）で位置を確認済み（同じ行7に「規制基準等｜連続雨量＿mm｜時間雨量＿mm｜
+  // 交通量｜平日/休日＿台/12h｜センサス＿年度＿観測地点番号｜ＤＩＤ区間｜…」と並ぶ）。
+  // センサスの年度（例:"H27"）・観測地点番号（例:"Q11990"）は元号付き・英字混じりの
+  // ため数値化せず文字列のまま保持する。
+  const continuousRainfallMm = joinDigits(ws, 6, [22]); // W7
+  const hourlyRainfallMm = joinDigits(ws, 6, [31]); // AF7
+  const trafficCensusYear = cellText(ws, 6, 51) || null; // AZ7
+  const trafficCensusPointCode = cellText(ws, 6, 53) || null; // BB7
 
   // 交通量：「平日」「休日」いずれかの種別セル＋値セルが1組だけ様式にあり、
   // 実データ3件はいずれも「平日」だった。種別セルの表記を見てどちらのカラムに
@@ -240,8 +254,12 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
     longitude: dms(ws, 5, 71, 74, 77),
     geodeticSystemLabel: cellText(ws, 5, 83) || null,
     preTrafficRestriction: boolLabel(ws, 6, 9, "有", "無"),
+    continuousRainfallMm,
+    hourlyRainfallMm,
     trafficVolumeWeekday: trafficTypeLabel === "休日" ? null : trafficVolumeValue,
     trafficVolumeHoliday: trafficTypeLabel === "休日" ? trafficVolumeValue : null,
+    trafficCensusYear,
+    trafficCensusPointCode,
     didArea: boolLabel(ws, 6, 60, "該当", "非該当"),
     busRoute: boolLabel(ws, 6, 68, "該当", "非該当"),
     detour: boolLabel(ws, 6, 75, "有", "無"),
@@ -280,14 +298,42 @@ export function findFormBSheetNames(wb: WorkBook): string[] {
 
 // 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真をまとめる別シート）。
 // 実データでは年度プレフィックス付き「R7現状記録写真」（半角英数字。年度は毎年
-// 変わるため数字は固定しない）と、プレフィックス無しの「現状記録写真」の両方を確認済み。写真が多い
-// カルテでは様式Ｂ同様に連番シート「〜写真 (2)」「〜写真 (3)」が追加される
-// （1シートにつき最大2列×2行＝4枚程度の配置を実データで確認済みだが、Web版では
-// 決め打ちにせず、抽出できた画像を単純に全部並べる方式にしている）。
+// 変わるため数字は固定しない）と、プレフィックス無しの「現状記録写真」の両方を確認済み。
+// 写真が多いカルテでは様式Ｂ同様に連番シート「〜写真 (2)」「〜写真 (3)」が追加される。
+// 1シートにつき2列×2行＝最大4枚の配置で、各写真の下に結合セルのキャプションが
+// 固定位置（G23・AY23・G41・AY41、実データで写真枚数によらず位置が変わらないことを
+// 確認済み）に入る。extractRecordPhotoCaptions参照。
 const RECORD_PHOTO_SHEET_PATTERN = /^R?\d*現状記録写真(?:\s*\(\d+\))?$/;
 
 export function findRecordPhotoSheetNames(wb: WorkBook): string[] {
   return wb.SheetNames.filter((name) => RECORD_PHOTO_SHEET_PATTERN.test(name));
+}
+
+export type RecordPhotoCaptions = {
+  topLeft: string | null;
+  topRight: string | null;
+  bottomLeft: string | null;
+  bottomRight: string | null;
+};
+
+// 「現状記録写真」シートの4箇所のキャプション（結合セル）をそのまま取り出す。
+// G23=左上・AY23=右上・G41=左下・AY41=右下（実データで確認済み。上記コメント参照）。
+// 呼び出し側（lib/actions/import-actions.tsのimportRecordPhotos）で、画像の
+// 貼り付け位置（列・行）から同じ左上/右上/左下/右下に振り分けて対応付ける。
+export function extractRecordPhotoCaptions(wb: WorkBook, sheetName: string): RecordPhotoCaptions {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return { topLeft: null, topRight: null, bottomLeft: null, bottomRight: null };
+  const at = (ref: string): string | null => {
+    const { r, c } = utils.decode_cell(ref);
+    const text = cellText(ws, r, c);
+    return text === "" ? null : text;
+  };
+  return {
+    topLeft: at("G23"),
+    topRight: at("AY23"),
+    bottomLeft: at("G41"),
+    bottomRight: at("AY41"),
+  };
 }
 
 export type ExtractedFormBTarget = {

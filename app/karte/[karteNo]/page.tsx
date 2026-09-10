@@ -105,6 +105,8 @@ export default async function KarteDetailPage({
   const commonHeader = (
     <section className="rounded border border-gray-400 bg-white px-3 py-1.5 dark:border-gray-600 dark:bg-gray-900">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] leading-5">
+        <HeaderItem label="管理機関名">{karte.manageOrgName || "—"}</HeaderItem>
+        <HeaderItem label="管理機関コード">{karte.manageOrgCode || "—"}</HeaderItem>
         <HeaderItem label="施設管理番号">{karte.facilityNo}</HeaderItem>
         <HeaderItem label="カルテ区分">{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}</HeaderItem>
         <HeaderItem label="路線名">{karte.routeName}</HeaderItem>
@@ -135,6 +137,11 @@ export default async function KarteDetailPage({
               ? `休日 ${karte.trafficVolumeHoliday} 台/12h`
               : "—"}
         </HeaderItem>
+        <HeaderItem label="センサス">
+          {karte.trafficCensusYear || karte.trafficCensusPointCode
+            ? [karte.trafficCensusYear, karte.trafficCensusPointCode].filter(Boolean).join(" ")
+            : "—"}
+        </HeaderItem>
         <HeaderItem label="ＤＩＤ区間">{yesNoLabel(karte.didArea, "該当", "非該当")}</HeaderItem>
         <HeaderItem label="バス路線">{yesNoLabel(karte.busRoute, "該当", "非該当")}</HeaderItem>
         <HeaderItem label="迂回路">{yesNo(karte.detour)}</HeaderItem>
@@ -146,14 +153,12 @@ export default async function KarteDetailPage({
   // ── 様式Ａ ─────────────────────────────────────────────
   const formA = (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
-      <div className="flex items-center justify-between border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+      {/* 管理機関名・管理機関コードは常時表示のcommonHeaderに移したため、ここでは
+          見出しのみ（重複させない）。 */}
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
         <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">
           防災カルテ様式Ａ　（{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}）
         </h1>
-        <div className="text-right text-xs text-gray-600 dark:text-gray-300">
-          <div>管理機関名: {karte.manageOrgName || "—"}</div>
-          <div>管理機関コード: {karte.manageOrgCode || "—"}</div>
-        </div>
       </div>
 
       <table className="w-full border-collapse text-xs">
@@ -298,7 +303,19 @@ export default async function KarteDetailPage({
             </tr>
           )}
 
-          {/* 点検者名／専門技術者名（Excel上でもこの並び。会社名・連絡先は別セルで分ける） */}
+          {/* 作成年月日・天候はどちらの点検者にも属さない共通項目のため、独立した行にしている
+              （以前は専門技術者名の行に同居させていたため、点検者名／専門技術者名の
+              各列の位置がずれて見える問題があった）。 */}
+          <tr>
+            <Th>作成年月日</Th>
+            <Td colSpan={6}>
+              {karte.createdOnSiteDate ? new Date(karte.createdOnSiteDate).toLocaleDateString("ja-JP") : "—"}
+            </Td>
+            <Th>天候</Th>
+            <Td colSpan={6}>{karte.createdOnSiteWeather ? WEATHER_LABEL[karte.createdOnSiteWeather] : "—"}</Td>
+          </tr>
+          {/* 点検者名／専門技術者名は同じ列構成（Th1＋Td3＋Th1＋Td4＋Th1＋Td4）にして、
+              名前・会社名・連絡先が縦に揃って見えるようにしている。 */}
           <tr>
             <Th>点検者名</Th>
             <Td colSpan={3}>{karte.inspectorName || "—"}</Td>
@@ -308,18 +325,12 @@ export default async function KarteDetailPage({
             <Td colSpan={4}>{karte.inspectorTel || "—"}</Td>
           </tr>
           <tr>
-            <Th>作成年月日</Th>
-            <Td colSpan={2}>
-              {karte.createdOnSiteDate ? new Date(karte.createdOnSiteDate).toLocaleDateString("ja-JP") : "—"}
-            </Td>
-            <Th>天候</Th>
-            <Td colSpan={2}>{karte.createdOnSiteWeather ? WEATHER_LABEL[karte.createdOnSiteWeather] : "—"}</Td>
             <Th>専門技術者名</Th>
-            <Td colSpan={2}>{karte.specialistName || "—"}</Td>
+            <Td colSpan={3}>{karte.specialistName || "—"}</Td>
             <Th>会社名</Th>
-            <Td colSpan={2}>{karte.specialistCompany || "—"}</Td>
+            <Td colSpan={4}>{karte.specialistCompany || "—"}</Td>
             <Th>連絡先</Th>
-            <Td colSpan={2}>{karte.specialistTel || "—"}</Td>
+            <Td colSpan={4}>{karte.specialistTel || "—"}</Td>
           </tr>
         </tbody>
       </table>
@@ -354,13 +365,12 @@ export default async function KarteDetailPage({
               label: `${seqToCircledNumber(t.sequenceNo)} ${t.name}${t.isActive ? "" : "（解消済み）"}`,
               content: (
                 <div>
+                  {/* 施設管理番号・路線名は常時表示のcommonHeader（様式Ａ〜Ｄ共通）に既に
+                      出ているため、様式Ｂタブ内では重複させない。ここには様式Ｂにしか
+                      無い項目（変状No.・編集リンク）だけを残す。 */}
                   <table className="w-full border-collapse text-xs">
                     <tbody>
                       <tr>
-                        <Th>施設管理番号</Th>
-                        <Td>{karte.facilityNo}</Td>
-                        <Th>路線名</Th>
-                        <Td>{karte.routeName}</Td>
                         <Th>変状 No.</Th>
                         <Td colSpan={3}>
                           {targetCode} {t.name}
@@ -379,7 +389,9 @@ export default async function KarteDetailPage({
                     {/* 左: <詳細スケッチ欄>（実データでは写真2枚が縦に並ぶ） */}
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
-                      <div className="space-y-3">
+                      {/* 「様式Ｂの写真が大きすぎる」という指摘を受け、既定サイズ（列幅いっぱい）の
+                          2/3程度に縮小している（w-2/3。aspect-videoで縦横比は保ったまま）。 */}
+                      <div className="mx-auto w-2/3 space-y-3">
                         <PhotoSlot photo={sketchPhoto1} />
                         <PhotoSlot photo={sketchPhoto2} />
                       </div>
@@ -388,7 +400,9 @@ export default async function KarteDetailPage({
                     <div className="space-y-3 p-3 text-sm">
                       <div>
                         <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h3>
-                        <PhotoSlot photo={pastePhoto} />
+                        <div className="mx-auto w-2/3">
+                          <PhotoSlot photo={pastePhoto} />
+                        </div>
                       </div>
                       <div>
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">着目すべき点</h3>
@@ -569,10 +583,12 @@ export default async function KarteDetailPage({
   );
 
   // ── 様式Ｄ（災害履歴） ─────────────────────────────────────
-  // 実データ（08_B1432A020）でセル配置を確認済み: 上段は様式Ａと同じカルテ共通情報
-  // （施設管理番号・路線名・台帳番号・距離標・上下線／事業区分・道路種別・現道旧道
-  // 区分・所在地・緯度経度・測地系。値はDisasterEvent固有ではなくKarte側の値を
-  // そのまま再掲する）＋点検対象箇所（対象の変状No.・名称）。
+  // 実データ（08_B1432A020）でセル配置を確認済み: 実際のExcelでは上段に様式Ａと同じ
+  // カルテ共通情報（施設管理番号・路線名・台帳番号・距離標・上下線／事業区分・道路種別・
+  // 現道旧道区分・所在地・緯度経度・測地系）を再掲する作りだが、Web版では「様式Ａ〜Ｄの
+  // どのタブでも同じ基本情報を表示してほしい」という要望に合わせ、これらは常時表示の
+  // commonHeaderに一本化し、様式Ｄタブ内では重複させていない。様式Ｄタブに残すのは、
+  // 他のタブに無い項目である点検対象箇所（対象の変状No.・名称）・災害種別のみ。
   // 中段は左に<平面図（被災・対策）><現況写真・スケッチ（被災・対策）>の2枠を縦に、
   // 右に<断面図（被災・対策）>1枠とその下に特記事項（発生年月日・規模・誘因・被害・
   // 通行止実績・対策工、各コメント欄付き）。下段は様式Ａ・様式Ｂと同じ作成年月日／天候。
@@ -642,36 +658,17 @@ export default async function KarteDetailPage({
               label: `${seqToCircledNumber(i + 1)} ${dateLabel}`,
               content: (
                 <div>
+                  {/* 施設管理番号・路線名・台帳番号・事業区分・道路種別・現道旧道区分・所在地・
+                      北緯東経・測地系は、常時表示のcommonHeader（様式Ａ〜Ｄ共通）に既に
+                      出ているため、様式Ｄタブ内では重複させない。ここには様式Ｄにしか
+                      無い項目（点検対象箇所・災害種別）だけを残す。 */}
                   <table className="w-full table-fixed border-collapse text-xs">
                     <tbody>
                       <tr>
-                        <Th className="w-32">施設管理番号</Th>
-                        <Td>{karte.facilityNo}</Td>
+                        <Th className="w-32">点検対象箇所</Th>
+                        <Td>{d.target ? `${seqToCircledNumber(d.target.sequenceNo)} ${d.target.name}` : "—"}</Td>
                         <Th className="w-24">災害種別</Th>
                         <Td>{d.disasterType ? KARTE_TYPE_LABEL[d.disasterType] ?? d.disasterType : "—"}</Td>
-                        <Th className="w-24">路線名</Th>
-                        <Td>{karte.routeName}</Td>
-                        <Th className="w-24">台帳番号</Th>
-                        <Td>{karte.ledgerNo || "—"}</Td>
-                      </tr>
-                      <tr>
-                        <Th>点検対象箇所</Th>
-                        <Td>{d.target ? `${seqToCircledNumber(d.target.sequenceNo)} ${d.target.name}` : "—"}</Td>
-                        <Th>事業区分</Th>
-                        <Td>{karte.projectCategory ? PROJECT_CATEGORY_LABEL[karte.projectCategory] : "—"}</Td>
-                        <Th>道路種別</Th>
-                        <Td>{karte.roadType ? ROAD_TYPE_LABEL[karte.roadType] ?? karte.roadType : "—"}</Td>
-                        <Th>現道・旧道区分</Th>
-                        <Td>{karte.roadStatus ? ROAD_STATUS_LABEL[karte.roadStatus] : "—"}</Td>
-                      </tr>
-                      <tr>
-                        <Th>所在地</Th>
-                        <Td colSpan={3}>{[karte.locationDistrict, karte.locationTown].filter(Boolean).join(" ") || "—"}</Td>
-                        <Th>北緯・東経</Th>
-                        <Td colSpan={3}>
-                          {karte.latitude && karte.longitude ? `${karte.latitude}, ${karte.longitude}` : "—"}
-                          {karte.geodeticSystem ? `（${GEODETIC_LABEL[karte.geodeticSystem]}）` : ""}
-                        </Td>
                       </tr>
                     </tbody>
                   </table>
@@ -801,21 +798,23 @@ export default async function KarteDetailPage({
   // 「R7現状記録写真」（年度は毎年変わる）という名前で、写真が多いカルテでは様式Ｂと
   // 同様に連番シート「〜写真 (2)」「〜写真 (3)」に分かれることを確認済み
   // （lib/excel/karte-import.tsのfindRecordPhotoSheetNames参照）。
-  // 各写真の下にあるキャプション（Excel上の「起点側全景」等の文字列）までは
-  // 取り込んでおらず、画像そのものの取込にとどめている（理由は
-  // lib/actions/import-actions.tsのimportRecordPhotosのコメント参照）。
+  // 各写真の下にある結合セルのキャプション（Excel上の「起点側全景」等の文字列。
+  // G23・AY23・G41・AY41の固定位置）も取り込んでおり、写真の下に表示する
+  // （lib/excel/karte-import.tsのextractRecordPhotoCaptions参照）。
   // 元シートが複数ある場合は、様式Ｂ・様式Ｄと同じ考え方で入れ子のSheetTabsに分ける
-  // （インポート時にPhoto.captionへ元シート名を保持しており、これでグループ化している）。
-  const recordPhotoGroups: { sheetName: string; photos: typeof recordPhotos }[] = [];
+  // （インポート時にPhoto.displayOrderへ元シートの通し番号を保持しており、
+  // これでグループ化している。captionは実際のキャプション文字列そのもの）。
+  const recordPhotoGroups: { sheetIndex: number; photos: typeof recordPhotos }[] = [];
   for (const p of recordPhotos) {
-    const key = p.caption ?? "";
-    let group = recordPhotoGroups.find((g) => g.sheetName === key);
+    const key = p.displayOrder;
+    let group = recordPhotoGroups.find((g) => g.sheetIndex === key);
     if (!group) {
-      group = { sheetName: key, photos: [] };
+      group = { sheetIndex: key, photos: [] };
       recordPhotoGroups.push(group);
     }
     group.photos.push(p);
   }
+  recordPhotoGroups.sort((a, b) => a.sheetIndex - b.sheetIndex);
   const formRecordPhotos = (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
       <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
@@ -826,19 +825,26 @@ export default async function KarteDetailPage({
       ) : (
         <SheetTabs
           tabs={recordPhotoGroups.map((g, i) => ({
-            id: g.sheetName || `group-${i}`,
+            id: `group-${g.sheetIndex}`,
             label: seqToCircledNumber(i + 1),
             content: (
               <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
                 {g.photos.map((p) => (
-                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.url}
-                      alt="現状記録写真"
-                      className="aspect-video w-full rounded border border-gray-300 object-cover dark:border-gray-700"
-                    />
-                  </a>
+                  <div key={p.id}>
+                    <a href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.url}
+                        alt={p.caption ?? "現状記録写真"}
+                        className="aspect-video w-full rounded border border-gray-300 object-cover dark:border-gray-700"
+                      />
+                    </a>
+                    {p.caption && (
+                      <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
+                        {p.caption}
+                      </p>
+                    )}
+                  </div>
                 ))}
               </div>
             ),
