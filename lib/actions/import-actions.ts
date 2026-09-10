@@ -319,8 +319,8 @@ export async function importPhase1KarteAndFormA(blobUrl: string, fileName: strin
   }
 
   // 様式Ａの「点検地点位置図・現況写真」欄に埋め込まれた画像を自動で取り込む（ベストエフォート）。
-  // 対象は様式ＡシートのJPEG/PNG等のラスター画像、およびEMF/WMF（Aspose Cloud経由で
-  // PNGに変換できた場合のみ。認証情報未設定時は従来どおり無視される）。
+  // 対象は様式ＡシートのJPEG/PNG等のラスター画像、およびEMF/WMF（自前のCloud Run変換
+  // サービス経由でPNGに変換できた場合のみ。環境変数未設定時は従来どおり無視される）。
   if (hasBlobCredentials()) {
     const formAImages = await extractFormAImages(sourceBuffer);
     if (formAImages.length > 0) {

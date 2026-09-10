@@ -1,0 +1,10 @@
+{
+  "name": "emf-converter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EMF/WMFをPNGに変換するだけの小さなHTTPサーバー（Cloud Run上で稼働。LibreOffice headlessを呼び出す）。Next.js側の依存を増やさないため、外部npmパッケージは使わずNode.js組み込みモジュールのみで実装している。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

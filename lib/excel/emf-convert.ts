@@ -1,88 +1,55 @@
 // EMF/WMF（ベクター形式）をブラウザで表示できるPNGに変換する。
 //
 // 素のNode.js（Vercelのサーバーレス関数）には、EMFを直接ラスタライズする手段が無い。
-// 候補を比較検討した結果（README「EMF対応について」参照）、以下の理由でクラウド変換API
-// （Aspose.Imaging Cloud）を採用している:
+// 候補を比較検討した結果（README「EMF対応について」参照）、以下の理由で
+// 「自前で管理するCloud Run上でLibreOffice headlessを動かす」方式を採用している:
 //   - ImageMagick+Ghostscript等のネイティブバイナリは50〜150MB超になりがちで、
-//     Vercelの実行環境（Amazon Linux系）向けのビルドが別途必要になり非現実的。
+//     Vercelの実行環境（サーバーレス関数）にそのまま載せることは非現実的。
 //   - 純JSのEMFパーサー（例: emf-converter）はNode.js単体では動かず、結局
 //     node-canvas（Cairo/Pango依存のネイティブバイナリ）が必要になり同じ問題を抱える。
-//   - クラウドAPIならこちらのバンドルに含む依存はfetch呼び出しのみ（数百KB未満）で、
-//     ネイティブバイナリ問題を回避できる（代わりに外部サービスへの課金・可用性依存が発生）。
+//   - クラウド変換API（Aspose Cloud等）も検討したが、第三者セキュリティ認証
+//     （SOC 2・ISO 27001等）を取得していないサービスへ行政（県）のデータを
+//     送信することになるため見送った。
+//   - 代わりに、自分たちで管理するGoogle Cloud Run上でLibreOffice headless
+//     （soffice）を動かす小さなHTTPサーバー（`services/emf-converter/`）を用意し、
+//     このモジュールからHTTP経由で呼び出す。変換対象のデータは自分たちが
+//     管理するインフラの外へは出ない。
 //
 // このモジュールはExcel取込（lib/excel/karte-image-extract.ts経由）からのみ呼ばれ、
 // 通常のカルテ閲覧・地図画面（クライアントに配信されるコード）には一切含まれない
 // （"use server"経由のファイルからしかimportされないため、Next.jsのビルドが
 // 自動的にクライアントバンドルから除外する。xlsx・officecrypto-toolと同じ扱い）。
 //
-// 【利用にはAspose Cloudの無料アカウント登録が必要】
-// https://dashboard.aspose.cloud/ でサインアップし、Client ID / Client Secretを
-// 環境変数 ASPOSE_CLIENT_ID / ASPOSE_CLIENT_SECRET に設定する。
-// 未設定の環境（ローカル開発等）では、EMF/WMFの変換を単純にスキップする
+// 【利用にはCloud Runサービスのデプロイが必要】
+// services/emf-converter/README.md の手順に従ってGoogle Cloud Runへデプロイし、
+// 発行されたURLと共有シークレットを環境変数 EMF_CONVERTER_URL / EMF_CONVERTER_API_KEY
+// に設定する。未設定の環境（ローカル開発等）では、EMF/WMFの変換を単純にスキップする
 // （呼び出し元は変換前と同じ「EMFは取り込まない」動作にフォールバックする）。
-//
-// 【未検証の注記】Aspose.Imaging Cloudの実際のAPIキーでの動作確認はできていない
-// （このプロジェクトの開発環境にAspose Cloudの契約が無いため）。エンドポイント・
-// パラメータは公式ドキュメントに基づく実装だが、実際に有効なAPIキーで初回利用する際は
-// 変換結果（特に変換後PNGの向き・背景の透過有無）を必ず目視確認すること。
 
-const TOKEN_URL = "https://api.aspose.cloud/connect/token";
-const CONVERT_URL = "https://api.aspose.cloud/v3/imaging/convert";
-
-export function hasAsposeCredentials(): boolean {
-  return Boolean(process.env.ASPOSE_CLIENT_ID && process.env.ASPOSE_CLIENT_SECRET);
+function getConverterUrl(): string | null {
+  const url = process.env.EMF_CONVERTER_URL;
+  return url ? url.replace(/\/+$/, "") : null;
 }
 
-// OAuth2のclient credentialsフローで取得するJWT。有効期限は応答のexpires_in（秒）に
-// 従うが、複数画像を連続変換する際に毎回取り直さずに済むよう、プロセス内メモリに
-// キャッシュする（Vercelのサーバーレス関数はインスタンスが使い回されることがあり、
-// その間は再利用できる。使い回されなければ次回呼び出し時に取り直すだけで実害は無い）。
-let cachedToken: { value: string; expiresAt: number } | null = null;
-
-async function getAccessToken(): Promise<string | null> {
-  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
-
-  const clientId = process.env.ASPOSE_CLIENT_ID;
-  const clientSecret = process.env.ASPOSE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-
-  try {
-    const res = await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
-      }),
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { access_token?: string; expires_in?: number };
-    if (!json.access_token) return null;
-    // 期限ギリギリでの失効を避けるため、実際の有効期限より60秒早く切れたことにする。
-    const ttlMs = Math.max((json.expires_in ?? 3600) - 60, 60) * 1000;
-    cachedToken = { value: json.access_token, expiresAt: Date.now() + ttlMs };
-    return cachedToken.value;
-  } catch {
-    return null;
-  }
+export function hasEmfConverterCredentials(): boolean {
+  return Boolean(process.env.EMF_CONVERTER_URL);
 }
 
-// EMF/WMFのバイト列をPNGに変換する。認証情報が無い・通信に失敗した等の場合は
+// EMF/WMFのバイト列をPNGに変換する。環境変数が未設定・通信に失敗した等の場合は
 // 例外を投げずnullを返す（呼び出し元は「その画像は取り込めなかった」として
 // 単純にスキップする、というベストエフォート方針を維持するため）。
 export async function convertEmfToPng(data: Buffer, sourceExt: "emf" | "wmf"): Promise<Buffer | null> {
-  const token = await getAccessToken();
-  if (!token) return null;
+  const baseUrl = getConverterUrl();
+  if (!baseUrl) return null;
 
   try {
-    const res = await fetch(`${CONVERT_URL}?format=png`, {
+    const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+    const apiKey = process.env.EMF_CONVERTER_API_KEY;
+    if (apiKey) headers["X-Api-Key"] = apiKey;
+
+    const res = await fetch(`${baseUrl}/convert?ext=${sourceExt}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": sourceExt === "emf" ? "image/x-emf" : "image/x-wmf",
-        Accept: "application/octet-stream",
-      },
+      headers,
       // Buffer<ArrayBufferLike>のままだとfetchのBodyInit型と噛み合わないため
       // （@types/nodeとDOM libの型定義の差異）、Uint8Arrayに変換して渡す。
       body: new Uint8Array(data),

@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { convertEmfToPng, hasAsposeCredentials } from "@/lib/excel/emf-convert";
+import { convertEmfToPng, hasEmfConverterCredentials } from "@/lib/excel/emf-convert";
 
 // 指定したシートに埋め込まれた画像（写真）を抽出する共通処理。
 // 様式Ａの「点検地点位置図・現況写真」欄、様式Ｂの「詳細スケッチ欄・写真張付欄」で使う。
@@ -11,9 +11,9 @@ import { convertEmfToPng, hasAsposeCredentials } from "@/lib/excel/emf-convert";
 // を辿り画像バイナリを取り出す（新規の依存ライブラリは追加していない）。
 //
 // 【対象】指定シートのdrawingにひもづくJPEG/PNG/GIF/BMP/WEBP、およびEMF/WMF
-//   （Aspose Cloud経由でPNGに変換できた場合のみ。lib/excel/emf-convert.ts参照）。
+//   （自前のCloud Run変換サービス経由でPNGに変換できた場合のみ。lib/excel/emf-convert.ts参照）。
 // 【対象外】
-//   - EMF/WMFのうち、Aspose Cloudの認証情報（環境変数）が未設定、または変換に
+//   - EMF/WMFのうち、Cloud Run変換サービスの環境変数が未設定、または変換に
 //     失敗したもの: 従来どおり黙ってスキップする（ベストエフォート）。
 //   - 「R7現状記録写真」等、様式Ａ・様式Ｂ以外のシートに埋め込まれた画像は今のところ対象外。
 //   - .xls（レガシーBIFF8形式）: ZIP構造ではないため、この抽出方法は使えない
@@ -130,9 +130,9 @@ export async function extractSheetImages(buffer: Buffer, sheetName: string): Pro
       if (id) mediaByRid.set(id, resolveRelative(drawingPath, target));
     }
 
-    // EMF/WMFの変換はAspose Cloudへの通信を伴うため、認証情報が無い環境では
+    // EMF/WMFの変換はCloud Run変換サービスへの通信を伴うため、環境変数が無い環境では
     // 最初から試行しない（従来どおりEMF/WMFは無視する）。
-    const canConvertVector = hasAsposeCredentials();
+    const canConvertVector = hasEmfConverterCredentials();
 
     // 各アンカー（<xdr:twoCellAnchor>等）から、貼り付け位置（from列・行）と
     // 参照している画像（r:embed）を取り出す。

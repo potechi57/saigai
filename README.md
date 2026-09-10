@@ -354,17 +354,30 @@ A4横向きで印刷される横長の様式であることから外れてしま
 
 Excelに埋め込まれたEMF/WMF（ベクター形式）のスケッチ画像をPNGに変換して取り込めるように
 している（`lib/excel/emf-convert.ts`）。素のNode.js（Vercelのサーバーレス関数）には
-EMFを直接ラスタライズする手段が無いため、比較検討した3方式
-（純JSパーサー＋node-canvas／ImageMagick等のネイティブバイナリ／クラウド変換API）のうち、
-**クラウド変換API（Aspose.Imaging Cloud）**を採用した。前者2つはいずれも
-Cairo/Pango等のネイティブバイナリが必要になり、Vercelの実行環境（Amazon Linux系）向けの
-ビルド・パッケージサイズ（50〜150MB超になりがち）が現実的でなかったため
-（詳細な比較はこのやり取りの中でのみ記録されており、コード上のコメント
-（`lib/excel/emf-convert.ts`冒頭）にも要約を残している）。
+EMFを直接ラスタライズする手段が無いため、比較検討した3方式のうち、
+**自前で管理するGoogle Cloud Run上でLibreOffice headlessを動かす**方式
+（`services/emf-converter/`）を採用している。
 
-- **セットアップ**: [Aspose Cloudダッシュボード](https://dashboard.aspose.cloud/)で
-  無料アカウントを作成し、Client ID / Client Secretを環境変数
-  `ASPOSE_CLIENT_ID` / `ASPOSE_CLIENT_SECRET` に設定する。未設定の環境
+- **純JSパーサー＋node-canvas**、**ImageMagick等のネイティブバイナリ**は、いずれも
+  Cairo/Pango等のネイティブバイナリが必要になり、Vercelのサーバーレス関数にそのまま
+  載せるのは非現実的（ビルド・パッケージサイズが50〜150MB超になりがち）。
+  さらに調査の結果、ImageMagickのEMF対応自体が内部的にLibreOffice等へ処理を委譲する
+  作りで、特にLinux環境では変換に失敗する例が広く報告されていることも判明した。
+- **クラウド変換API（Aspose.Imaging Cloud等）**も候補に挙がったが、行政（県）のデータを
+  第三者セキュリティ認証（SOC 2・ISO 27001・ISMAP等）を取得していない外部サービスへ
+  送信することになるため、セキュリティ・データ主権上の懸念から採用を見送った
+  （Aspose自身が「小規模な非公開企業であり、SIG/CSA Star・ISO・SOC・VAPT等の
+  認証取得を追求していない」と公式フォーラムで説明しており、日本のISMAP登録
+  クラウドサービスリストにも掲載されていない）。
+- 代わりに、**自分たちが管理するインフラ内で変換を完結させる**ため、Google Cloud Run上に
+  小さなHTTPサーバー（`services/emf-converter/`。LibreOffice headless＝`soffice`を
+  `execFile`で呼び出すだけの、外部npm依存の無いNode.js製サーバー）を用意し、
+  `lib/excel/emf-convert.ts`からHTTP経由で呼び出す構成にしている。変換対象の画像データが
+  自分たちの管理外（第三者クラウド）へ渡ることは無い。
+
+- **セットアップ**: `services/emf-converter/README.md`の手順でGoogle Cloud Runへ
+  デプロイし、発行されたURLと共有シークレットを環境変数
+  `EMF_CONVERTER_URL` / `EMF_CONVERTER_API_KEY` に設定する。未設定の環境
   （ローカル開発等）では、EMF/WMFの変換を単純にスキップする（従来どおりEMF/WMFは
   取り込まれない。写真アップロード機能のBlob認証情報未設定時と同じ、ベストエフォートの
   フォールバック方針）。
@@ -373,15 +386,16 @@ Cairo/Pango等のネイティブバイナリが必要になり、Vercelの実行
   コードからは一切importされない。Next.jsはこの境界を見てクライアントバンドルから
   自動的に除外するため（`xlsx`・`officecrypto-tool`と同じ扱い）、地図・カルテ閲覧画面の
   バンドルサイズ・初期ロード速度には影響しない。
-- **未検証の注記**: このプロジェクトの開発環境にAspose Cloudの契約が無いため、実際の
-  APIキーでの動作確認はできていない。エンドポイント・パラメータは公式ドキュメントに
-  基づいて実装したが、初めて有効なAPIキーで使う際は変換結果（特に向き・背景の透過有無）を
-  必ず目視確認すること。
-- **既知の制約**: OAuth2トークンはプロセス内メモリにキャッシュしているが、Vercelの
-  サーバーレス関数はインスタンスが使い回されない場合もあり、その際は呼び出しごとに
-  都度トークンを取得し直す（実害は無いが、無料枠のAPI呼び出し回数を消費する点に注意）。
-  変換は複数画像でも並列化せず1枚ずつ順番に行っている（Aspose Cloud側のレート制限を
-  考慮した安全側の実装。取込時間は画像枚数に比例して伸びる）。
+- **認証はMVP向けの簡易な共有シークレット方式**: Cloud Run本体のIAM認証
+  （サービスアカウント＋IDトークン）の方がより堅牢だが、Vercel側にサービスアカウント鍵を
+  持たせる構成はMVPには過剰と判断し、まずは`X-Api-Key`ヘッダーによる共有シークレット
+  方式にしている。本番運用に向けてはIAM認証への切り替えを検討すること
+  （詳細は`services/emf-converter/README.md`）。
+- **既知の制約**: Cloud Runは呼び出し頻度が低い前提で`min-instances=0`
+  （アイドル時課金ゼロ）を想定しており、久しぶりに呼ばれるとコールドスタート
+  （LibreOffice起動を含め数秒〜十数秒）が発生する。また1コンテナ内で複数の`soffice`
+  プロセスを同時に動かすと不安定になりやすいため、デプロイ時に`--concurrency=1`を
+  指定する必要がある（サービス側で複数画像がある場合も1枚ずつ順番に変換する設計）。
 
 ### 写真アップロードについて
 
@@ -582,7 +596,8 @@ npm run dev
 - **道路距離表示はOSRMの公開デモサーバーに依存**しており、SLAが無く商用の常用には
   向かない（詳細は「ホーム位置と距離表示について」参照）。本格運用する場合は
   自前のOSRM、またはGoogle Directions等の有償APIへの切り替えが必要。
-- **EMF/WMF変換はAspose Cloud（有償の外部サービス、無料枠あり）に依存**しており、
-  `ASPOSE_CLIENT_ID`/`ASPOSE_CLIENT_SECRET`が未設定の環境ではEMF/WMFのスケッチ画像は
-  取り込まれない（詳細は「EMF対応について」参照）。また実際のAPIキーでの動作確認は
-  できていない（未検証）。
+- **EMF/WMF変換は自前のCloud Runサービス（`services/emf-converter/`）に依存**しており、
+  `EMF_CONVERTER_URL`/`EMF_CONVERTER_API_KEY`が未設定の環境ではEMF/WMFのスケッチ画像は
+  取り込まれない（詳細は「EMF対応について」参照）。また実際にCloud Runへデプロイした
+  上での動作確認はまだできていない（未検証。ローカルでの`docker build`/`docker run`に
+  よる動作確認方法は`services/emf-converter/README.md`参照）。
