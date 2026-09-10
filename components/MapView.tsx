@@ -118,9 +118,12 @@ export default function MapView({
            </button>
            <div style="margin-top:6px;"><a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;">詳細を見る →</a></div>
          </div>`,
-        // 起点/終点サムネイル（下記buildStartEndPhotosHtml）を大きめに表示する分、
-        // Leaflet既定のポップアップ幅（300px）だと窮屈になるため広げている。
-        { maxWidth: 540 }
+        // 起点/終点サムネイル（下記buildStartEndPhotosHtml、各450px）を2枚横に
+        // 並べられるだけの幅を確保している（450*2+間隔+余白）。Leaflet既定の
+        // ポップアップ幅（300px）よりかなり広いが、技術的な制約は無い
+        // （幅が画面に収まらない場合はLeafletが地図を自動でパンして調整する。
+        // 極端に狭い画面では窮屈になりうる点は既知のトレードオフ）。
+        { maxWidth: 1000 }
       );
 
       // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離・
@@ -522,18 +525,23 @@ async function fetchRoadRouteDistance(
 
 // 起点／終点の参考写真を、ポップアップ内のサムネイルとして組み立てる。
 // 様式Ｂの写真（PhotoSlot、aspect-video＝16:9）と同じ縦横比のまま、
-// 幅450px（高さ253px）で表示する（当初は幅150pxだったが、さらに3倍程度
-// 大きくしてほしいという要望に合わせて拡大）。この幅だと2枚を横に並べる
-// スペースが無いため、縦に積んで表示する。クリックすると元画像を別タブで
-// 開ける（拡大して詳しく見たい場合のため）。どちらも無ければ何も表示しない。
+// 幅450px（高さ253px）で表示する。ポップアップ自体の幅を1000pxまで
+// 広げている（bindPopupのmaxWidth）ため、2枚を横に並べて表示できる
+// （flex-wrapにより、画面が狭く収まらない場合は自動的に縦積みに折り返す）。
+// クリックすると元画像を別タブで開ける（拡大して詳しく見たい場合のため）。
+// どちらも無ければ何も表示しない。
 function buildStartEndPhotosHtml(k: MapKarte): string {
   if (!k.startPhotoUrl && !k.endPhotoUrl) return "";
   const thumb = (url: string, label: string) => `
-    <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-decoration:none;">
-      <img src="${escapeHtml(url)}" style="width:450px;height:253px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+    <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;flex-shrink:0;">
+      <img src="${escapeHtml(url)}" style="width:450px;max-width:450px;height:253px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
       <span style="font-size:12px;color:#6b7280;">${escapeHtml(label)}</span>
     </a>`;
-  return `<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">
+  // flex-wrapを付けると、Leafletがポップアップ幅を決める際の計測パスで
+  // （maxWidthが十分大きくても）2枚が縦に折り返されてしまうため、
+  // 明示的にnowrapにして横並びを強制する（画面が狭い場合はポップアップが
+  // 画面からはみ出す方向になるが、Leafletが地図を自動でパンして対応する）。
+  return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
       ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
       ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
     </div>`;
