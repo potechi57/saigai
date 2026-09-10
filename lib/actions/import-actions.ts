@@ -22,6 +22,7 @@ import {
   extractKarte,
   extractInspectionEvents,
   findFormBSheetNames,
+  findRecordPhotoSheetNames,
   extractFormBTarget,
   circledNumberToSeq,
 } from "@/lib/excel/karte-import";
@@ -82,6 +83,59 @@ function sanitizeForUrl(name: string): string {
 
 function hasBlobCredentials(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN);
+}
+
+// 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真をまとめる別シート。
+// findRecordPhotoSheetNamesのコメント参照）に埋め込まれた画像を取り込む。
+// 様式Ａの写真取込と同じ「先頭からの画像を全部取り込む」方式だが、キャプション
+// （各写真の下にあるコメント欄のセル）は取り込んでいない。様式Ｂのような構造化された
+// テキスト項目が無く、キャプションのセル位置が写真の枚数によって変わる（実データで
+// 1シート内に最大4枚＝2列×2行の配置を確認）ため、位置から機械的に対応付けるのが
+// 様式Ｂほど単純ではなく、今回は画像の取込のみに範囲を絞った（要改善点）。
+// 呼び出し側と同じくBlob未設定環境では何もしない（ベストエフォート）。
+async function importRecordPhotos(
+  wb: XLSX.WorkBook,
+  sourceBuffer: Buffer,
+  karteId: string,
+  facilityNo: string
+): Promise<void> {
+  if (!hasBlobCredentials()) return;
+  const sheetNames = findRecordPhotoSheetNames(wb);
+  if (sheetNames.length === 0) return;
+  try {
+    // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の現状記録写真
+    // （sourceForm=GENERAL_RECORD）は入れ替える。
+    await prisma.photo.deleteMany({
+      where: {
+        karteId,
+        targetId: null,
+        eventId: null,
+        disasterEventId: null,
+        sourceForm: PhotoSourceForm.GENERAL_RECORD,
+      },
+    });
+    // captionには元シート名（"R7現状記録写真"「〜(2)"等）をそのまま入れておく。
+    // カルテ詳細画面側はこの値で写真をグループ化し、シートごとにタブを分けて表示する
+    // （どのシート由来かが分かるようにする狙いもある。個々の写真の実際のキャプション
+    // ＝Excel上の「起点側全景」等のセル文字列までは取り込んでいない。理由は
+    // このファイル冒頭のimportRecordPhotosのコメント参照）。
+    let i = 0;
+    for (const sheetName of sheetNames) {
+      const images = await extractSheetImages(sourceBuffer, sheetName);
+      for (const img of images) {
+        const blob = await put(`karte-imports/${facilityNo}-record-${Date.now()}-${i}.${img.ext}`, img.data, {
+          access: "public",
+          contentType: `image/${img.ext}`,
+        });
+        await prisma.photo.create({
+          data: { karteId, url: blob.url, sourceForm: PhotoSourceForm.GENERAL_RECORD, caption: sheetName },
+        });
+        i++;
+      }
+    }
+  } catch {
+    // 写真取込はベストエフォート。失敗してもインポート結果には影響させない。
+  }
 }
 
 // Blob上のファイルを取得し、復号・解析してWorkBookにする。
@@ -219,8 +273,6 @@ export async function importPhase1KarteAndFormA(blobUrl: string, fileName: strin
   // 様式Ａの「点検地点位置図・現況写真」欄に埋め込まれた画像を自動で取り込む（ベストエフォート）。
   // 対象は様式ＡシートのJPEG/PNG等のラスター画像、およびEMF/WMF（Aspose Cloud経由で
   // PNGに変換できた場合のみ。認証情報未設定時は従来どおり無視される）。
-  // 「R7現状記録写真」等ほかのシートの画像はまだ対象外にしている
-  // （詳細はlib/excel/karte-image-extract.ts・lib/excel/emf-convert.tsのコメント参照）。
   if (hasBlobCredentials()) {
     const formAImages = await extractFormAImages(sourceBuffer);
     if (formAImages.length > 0) {
@@ -251,6 +303,10 @@ export async function importPhase1KarteAndFormA(blobUrl: string, fileName: strin
       }
     }
   }
+
+  // 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真）も同様に取り込む
+  // （詳細はimportRecordPhotosのコメント参照）。
+  await importRecordPhotos(wb, sourceBuffer, karte.id, facilityNo);
 
   // 取込元のExcelそのものをカルテ資料として保存しておく（抽出結果の検証・原本保全用、
   // ベストエフォート）。ブラウザから直接Blobへアップロード済みのURLをそのまま
@@ -579,6 +635,10 @@ export async function importKarteExcel(
       }
     }
   }
+
+  // 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真）も同様に取り込む
+  // （詳細はimportRecordPhotosのコメント参照）。
+  await importRecordPhotos(wb, sourceBuffer, karte.id, facilityNo);
 
   const targetsBySeq = new Map<number, InspectionTarget>();
   const formBSheetNames = findFormBSheetNames(wb);

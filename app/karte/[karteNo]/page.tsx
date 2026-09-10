@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, ROAD_TYPE_LABEL, WEATHER_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
+import { seqToCircledNumber } from "@/lib/excel/karte-import";
 import PhotoSlot from "@/components/PhotoSlot";
 import SheetTabs from "@/components/SheetTabs";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
@@ -79,6 +80,13 @@ export default async function KarteDetailPage({
       resultByTargetAndEvent.set(`${r.targetId}:${ev.id}`, r);
     }
   }
+
+  // karte.photos（カルテ本体に紐づく写真＝targetId/eventId/disasterEventIdが全てnull）は、
+  // 様式Ａの「点検地点位置図・現況写真」（sourceForm: FORM_A・OTHER）と、
+  // 「現状記録写真」シート由来の写真（sourceForm: GENERAL_RECORD）の両方を含むため、
+  // 表示先に応じてここで振り分ける。
+  const formAPhotos = karte.photos.filter((p) => p.sourceForm !== "GENERAL_RECORD");
+  const recordPhotos = karte.photos.filter((p) => p.sourceForm === "GENERAL_RECORD");
 
   // ── カルテ共通ヘッダー（様式Ａ／Ｂ／Ｃを切り替えても常に上に表示） ─────────────
   // 元々は様式Ａの表の一部（1〜4行目）だったが、「様式Ａ・Ｂ・Ｃを切り替えても
@@ -165,9 +173,9 @@ export default async function KarteDetailPage({
               現況写真
             </Th>
             <td colSpan={13} className="border border-gray-400 bg-white p-3 align-top dark:border-gray-600 dark:bg-gray-900">
-              {karte.photos.length > 0 ? (
+              {formAPhotos.length > 0 ? (
                 <div className="flex flex-wrap gap-3">
-                  {karte.photos.map((p) => (
+                  {formAPhotos.map((p) => (
                     <a key={p.id} href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -343,7 +351,7 @@ export default async function KarteDetailPage({
             const targetCode = `${karte.facilityNo}-T${String(t.sequenceNo).padStart(2, "0")}`;
             return {
               id: t.id,
-              label: `${circledNumber(t.sequenceNo)} ${t.name}${t.isActive ? "" : "（解消済み）"}`,
+              label: `${seqToCircledNumber(t.sequenceNo)} ${t.name}${t.isActive ? "" : "（解消済み）"}`,
               content: (
                 <div>
                   <table className="w-full border-collapse text-xs">
@@ -631,7 +639,7 @@ export default async function KarteDetailPage({
             const dateLabel = d.occurredDate ? new Date(d.occurredDate).toLocaleDateString("ja-JP") : "発生日未登録";
             return {
               id: d.id,
-              label: `${circledNumber(i + 1)} ${dateLabel}`,
+              label: `${seqToCircledNumber(i + 1)} ${dateLabel}`,
               content: (
                 <div>
                   <table className="w-full table-fixed border-collapse text-xs">
@@ -648,7 +656,7 @@ export default async function KarteDetailPage({
                       </tr>
                       <tr>
                         <Th>点検対象箇所</Th>
-                        <Td>{d.target ? `${circledNumber(d.target.sequenceNo)} ${d.target.name}` : "—"}</Td>
+                        <Td>{d.target ? `${seqToCircledNumber(d.target.sequenceNo)} ${d.target.name}` : "—"}</Td>
                         <Th>事業区分</Th>
                         <Td>{karte.projectCategory ? PROJECT_CATEGORY_LABEL[karte.projectCategory] : "—"}</Td>
                         <Th>道路種別</Th>
@@ -788,6 +796,58 @@ export default async function KarteDetailPage({
     </section>
   );
 
+  // ── 現状記録写真 ────────────────────────────────────────
+  // 様式Ａ・様式Ｂに収まらなかった写真をまとめる別シート。実データで「現状記録写真」
+  // 「R7現状記録写真」（年度は毎年変わる）という名前で、写真が多いカルテでは様式Ｂと
+  // 同様に連番シート「〜写真 (2)」「〜写真 (3)」に分かれることを確認済み
+  // （lib/excel/karte-import.tsのfindRecordPhotoSheetNames参照）。
+  // 各写真の下にあるキャプション（Excel上の「起点側全景」等の文字列）までは
+  // 取り込んでおらず、画像そのものの取込にとどめている（理由は
+  // lib/actions/import-actions.tsのimportRecordPhotosのコメント参照）。
+  // 元シートが複数ある場合は、様式Ｂ・様式Ｄと同じ考え方で入れ子のSheetTabsに分ける
+  // （インポート時にPhoto.captionへ元シート名を保持しており、これでグループ化している）。
+  const recordPhotoGroups: { sheetName: string; photos: typeof recordPhotos }[] = [];
+  for (const p of recordPhotos) {
+    const key = p.caption ?? "";
+    let group = recordPhotoGroups.find((g) => g.sheetName === key);
+    if (!group) {
+      group = { sheetName: key, photos: [] };
+      recordPhotoGroups.push(group);
+    }
+    group.photos.push(p);
+  }
+  const formRecordPhotos = (
+    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">現状記録写真</h2>
+      </div>
+      {recordPhotoGroups.length === 0 ? (
+        <p className="p-4 text-sm text-gray-400 dark:text-gray-500">現状記録写真はありません</p>
+      ) : (
+        <SheetTabs
+          tabs={recordPhotoGroups.map((g, i) => ({
+            id: g.sheetName || `group-${i}`,
+            label: seqToCircledNumber(i + 1),
+            content: (
+              <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
+                {g.photos.map((p) => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.url}
+                      alt="現状記録写真"
+                      className="aspect-video w-full rounded border border-gray-300 object-cover dark:border-gray-700"
+                    />
+                  </a>
+                ))}
+              </div>
+            ),
+          }))}
+        />
+      )}
+    </section>
+  );
+
   // ── カルテ資料 ─────────────────────────────────────────
   const documents = (
     <section className="rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
@@ -850,6 +910,7 @@ export default async function KarteDetailPage({
           { id: "formB", label: "様式Ｂ", content: formB },
           { id: "formC", label: "様式Ｃ", content: formC },
           { id: "formD", label: "様式Ｄ", content: formD },
+          { id: "recordPhotos", label: "現状記録写真", content: formRecordPhotos },
           { id: "documents", label: "カルテ資料", content: documents },
         ]}
       />
@@ -919,12 +980,4 @@ function yesNo(v: boolean | null): string {
 
 function yesNoLabel(v: boolean | null, trueLabel: string, falseLabel: string): string {
   return v === null ? "—" : v ? trueLabel : falseLabel;
-}
-
-// 様式Ｂ・様式Ｄの入れ子タブのラベル用。実際の様式の「変状No.」表記（①②③…）に
-// 合わせる（lib/excel/karte-import.tsのCIRCLED_NUMBERSは逆方向＝丸数字→数値の
-// マッピングのため、表示用の順方向はこちらに持つ）。範囲外の番号はそのまま数値で表示する。
-const CIRCLED_NUMBER_LABELS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
-function circledNumber(n: number): string {
-  return CIRCLED_NUMBER_LABELS[n - 1] ?? `No.${n}`;
 }

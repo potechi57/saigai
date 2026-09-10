@@ -278,6 +278,18 @@ export function findFormBSheetNames(wb: WorkBook): string[] {
   return wb.SheetNames.filter((name) => FORM_B_SHEET_PATTERN.test(name));
 }
 
+// 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真をまとめる別シート）。
+// 実データでは年度プレフィックス付き「R7現状記録写真」（半角英数字。年度は毎年
+// 変わるため数字は固定しない）と、プレフィックス無しの「現状記録写真」の両方を確認済み。写真が多い
+// カルテでは様式Ｂ同様に連番シート「〜写真 (2)」「〜写真 (3)」が追加される
+// （1シートにつき最大2列×2行＝4枚程度の配置を実データで確認済みだが、Web版では
+// 決め打ちにせず、抽出できた画像を単純に全部並べる方式にしている）。
+const RECORD_PHOTO_SHEET_PATTERN = /^R?\d*現状記録写真(?:\s*\(\d+\))?$/;
+
+export function findRecordPhotoSheetNames(wb: WorkBook): string[] {
+  return wb.SheetNames.filter((name) => RECORD_PHOTO_SHEET_PATTERN.test(name));
+}
+
 export type ExtractedFormBTarget = {
   sheetName: string;
   sequenceLabel: string | null; // 変状No.（"①"等）そのまま
@@ -317,6 +329,14 @@ const CIRCLED_NUMBERS: Record<string, number> = {
 export function circledNumberToSeq(label: string | null): number | null {
   if (!label) return null;
   return CIRCLED_NUMBERS[label] ?? null;
+}
+
+// 通し番号→丸数字（上記の逆方向）。様式Ｂ・様式Ｄの入れ子タブのラベルや、
+// 「現状記録写真」シートの取込時にどのシート由来かを示すのに使う。
+// 範囲外の番号（⑦以降）はそのまま数値で表示する。
+const CIRCLED_NUMBER_LABELS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨"];
+export function seqToCircledNumber(n: number): string {
+  return CIRCLED_NUMBER_LABELS[n - 1] ?? `No.${n}`;
 }
 
 export type ExtractedInspectionEventTargetResult = {
