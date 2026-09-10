@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { setFavoriteGroups, type FavoriteActionResult } from "@/lib/actions/favorite-actions";
 
 // お気に入り一覧の各行に置く、所属グループのチェックボックス群。
-// チェックのたびに自動送信し（ViewToggleField・ViewToggleFieldと同じ考え方）、
+// チェックのたびに自動送信し、
 // setFavoriteGroupsが一括で所属グループを置き換える。
 export default function FavoriteGroupsForm({
   favoriteId,

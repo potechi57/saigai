@@ -35,8 +35,14 @@ export default function RootLayout({
         {/* h-14固定にしているのは、地図中心のカルテ検索画面（app/karte/page.tsx）が
             ヘッダー分を差し引いた高さ(h-[calc(100vh-3.5rem)])で地図を敷き詰めるため、
             ヘッダーの実高さを正確に把握できる必要があるため（曖昧なpy-*任せにすると
-            ずれて二重スクロールが発生する）。 */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-300 bg-white px-6 dark:border-gray-700 dark:bg-gray-900">
+            ずれて二重スクロールが発生する）。
+            relative z-[2000]は、地図（components/MapView.tsxの凡例・現在地ボタン等の
+            オーバーレイがz-[1000]）より必ず手前に描画されるようにするため。無いと、
+            ヘッダー内の閲覧履歴ドロップダウンが地図の裏に隠れてしまう
+            （ヘッダー自身がスタッキングコンテキストを作っていないと、子要素の
+            z-indexだけ上げても地図側のz-[1000]には勝てないため、ヘッダー自体に
+            地図より大きいz-indexを与える必要がある）。 */}
+        <header className="relative z-[2000] flex h-14 shrink-0 items-center justify-between border-b border-gray-300 bg-white px-6 dark:border-gray-700 dark:bg-gray-900">
           <a href="/karte" className="text-lg font-bold text-gray-800 dark:text-gray-100">
             道路防災カルテ Web GIS{" "}
             <span className="text-sm font-normal text-gray-500 dark:text-gray-400">MVP</span>

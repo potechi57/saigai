@@ -79,8 +79,8 @@ export default async function EditInspectionTargetPage({
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
             <div className="space-y-3">
-              <PhotoSlot photo={sketchPhoto1} heightClass="h-56" />
-              <PhotoSlot photo={sketchPhoto2} heightClass="h-56" />
+              <PhotoSlot photo={sketchPhoto1} heightClass="h-56" fit="natural" />
+              <PhotoSlot photo={sketchPhoto2} heightClass="h-56" fit="natural" />
             </div>
           </div>
 

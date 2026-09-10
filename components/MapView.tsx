@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { RESPONSE_META, responseMeta } from "@/lib/labels";
 import { haversineDistanceMeters, formatDistanceMeters } from "@/lib/geo";
 import { setHomeLocation, clearHomeLocation } from "@/lib/actions/settings-actions";
+import { setFavorite } from "@/lib/actions/favorite-actions";
 
 export type MapKarte = {
   id: string;
@@ -49,6 +50,10 @@ export default function MapView({
   const [settingHome, setSettingHome] = useState(false);
   const [savingHome, setSavingHome] = useState(false);
   const [homeError, setHomeError] = useState<string | null>(null);
+  const placeMarkerRef = useRef<L.CircleMarker | null>(null);
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeSearching, setPlaceSearching] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
 
   // マーカーのポップアップは開いたとき（＝そのカルテ地点を選択したとき）に初めて
   // ホーム/現在地からの距離を計算して表示する（常時全マーカーぶん計算・表示すると
@@ -57,6 +62,10 @@ export default function MapView({
   // 内容を書き換えられるよう、最新値をrefに保持しておき、popupopen時点で参照する。
   const homeRef = useRef(home);
   homeRef.current = home;
+
+  // お気に入り状態も同様の理由でrefに持つ（初期値はサーバーから渡されたkartes、
+  // 以降はポップアップ内の☆/★ボタンでの切り替えをその場で反映する）。
+  const favoriteIdsRef = useRef<Set<string>>(new Set(kartes.filter((k) => k.isFavorite).map((k) => k.id)));
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -75,34 +84,19 @@ export default function MapView({
 
     for (const k of kartes) {
       const meta = responseMeta(k.responseCategory);
-      const icon = L.divIcon({
-        className: "",
-        html: `<div style="
-            background:${meta.color};
-            width:28px;height:28px;border-radius:50% 50% 50% 0;
-            transform:rotate(-45deg);
-            border:2px solid white;
-            box-shadow:0 1px 3px rgba(0,0,0,0.4);
-            display:flex;align-items:center;justify-content:center;
-          "><span style="transform:rotate(45deg);color:white;font-size:11px;font-weight:bold;">${meta.mark}</span>${
-            k.isFavorite
-              ? '<span style="position:absolute;top:-8px;right:-6px;transform:rotate(45deg);font-size:13px;">★</span>'
-              : ""
-          }</div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 28],
-        popupAnchor: [0, -28],
-      });
-
-      const marker = L.marker([k.latitude, k.longitude], { icon }).addTo(map);
+      const marker = L.marker([k.latitude, k.longitude], { icon: buildMarkerIcon(meta, favoriteIdsRef.current.has(k.id)) }).addTo(
+        map
+      );
       const distHomeId = `dist-home-${k.id}`;
       const distCurId = `dist-current-${k.id}`;
       const routeBtnId = `route-btn-${k.id}`;
+      const favSlotId = `fav-slot-${k.id}`;
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
-           <div style="font-weight:600;">${escapeHtml(k.routeName)}${k.isFavorite ? " ★" : ""}</div>
+           <div style="font-weight:600;">${escapeHtml(k.routeName)}</div>
            <div style="color:#666;">${escapeHtml(k.facilityNo)} ・ ${escapeHtml(k.karteTypeLabel)}</div>
            <div style="margin-top:4px;">対応区分: ${escapeHtml(meta.label)}</div>
+           <div id="${favSlotId}" style="margin-top:6px;"></div>
            <div id="${distHomeId}" style="margin-top:6px;color:#374151;font-size:12px;"></div>
            <div id="${distCurId}" style="color:#374151;font-size:12px;"></div>
            <button id="${routeBtnId}" type="button" style="margin-top:4px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">
@@ -112,8 +106,8 @@ export default function MapView({
          </div>`
       );
 
-      // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離を
-      // 埋め込む（常時計算しないことで地図上の情報量を絞る）。
+      // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離・
+      // お気に入りの状態を埋め込む（常時計算・表示しないことで地図上の情報量を絞る）。
       marker.on("popupopen", () => {
         const homeEl = document.getElementById(distHomeId);
         if (homeEl) {
@@ -133,6 +127,7 @@ export default function MapView({
               )}（直線距離）`
             : "";
         }
+        renderFavSlot(favSlotId, k, marker, meta);
         const btn = document.getElementById(routeBtnId) as HTMLButtonElement | null;
         if (btn) {
           btn.addEventListener(
@@ -166,6 +161,41 @@ export default function MapView({
       });
 
       bounds.push([k.latitude, k.longitude]);
+    }
+
+    // ポップアップ内の☆/★お気に入りボタンの中身を、現在の状態（favoriteIdsRef）に
+    // 合わせて描画し直す。ポップアップを開くたび（popupopenのたび）に呼び出すことで、
+    // 他のマーカーで切り替えた直後でも常に最新の状態を表示する。
+    function renderFavSlot(slotId: string, k: MapKarte, marker: L.Marker, meta: ReturnType<typeof responseMeta>) {
+      const slot = document.getElementById(slotId);
+      if (!slot) return;
+      const isFav = favoriteIdsRef.current.has(k.id);
+      const btnId = `fav-toggle-${k.id}`;
+      slot.innerHTML = isFav
+        ? `<span style="font-size:12px;color:#a16207;">★ お気に入り済み</span> <button type="button" id="${btnId}" style="margin-left:6px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">外す</button>`
+        : `<button type="button" id="${btnId}" style="font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">☆ お気に入りに追加</button>`;
+      const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+      btn?.addEventListener(
+        "click",
+        () => {
+          const next = !favoriteIdsRef.current.has(k.id);
+          btn.disabled = true;
+          btn.textContent = "処理中...";
+          setFavorite(k.id, k.facilityNo, next).then((result) => {
+            if (!result.ok) {
+              btn.disabled = false;
+              btn.textContent = `失敗（${result.error}）`;
+              return;
+            }
+            if (next) favoriteIdsRef.current.add(k.id);
+            else favoriteIdsRef.current.delete(k.id);
+            marker.setIcon(buildMarkerIcon(meta, next));
+            renderFavSlot(slotId, k, marker, meta);
+            router.refresh(); // 一覧・お気に入り画面等、他の表示にも反映させる
+          });
+        },
+        { once: true }
+      );
     }
 
     if (bounds.length > 0) {
@@ -272,6 +302,55 @@ export default function MapView({
     );
   }
 
+  // 「○○小学校」のような地名・施設名から地図を移動する場所検索（ジオコーディング）。
+  // カルテの属性検索（左の検索条件パネル）とは別物で、あくまで「地図上のこの辺りを
+  // 見たい」という目的地探しなので、地図自身のオーバーレイとして持たせている。
+  // ジオコーディングにはAPIキー不要なNominatim（OpenStreetMapの公開検索API）を使う。
+  // OSRM同様、あくまで公開のコミュニティ運営サービスであり、大量・高頻度な利用や
+  // 商用の常用は利用ポリシー上想定されていない（1リクエスト/秒程度が上限の目安）。
+  // ここではユーザーが検索ボタン/Enterを押した時だけ1回叩く形にしており、
+  // 自動補完（入力のたびに叩く）は行わない。
+  async function handlePlaceSearch(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const q = placeQuery.trim();
+    const map = mapRef.current;
+    if (!q || !map) return;
+    setPlaceSearching(true);
+    setPlaceError(null);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jp&accept-language=ja&q=${encodeURIComponent(
+        q
+      )}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const results: Array<{ lat: string; lon: string; display_name?: string }> = await res.json();
+      const first = results[0];
+      if (!first) {
+        setPlaceError("見つかりませんでした。");
+        return;
+      }
+      const lat = Number(first.lat);
+      const lon = Number(first.lon);
+      map.setView([lat, lon], 16);
+      if (placeMarkerRef.current) {
+        placeMarkerRef.current.setLatLng([lat, lon]);
+      } else {
+        placeMarkerRef.current = L.circleMarker([lat, lon], {
+          radius: 9,
+          color: "#7c3aed",
+          fillColor: "#c4b5fd",
+          fillOpacity: 0.9,
+          weight: 2,
+        }).addTo(map);
+      }
+      placeMarkerRef.current.bindPopup(escapeHtml(first.display_name || q)).openPopup();
+    } catch {
+      setPlaceError("検索に失敗しました（通信エラー）。");
+    } finally {
+      setPlaceSearching(false);
+    }
+  }
+
   function handleClearHome() {
     setSavingHome(true);
     setHomeError(null);
@@ -288,6 +367,34 @@ export default function MapView({
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* 場所検索（地名・施設名から地図を移動する。上部中央＝Leaflet標準の
+          ズームコントロール（左上）ともホーム位置/現在地ボタン（右上）とも
+          重ならない位置）。カルテの属性検索（左の検索条件パネル）とは別物。 */}
+      <form
+        onSubmit={handlePlaceSearch}
+        className="absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 items-center gap-1.5 rounded bg-white/95 p-1.5 shadow dark:bg-gray-900/95"
+      >
+        <input
+          type="text"
+          value={placeQuery}
+          onChange={(e) => setPlaceQuery(e.target.value)}
+          placeholder="場所を検索（例: ○○小学校）"
+          className="w-56 rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+        />
+        <button
+          type="submit"
+          disabled={placeSearching}
+          className="rounded border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+        >
+          {placeSearching ? "検索中..." : "検索"}
+        </button>
+      </form>
+      {placeError && (
+        <div className="absolute left-1/2 top-14 z-[1000] -translate-x-1/2 rounded bg-white/95 px-2 py-1 text-xs text-red-600 shadow dark:bg-gray-900/95 dark:text-red-400">
+          {placeError}
+        </div>
+      )}
 
       {/* 凡例（左下）。常時表示する情報はここに限定し、それ以外はマーカー選択時の
           ポップアップに追い出すことで、地図上の情報量を最小限にとどめている。 */}
@@ -344,6 +451,30 @@ export default function MapView({
       </div>
     </div>
   );
+}
+
+// カルテ地点マーカーのアイコン。お気に入り済みかどうかで右肩に★を重ねるかを
+// 切り替えるだけなので、初期表示時とお気に入り切り替え時（marker.setIcon）の
+// 両方から呼べる関数として切り出している。
+function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: boolean): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        background:${meta.color};
+        width:28px;height:28px;border-radius:50% 50% 50% 0;
+        transform:rotate(-45deg);
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+      "><span style="transform:rotate(45deg);color:white;font-size:11px;font-weight:bold;">${meta.mark}</span>${
+        isFavorite
+          ? '<span style="position:absolute;top:-8px;right:-6px;transform:rotate(45deg);font-size:13px;">★</span>'
+          : ""
+      }</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -28],
+  });
 }
 
 // OSRM（Open Source Routing Machine）の公開デモサーバーを使い、道路経路に沿った

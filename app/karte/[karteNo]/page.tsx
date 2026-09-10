@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, ROAD_TYPE_LABEL, WEATHER_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
-import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
 import SheetTabs from "@/components/SheetTabs";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
@@ -360,8 +359,8 @@ export default async function KarteDetailPage({
                   <div className="p-3">
                     <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
                     <div className="space-y-3">
-                      <PhotoSlot photo={sketchPhoto1} heightClass="h-56" />
-                      <PhotoSlot photo={sketchPhoto2} heightClass="h-56" />
+                      <PhotoSlot photo={sketchPhoto1} heightClass="h-56" fit="natural" />
+                      <PhotoSlot photo={sketchPhoto2} heightClass="h-56" fit="natural" />
                     </div>
                   </div>
                   {/* 右: <写真張付欄>（実データでは大きめの写真1枚）＋着目すべき点／チェック項目 */}
@@ -420,22 +419,28 @@ export default async function KarteDetailPage({
       {karte.events.length === 0 ? (
         <p className="p-4 text-sm text-gray-400 dark:text-gray-500">点検記録がまだありません</p>
       ) : (
-        <table className="w-full border-collapse text-xs">
+        // table-fixed＋各セルの明示的な幅で列幅を揃える（既定のauto layoutだと、
+        // 「点検時の特記事項」等セル内の文章量に引っ張られて点検日ごとの列幅が
+        // ばらばらになってしまっていたため）。幅を固定する分、はみ出す文章は
+        // 横に伸ばさず縦に折り返す（各セルのwhitespace-pre-wrap指定はそのまま活かす）。
+        <table className="w-full table-fixed border-collapse text-xs">
           <thead>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検年月日</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検年月日</Th>
               {karte.events.map((ev) => (
-                <Th key={ev.id}>{new Date(ev.inspectionDate).toLocaleDateString("ja-JP")}</Th>
+                <Th key={ev.id} className="w-40">
+                  {new Date(ev.inspectionDate).toLocaleDateString("ja-JP")}
+                </Th>
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検者名</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検者名</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.inspectorName || "—"}</Td>
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">天候</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">天候</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.weather ? WEATHER_LABEL[ev.weather] : "—"}</Td>
               ))}
@@ -462,28 +467,28 @@ export default async function KarteDetailPage({
                   </td>
                 </tr>
                 <tr key={`${t.id}-diff`}>
-                  <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">前回との差異</Th>
+                  <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">前回との差異</Th>
                   {karte.events.map((ev) => {
                     const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                     return <Td key={ev.id}>{r ? (r.diffFromPrevious ? "有" : "無") : "—"}</Td>;
                   })}
                 </tr>
                 <tr key={`${t.id}-disaster`}>
-                  <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">被災履歴</Th>
+                  <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">被災履歴</Th>
                   {karte.events.map((ev) => {
                     const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                     return <Td key={ev.id}>{r ? (r.disasterHistory ? "有" : "無") : "—"}</Td>;
                   })}
                 </tr>
                 <tr key={`${t.id}-repair`}>
-                  <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">補修履歴</Th>
+                  <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">補修履歴</Th>
                   {karte.events.map((ev) => {
                     const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                     return <Td key={ev.id}>{r ? (r.repairHistory ? "有" : "無") : "—"}</Td>;
                   })}
                 </tr>
                 <tr key={`${t.id}-comment`}>
-                  <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">コメント</Th>
+                  <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">コメント</Th>
                   {karte.events.map((ev) => {
                     const r = resultByTargetAndEvent.get(`${t.id}:${ev.id}`);
                     return (
@@ -493,37 +498,17 @@ export default async function KarteDetailPage({
                     );
                   })}
                 </tr>
-                <tr key={`${t.id}-photos`}>
-                  <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">写真</Th>
-                  <td colSpan={karte.events.length} className="border border-gray-400 bg-white p-2 dark:border-gray-600 dark:bg-gray-900">
-                    {t.photos.length > 0 && (
-                      <div className="mb-2 flex flex-wrap gap-2">
-                        {t.photos.map((p) => (
-                          <a key={p.id} href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={p.url}
-                              alt={p.caption ?? "点検写真"}
-                              className="h-16 w-16 rounded border border-gray-200 object-cover dark:border-gray-700"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                    <PhotoUploadForm targetId={t.id} karteId={karte.id} karteFacilityNo={karte.facilityNo} compact />
-                  </td>
-                </tr>
               </Fragment>
             ))}
 
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検後の対応（専門技術者の判定）</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検後の対応（専門技術者の判定）</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.specialistJudgement ? RESPONSE_META[ev.specialistJudgement]?.label : "—"}</Td>
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">専門技術者による点検年月日</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">専門技術者による点検年月日</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>
                   {ev.specialistInspectionDate
@@ -533,19 +518,19 @@ export default async function KarteDetailPage({
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">専門技術者名</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">専門技術者名</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.specialistName || "—"}</Td>
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">次回点検実施時期</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">次回点検実施時期</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.nextInspectionDueYear ? `${ev.nextInspectionDueYear}年度` : "—"}</Td>
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 bg-gray-100 dark:bg-gray-700">点検時の特記事項</Th>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検時の特記事項</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id} className="whitespace-pre-wrap">
                   {ev.specialTopics || "—"}

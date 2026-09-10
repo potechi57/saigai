@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation } from "@/components/MapLoader";
-import ViewToggleField from "@/components/ViewToggleField";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
@@ -33,8 +32,8 @@ type SearchParams = {
 //     地図には現在の検索条件に一致するカルテのピンだけを最小限の情報で表示し、
 //     詳細はピンをクリックした時のポップアップに追い出す（components/MapView.tsx）。
 //   - 「一覧」表示に切り替えられる唯一の入り口は検索条件パネル内の
-//     「検索結果を一覧で表示する」チェックボックス（ViewToggleField）。
-//     チェックすると地図の代わりにカルテ一覧テーブルを表示する。
+//     「検索結果を一覧で表示する」ボタン（検索ボタンと同じ<form>内の別の送信ボタン。
+//     name="view"の値だけが異なる）。押すと地図の代わりにカルテ一覧テーブルを表示する。
 export default async function KarteListPage({
   searchParams,
 }: {
@@ -214,12 +213,23 @@ export default async function KarteListPage({
             </select>
           </div>
 
-          <div className="border-t border-gray-200 pt-3 dark:border-gray-700">
-            <ViewToggleField defaultChecked={view === "list"} />
+          <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+            {/* 検索ボタンと同じ<form>内の別の送信ボタン（name="view"）にすることで、
+                クリックひとつでその場の条件のまま切り替わる（JS不要）。「検索」ボタン側にも
+                同じ現在のviewを持たせているため、条件を変えて検索し直しても表示方法は
+                維持される（そうしないと、一覧表示中に検索し直すたび地図表示に戻ってしまう）。 */}
+            <button
+              type="submit"
+              name="view"
+              value={view === "list" ? "map" : "list"}
+              className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              {view === "list" ? "地図で表示する" : "検索結果を一覧で表示する"}
+            </button>
           </div>
 
           <div className="flex items-center gap-3 pt-1">
-            <button type="submit" className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+            <button type="submit" name="view" value={view} className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
               検索
             </button>
             {hasCondition && (
