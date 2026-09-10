@@ -7,6 +7,7 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import SubmitButton from "@/components/SubmitButton";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
+import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import { KARTE_TYPE_LABEL, WEATHER_LABEL } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -127,18 +128,21 @@ export default async function EditInspectionTargetPage({
           </p>
           <PhotoUploadForm targetId={target.id} karteId={target.karteId} karteFacilityNo={karteNo} compact />
           {overflowPhotos.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {overflowPhotos.map((p) => (
-                <a key={p.id} href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.url}
-                    alt={p.caption ?? "写真"}
-                    className="h-28 w-28 rounded border border-gray-300 object-cover dark:border-gray-700"
-                  />
-                </a>
-              ))}
-            </div>
+            <PhotoLightboxGroup photos={overflowPhotos}>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {overflowPhotos.map((p, i) => (
+                  <PhotoLightboxThumbnail key={p.id} index={i} className="block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.url}
+                      alt={p.caption ?? "写真"}
+                      title={p.caption ?? undefined}
+                      className="h-28 w-28 cursor-zoom-in rounded border border-gray-300 object-cover dark:border-gray-700"
+                    />
+                  </PhotoLightboxThumbnail>
+                ))}
+              </div>
+            </PhotoLightboxGroup>
           )}
         </div>
       </section>

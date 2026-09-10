@@ -1,5 +1,11 @@
+"use client";
+
 // 様式Ｂの<詳細スケッチ欄>・<写真張付欄>用の写真枠。1枚固定表示で、無ければ
 // 「写真なし」と明示する（カルテ詳細画面の様式Ｂタブ、点検対象編集画面の両方で使う）。
+//
+// クリックするとPhotoLightboxのモーダルで拡大表示する（「写真をよく見えるように
+// 拡大したい」という要望への対応）。PhotoLightboxGroupの利用にクライアント
+// コンポーネントである必要があるため、このファイルも"use client"にしている。
 //
 // サイズ指定は固定px（例:`h-56`）ではなく、Tailwindのaspect-ratioユーティリティ
 // （既定`aspect-video`＝16:9）にしている。固定pxだと「枠の縦横比」と「実際に
@@ -16,6 +22,9 @@
 // 実際にアップロードされる写真の縦横比は様々なため、これでも合わない写真では
 // 依然として余白または切れが生じうる点は変わらない（トレードオフ。fit="contain"なら
 // 余白、fit="cover"なら切れになる）。
+
+import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
+
 export default function PhotoSlot({
   photo,
   aspectClass = "aspect-video",
@@ -35,15 +44,18 @@ export default function PhotoSlot({
     );
   }
   return (
-    <a href={photo.url} target="_blank" rel="noreferrer" title={photo.caption ?? undefined}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={photo.url}
-        alt={photo.caption ?? "写真"}
-        className={`${aspectClass} w-full rounded border border-gray-300 dark:border-gray-700 ${
-          fit === "contain" ? "bg-gray-50 object-contain dark:bg-gray-800" : "object-cover"
-        }`}
-      />
-    </a>
+    <PhotoLightboxGroup photos={[photo]}>
+      <PhotoLightboxThumbnail index={0}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={photo.url}
+          alt={photo.caption ?? "写真"}
+          title={photo.caption ?? undefined}
+          className={`${aspectClass} w-full cursor-zoom-in rounded border border-gray-300 dark:border-gray-700 ${
+            fit === "contain" ? "bg-gray-50 object-contain dark:bg-gray-800" : "object-cover"
+          }`}
+        />
+      </PhotoLightboxThumbnail>
+    </PhotoLightboxGroup>
   );
 }

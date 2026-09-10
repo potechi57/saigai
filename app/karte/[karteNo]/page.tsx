@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, ROAD_TYPE_LABEL, WEATHER_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
 import { seqToCircledNumber } from "@/lib/excel/karte-import";
 import PhotoSlot from "@/components/PhotoSlot";
+import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import SheetTabs from "@/components/SheetTabs";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
@@ -179,18 +180,21 @@ export default async function KarteDetailPage({
             </Th>
             <td colSpan={13} className="border border-gray-400 bg-white p-3 align-top dark:border-gray-600 dark:bg-gray-900">
               {formAPhotos.length > 0 ? (
-                <div className="flex flex-wrap gap-3">
-                  {formAPhotos.map((p) => (
-                    <a key={p.id} href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.url}
-                        alt={p.caption ?? "点検地点位置図"}
-                        className="h-[28rem] w-[28rem] rounded border border-gray-300 object-cover dark:border-gray-700"
-                      />
-                    </a>
-                  ))}
-                </div>
+                <PhotoLightboxGroup photos={formAPhotos}>
+                  <div className="flex flex-wrap gap-3">
+                    {formAPhotos.map((p, i) => (
+                      <PhotoLightboxThumbnail key={p.id} index={i} className="block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.url}
+                          alt={p.caption ?? "点検地点位置図"}
+                          title={p.caption ?? undefined}
+                          className="h-[28rem] w-[28rem] cursor-zoom-in rounded border border-gray-300 object-cover dark:border-gray-700"
+                        />
+                      </PhotoLightboxThumbnail>
+                    ))}
+                  </div>
+                </PhotoLightboxGroup>
               ) : (
                 <p className="flex h-24 items-center justify-center rounded border border-dashed border-gray-300 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
                   写真なし（カルテ編集画面から追加できます）
@@ -831,24 +835,37 @@ export default async function KarteDetailPage({
               // 実データでは基本4枚（Excel上もG23/AY23/G41/AY41の4箇所）なので、
               // 既定は2列（2×2）で並べる。3枚しかない場合のみ、横一列（3列）に
               // する（4枚時に2×2、3枚時に横3つ、という指示に合わせた特例）。
-              // PhotoSlotを使うことで縦横比（aspect-video）・fit="contain"
-              // （切れずに全体を表示）を様式Ｂと統一している。
-              <div
-                className={`grid grid-cols-1 gap-3 p-3 ${
-                  g.photos.length === 3 ? "sm:grid-cols-3" : g.photos.length >= 2 ? "sm:grid-cols-2" : ""
-                }`}
-              >
-                {g.photos.map((p) => (
-                  <div key={p.id}>
-                    <PhotoSlot photo={p} />
-                    {p.caption && (
-                      <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
-                        {p.caption}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+              // 見た目（縦横比aspect-video・切れずに全体を表示）はPhotoSlotと統一しつつ、
+              // グループ全体を1つのPhotoLightboxGroupにまとめることで、拡大表示中に
+              // このグループ内の4枚を「前へ／次へ」でめくれるようにしている
+              // （PhotoSlotを個別に使うと写真ごとに独立したグループになり、
+              // めくれなくなってしまうため、ここでは直接組み立てている）。
+              <PhotoLightboxGroup photos={g.photos}>
+                <div
+                  className={`grid grid-cols-1 gap-3 p-3 ${
+                    g.photos.length === 3 ? "sm:grid-cols-3" : g.photos.length >= 2 ? "sm:grid-cols-2" : ""
+                  }`}
+                >
+                  {g.photos.map((p, i) => (
+                    <div key={p.id}>
+                      <PhotoLightboxThumbnail index={i}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.url}
+                          alt={p.caption ?? "現状記録写真"}
+                          title={p.caption ?? undefined}
+                          className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                        />
+                      </PhotoLightboxThumbnail>
+                      {p.caption && (
+                        <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
+                          {p.caption}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </PhotoLightboxGroup>
             ),
           }))}
         />

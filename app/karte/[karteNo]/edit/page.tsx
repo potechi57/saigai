@@ -5,6 +5,7 @@ import { updateKarte, deleteKarte } from "@/lib/actions/karte-actions";
 import KarteForm, { type KarteFormValues } from "@/components/KarteForm";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 
 export const dynamic = "force-dynamic";
 
@@ -77,18 +78,21 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
           （個別の点検対象の写真は、カルテ詳細画面の各点検対象欄から追加してください）。
         </p>
         {karte.photos.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {karte.photos.map((p) => (
-              <a key={p.id} href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.url}
-                  alt={p.caption ?? "点検地点位置図・現況写真"}
-                  className="h-24 w-24 rounded border border-gray-200 dark:border-gray-700 object-cover"
-                />
-              </a>
-            ))}
-          </div>
+          <PhotoLightboxGroup photos={karte.photos}>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {karte.photos.map((p, i) => (
+                <PhotoLightboxThumbnail key={p.id} index={i} className="block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={p.caption ?? "点検地点位置図・現況写真"}
+                    title={p.caption ?? undefined}
+                    className="h-24 w-24 cursor-zoom-in rounded border border-gray-200 dark:border-gray-700 object-cover"
+                  />
+                </PhotoLightboxThumbnail>
+              ))}
+            </div>
+          </PhotoLightboxGroup>
         )}
         <PhotoUploadForm karteId={karte.id} karteFacilityNo={karte.facilityNo} />
       </section>
