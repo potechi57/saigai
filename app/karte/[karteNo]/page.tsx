@@ -828,17 +828,13 @@ export default async function KarteDetailPage({
             id: `group-${g.sheetIndex}`,
             label: seqToCircledNumber(i + 1),
             content: (
-              <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
+              // 様式Ｂの写真（列幅の2/3。おおむね全体の1/3幅）と大きさを揃えるため、
+              // 1行あたり最大3枚（lg:grid-cols-3）に抑えている。PhotoSlotを使うことで
+              // 縦横比（aspect-video）・fit="contain"（切れずに全体を表示）も様式Ｂと統一。
+              <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
                 {g.photos.map((p) => (
                   <div key={p.id}>
-                    <a href={p.url} target="_blank" rel="noreferrer" title={p.caption ?? undefined}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.url}
-                        alt={p.caption ?? "現状記録写真"}
-                        className="aspect-video w-full rounded border border-gray-300 object-cover dark:border-gray-700"
-                      />
-                    </a>
+                    <PhotoSlot photo={p} />
                     {p.caption && (
                       <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
                         {p.caption}
