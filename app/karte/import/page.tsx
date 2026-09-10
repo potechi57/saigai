@@ -36,7 +36,7 @@ export default function ImportKartePage() {
           <li>
             スケッチ等のEMF/WMF形式（ベクター画像）は、EMF変換サービス（自前で管理するGoogle
             Cloud Run上でLibreOffice
-            headlessを動かす小さなサーバー。詳しくは`services/emf-converter/README.md`参照）の環境変数を設定した場合のみPNGに変換して取り込みます。未設定の環境では従来どおり対象外です。変換処理は自分たちが管理するインフラ内で完結し、外部の第三者クラウドサービスへデータを送信することはありません。
+            headlessを動かす小さなサーバー。詳しくは`services/emf-converter/README.md`参照）を通じてPNGに変換して取り込みます（本番環境では設定済み）。この変換サービスの環境変数（`EMF_CONVERTER_URL`等）が未設定のローカル開発環境等では、EMF/WMFの取込のみ従来どおり対象外になります。変換処理は自分たちが管理するインフラ内で完結し、外部の第三者クラウドサービスへデータを送信することはありません。
           </li>
         </ul>
       </div>
