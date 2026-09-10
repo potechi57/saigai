@@ -18,6 +18,11 @@ export type MapKarte = {
   latitude: number;
   longitude: number;
   isFavorite?: boolean; // ★を地図上でも見分けられるようにする（お気に入り機能）
+  // 現状記録写真のうち、キャプションに「起点」「終点」を含む最初の1枚ずつ
+  // （lib/map-photos.ts参照）。「なんとなくこの辺りかと分かる」程度の小さな
+  // サムネイルとしてポップアップに表示するためのもので、無ければ単に表示しない。
+  startPhotoUrl?: string;
+  endPhotoUrl?: string;
 };
 
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
@@ -96,6 +101,7 @@ export default function MapView({
            <div style="font-weight:600;">${escapeHtml(k.routeName)}</div>
            <div style="color:#666;">${escapeHtml(k.facilityNo)} ・ ${escapeHtml(k.karteTypeLabel)}</div>
            <div style="margin-top:4px;">対応区分: ${escapeHtml(meta.label)}</div>
+           ${buildStartEndPhotosHtml(k)}
            <div id="${favSlotId}" style="margin-top:6px;"></div>
            <div id="${distHomeId}" style="margin-top:6px;color:#374151;font-size:12px;"></div>
            <div id="${distCurId}" style="color:#374151;font-size:12px;"></div>
@@ -501,6 +507,24 @@ async function fetchRoadRouteDistance(
   } catch {
     return { ok: false, error: "通信エラー" };
   }
+}
+
+// 起点／終点の参考写真を、ポップアップ内の小さなサムネイルとして組み立てる
+// （「現状記録写真タブほど大きくする必要はない。なんとなくこんな場所かと分かる
+// レベルの大きさで」という要望に合わせ、幅56px程度に留めている）。クリックすると
+// 元画像を別タブで開ける（拡大して詳しく見たい場合のため）。どちらも無ければ
+// 何も表示しない。
+function buildStartEndPhotosHtml(k: MapKarte): string {
+  if (!k.startPhotoUrl && !k.endPhotoUrl) return "";
+  const thumb = (url: string, label: string) => `
+    <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;">
+      <img src="${escapeHtml(url)}" style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      <span style="font-size:10px;color:#6b7280;">${escapeHtml(label)}</span>
+    </a>`;
+  return `<div style="margin-top:6px;display:flex;gap:8px;">
+      ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
+      ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
+    </div>`;
 }
 
 function escapeHtml(s: string) {

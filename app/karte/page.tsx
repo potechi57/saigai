@@ -5,6 +5,7 @@ import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
+import { getStartEndRecordPhotos } from "@/lib/map-photos";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
@@ -117,18 +118,22 @@ export default async function KarteListPage({
 
   // 地図用データ。検索フォームと同じ絞り込み結果からそのまま作る
   // （地図だけ別条件になってしまっていた従来の問題を防ぐ）。
-  const mapKartes: MapKarte[] = kartes
-    .filter((k) => k.latitude != null && k.longitude != null)
-    .map((k) => ({
-      id: k.id,
-      facilityNo: k.facilityNo,
-      routeName: k.routeName,
-      karteTypeLabel: KARTE_TYPE_LABEL[k.karteType] ?? k.karteType,
-      responseCategory: k.responseCategory,
-      latitude: Number(k.latitude),
-      longitude: Number(k.longitude),
-      isFavorite: k.favorite != null,
-    }));
+  const kartesWithCoords = kartes.filter((k) => k.latitude != null && k.longitude != null);
+  // マーカーのポップアップに表示する、起点／終点の参考写真（現状記録写真のうち
+  // キャプションに「起点」「終点」を含むもの）。lib/map-photos.ts参照。
+  const startEndPhotos = await getStartEndRecordPhotos(kartesWithCoords.map((k) => k.id));
+  const mapKartes: MapKarte[] = kartesWithCoords.map((k) => ({
+    id: k.id,
+    facilityNo: k.facilityNo,
+    routeName: k.routeName,
+    karteTypeLabel: KARTE_TYPE_LABEL[k.karteType] ?? k.karteType,
+    responseCategory: k.responseCategory,
+    latitude: Number(k.latitude),
+    longitude: Number(k.longitude),
+    isFavorite: k.favorite != null,
+    startPhotoUrl: startEndPhotos.get(k.id)?.startPhotoUrl,
+    endPhotoUrl: startEndPhotos.get(k.id)?.endPhotoUrl,
+  }));
   const withoutCoordsCount = kartes.length - mapKartes.length;
 
   // 「最近の検索」（左パネル下部）に記録する内容。表示方法（view）は検索条件では

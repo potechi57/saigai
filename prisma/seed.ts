@@ -198,6 +198,28 @@ async function main() {
     },
   });
 
+  // 現状記録写真（sourceForm=GENERAL_RECORD）のサンプル。地図ピンのポップアップに
+  // 表示する起点／終点の参考写真（lib/map-photos.ts）の動作確認用に、
+  // キャプションに「起点」「終点」を含む1枚ずつを用意している。
+  await prisma.photo.create({
+    data: {
+      karteId: karte.id,
+      url: "https://placehold.co/320x240?text=Start+Point",
+      sourceForm: PhotoSourceForm.GENERAL_RECORD,
+      caption: "起点側全景（サンプル画像）",
+      displayOrder: 0,
+    },
+  });
+  await prisma.photo.create({
+    data: {
+      karteId: karte.id,
+      url: "https://placehold.co/320x240?text=End+Point",
+      sourceForm: PhotoSourceForm.GENERAL_RECORD,
+      caption: "終点側全景（サンプル画像）",
+      displayOrder: 0,
+    },
+  });
+
   console.log("検索・地図画面の動作確認用に、簡易なサンプルカルテを追加作成しています...");
   await prisma.karte.create({
     data: {

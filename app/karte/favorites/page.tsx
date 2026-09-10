@@ -8,6 +8,7 @@ import FavoriteGroupsForm from "@/components/FavoriteGroupsForm";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { deleteFavoriteGroup } from "@/lib/actions/favorite-actions";
+import { getStartEndRecordPhotos } from "@/lib/map-photos";
 
 export const dynamic = "force-dynamic";
 
@@ -48,18 +49,21 @@ export default async function FavoritesPage({
         }
       : null;
 
-  const mapKartes: MapKarte[] = favorites
-    .filter((f) => f.karte.latitude != null && f.karte.longitude != null)
-    .map((f) => ({
-      id: f.karte.id,
-      facilityNo: f.karte.facilityNo,
-      routeName: f.karte.routeName,
-      karteTypeLabel: KARTE_TYPE_LABEL[f.karte.karteType] ?? f.karte.karteType,
-      responseCategory: f.karte.responseCategory,
-      latitude: Number(f.karte.latitude),
-      longitude: Number(f.karte.longitude),
-      isFavorite: true,
-    }));
+  const favoritesWithCoords = favorites.filter((f) => f.karte.latitude != null && f.karte.longitude != null);
+  // マーカーのポップアップに表示する、起点／終点の参考写真。lib/map-photos.ts参照。
+  const startEndPhotos = await getStartEndRecordPhotos(favoritesWithCoords.map((f) => f.karte.id));
+  const mapKartes: MapKarte[] = favoritesWithCoords.map((f) => ({
+    id: f.karte.id,
+    facilityNo: f.karte.facilityNo,
+    routeName: f.karte.routeName,
+    karteTypeLabel: KARTE_TYPE_LABEL[f.karte.karteType] ?? f.karte.karteType,
+    responseCategory: f.karte.responseCategory,
+    latitude: Number(f.karte.latitude),
+    longitude: Number(f.karte.longitude),
+    isFavorite: true,
+    startPhotoUrl: startEndPhotos.get(f.karte.id)?.startPhotoUrl,
+    endPhotoUrl: startEndPhotos.get(f.karte.id)?.endPhotoUrl,
+  }));
 
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
   const currentGroupName = groupId ? groups.find((g) => g.id === groupId)?.name : null;
