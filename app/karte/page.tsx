@@ -35,6 +35,13 @@ type SearchParams = {
 //   - 「一覧」表示に切り替えられる唯一の入り口は検索条件パネル内の
 //     「検索結果を一覧で表示する」ボタン（検索ボタンと同じ<form>内の別の送信ボタン。
 //     name="view"の値だけが異なる）。押すと地図の代わりにカルテ一覧テーブルを表示する。
+//   - 初期表示（一度も検索していない状態）では、カルテ本体のDB検索クエリ自体を
+//     実行しない（下記hasSearched参照）。単に全件取得して画面上で隠すのではなく、
+//     クエリそのものをスキップすることで、データ件数増加時のDB負荷・通信量・
+//     地図描画負荷を抑える。ユーザーが検索フォームを送信（検索/一覧表示ボタン、
+//     または「最近の検索」からの再訪問）した時点で初めてDBへ問い合わせる。
+//     条件が3つとも「すべて」のまま送信された場合は、全件取得して構わない
+//     （「検索した」という事実がある以上、全件表示は妥当な結果のため）。
 export default async function KarteListPage({
   searchParams,
 }: {
@@ -72,6 +79,17 @@ export default async function KarteListPage({
     (k) => params[k as keyof SearchParams]
   );
 
+  // 「検索が実行されたかどうか」は、条件の値ではなくURLにそのキー自体が
+  // 含まれているかで判定する（値が空でも、フォーム送信時はname付きの全フィールドが
+  // 送られるため`q=`のようにキーは残る。一方、初めて/karteを開いた場合や
+  // 「条件をクリア」で戻ってきた場合はキー自体が無い）。これにより、
+  // 「3条件すべて『すべて』のまま検索ボタンを押した」場合は全件取得してよいが、
+  // 「まだ何も検索していない初期表示」ではDBへの検索クエリ自体を実行しない、
+  // という区別ができる。
+  const hasSearched = (["q", "routeName", "routeNo", "location", "karteType", "responseCategory"] as const).some(
+    (k) => k in params
+  );
+
   // 路線名は自由入力だと表記ゆれ（全角/半角、送り仮名等）で検索漏れが起きやすいため、
   // 実際に登録されている路線名から選ぶセレクトボックスにしている（フィルタ条件に関わらず
   // 全カルテから候補を集める。「今の検索結果に無い路線名」も選べた方が使い勝手が良いため）。
@@ -94,19 +112,25 @@ export default async function KarteListPage({
         }
       : null;
 
-  const kartesBeforeLocationFilter = await prisma.karte.findMany({
-    where,
-    orderBy: { updatedAt: "desc" },
-    include: {
-      targets: { select: { id: true } },
-      events: {
-        orderBy: { inspectionDate: "desc" },
-        take: 1,
-        select: { inspectionDate: true },
-      },
-      favorite: { select: { id: true } },
-    },
-  });
+  // 初期表示（まだ検索していない状態）では、カルテ本体の検索クエリ自体を
+  // 実行しない（データ件数が増えた場合のDB負荷・通信量・地図描画負荷を抑えるため。
+  // 単にDBから全件取得して画面側で非表示にするのではなく、クエリそのものを
+  // スキップする点がポイント）。
+  const kartesBeforeLocationFilter = hasSearched
+    ? await prisma.karte.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        include: {
+          targets: { select: { id: true } },
+          events: {
+            orderBy: { inspectionDate: "desc" },
+            take: 1,
+            select: { inspectionDate: true },
+          },
+          favorite: { select: { id: true } },
+        },
+      })
+    : [];
 
   // 所在地検索は上記コメントの通り、結合済み文字列に対するJS側フィルタで行う。
   const kartes = params.location
@@ -251,8 +275,12 @@ export default async function KarteListPage({
         </form>
 
         <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-          {hasCondition ? `検索結果 ${kartes.length} 件` : `全 ${kartes.length} 件を地図に表示中`}
-          {withoutCoordsCount > 0 && `（うち座標未登録 ${withoutCoordsCount} 件は地図に表示できません）`}
+          {!hasSearched
+            ? "検索条件を指定して「検索」を押してください。"
+            : hasCondition
+              ? `検索結果 ${kartes.length} 件`
+              : `全 ${kartes.length} 件を地図に表示中`}
+          {hasSearched && withoutCoordsCount > 0 && `（うち座標未登録 ${withoutCoordsCount} 件は地図に表示できません）`}
         </p>
 
         <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
@@ -306,9 +334,13 @@ export default async function KarteListPage({
                   {kartes.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
-                        {hasCondition
-                          ? "条件に一致するカルテがありません。"
-                          : <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>}
+                        {!hasSearched ? (
+                          "検索条件を指定して「検索」を押してください。"
+                        ) : hasCondition ? (
+                          "条件に一致するカルテがありません。"
+                        ) : (
+                          <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>
+                        )}
                       </td>
                     </tr>
                   )}

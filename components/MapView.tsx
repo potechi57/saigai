@@ -51,6 +51,16 @@ export default function MapView({
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  // カルテのマーカー一式をまとめて持つレイヤーグループ。検索条件が変わって
+  // kartesの中身が変わった際に、このグループだけをクリア＆再構築する
+  // （地図本体・タイル・ホームマーカー等はそのまま維持する）。
+  const karteLayerRef = useRef<L.LayerGroup | null>(null);
+  // 直近にマーカーを構築した時点のカルテID集合（ソート済み文字列）。
+  // お気に入りのトグルなどで「同じ検索結果のまま」router.refresh()される場合まで
+  // 毎回マーカーを作り直すと、開いているポップアップが閉じる・ズーム位置が
+  // リセットされるといった不要な副作用が出るため、実際にID集合が変わった
+  // （＝新しい検索が行われた）ときだけ作り直す。
+  const lastKarteIdsKeyRef = useRef<string | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -89,12 +99,47 @@ export default function MapView({
       maxZoom: 19,
     }).addTo(map);
 
+    // カルテのマーカーは下の専用effect（[kartes]依存）が構築する。
+    // ここでは入れ物のレイヤーグループを地図に追加するだけ。
+    karteLayerRef.current = L.layerGroup().addTo(map);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      karteLayerRef.current = null;
+    };
+    // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
+    // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // カルテのマーカーを構築する専用effect。検索条件が変わってkartesの中身
+  // （IDの集合）が実際に変わったときだけマーカー一式を作り直す（お気に入り
+  // トグル等、IDの集合が変わらないrouter.refresh()では何もしない。理由は
+  // 上のlastKarteIdsKeyRefのコメント参照）。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = karteLayerRef.current;
+    if (!map || !layer) return;
+
+    const idsKey = kartes
+      .map((k) => k.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastKarteIdsKeyRef.current) return;
+    lastKarteIdsKeyRef.current = idsKey;
+
+    layer.clearLayers();
+    // お気に入りの状態も検索結果が変わるたびに最新化する（新しい検索結果には
+    // 別カルテが含まれうるため、サーバーから渡された最新のisFavoriteを信頼する）。
+    favoriteIdsRef.current = new Set(kartes.filter((k) => k.isFavorite).map((k) => k.id));
+
     const bounds: L.LatLngExpression[] = [];
 
     for (const k of kartes) {
       const meta = responseMeta(k.responseCategory);
       const marker = L.marker([k.latitude, k.longitude], { icon: buildMarkerIcon(meta, favoriteIdsRef.current.has(k.id)) }).addTo(
-        map
+        layer
       );
       const distHomeId = `dist-home-${k.id}`;
       const distCurId = `dist-current-${k.id}`;
@@ -221,17 +266,10 @@ export default function MapView({
     if (bounds.length > 0) {
       map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [40, 40], maxZoom: 15 });
     }
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-    // kartesはサーバーコンポーネントから初回描画時に渡される固定値のため、
-    // マウント時の1回だけ地図を構築すれば十分（依存配列は意図的に空）。
-    // home/現在地は上記の通りrefで参照するため、ここでは依存にしない
-    // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
+    // home/現在地は上記の通りrefで参照するため、依存には含めない
+    // （home/現在地が変わるたびにマーカーを作り直す必要は無いため）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [kartes]);
 
   // ホーム位置ピンは、地図本体を作り直さずに独立して追加・更新・削除する
   // （上の初期化effectとは別立てにする理由は直上のコメントの通り）。
