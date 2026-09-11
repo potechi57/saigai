@@ -7,8 +7,10 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 export const dynamic = "force-dynamic";
 
 // トンネル台帳等、道路防災カルテ（Excel取込）とは別枠の台帳の一覧画面。
-// 構造化データが無く、スキャン画像＋最低限の基本情報だけで登録されている
-// （prisma/schema.prismaのFacilityLedgerコメント参照）。地図（/karte）にも
+// 橋梁・トンネル・シェッド・大型カルバート等は道路法施行規則に基づく法定点検
+// （施設ごとに別の定期点検要領。構造物点検）の対象であり、現状はこのうちトンネルの
+// 画像台帳のみ対応している。構造化データが無く、スキャン画像＋最低限の基本情報だけで
+// 登録されている（prisma/schema.prismaのFacilityLedgerコメント参照）。地図（/karte）にも
 // ピンとして表示される（緯度経度が登録されている場合のみ）。
 export default async function LedgersPage() {
   const ledgers = await prisma.facilityLedger.findMany({ orderBy: { createdAt: "desc" } });

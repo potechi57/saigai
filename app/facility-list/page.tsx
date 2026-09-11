@@ -5,11 +5,12 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 
 export const dynamic = "force-dynamic";
 
-// 「施設一覧」形式のExcelから取り込んだ、道路構造物等（法面構造物・大型カルバート・
-// シェッド・橋梁・トンネル等。実際の点検制度は施設ごとに「道路土工構造物点検要領」
-// 「シェッド、大型カルバート等定期点検要領」「橋梁定期点検要領」等に分かれる）の台帳
-// 一覧画面。防災カルテ（自然斜面の落石・崩壊等が対象）の検索・一覧画面（/karte）とは
-// 別の、シンプルな全件テーブル表示にしている
+// 「施設一覧」形式のExcelから取り込んだ、道路土工構造物点検（法面構造物：切土・のり面・
+// 盛土・擁壁・ブロック積等の健全性・安定性を対象とする点検。道路土工構造物点検要領）の
+// 台帳一覧画面。橋梁・トンネル・シェッド・大型カルバート等は法定点検（別の定期点検要領）
+// の対象であり、この一覧の対象外（台帳（画像）の登録／今後の別機能で扱う想定）。
+// 防災カルテ（自然災害・斜面災害リスクの点検。落石・崩壊等が対象）の検索・一覧画面
+// （/karte）とは別の、シンプルな全件テーブル表示にしている
 // （件数規模が施設一覧＝台帳全体であり、カルテほど複雑な検索条件は
 // 今のところ不要なため）。地図（/karte）にはピンとして表示される。
 export default async function FacilityListPage() {
@@ -24,7 +25,7 @@ export default async function FacilityListPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">施設一覧（{items.length}件）</h1>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            道路構造物等（法面構造物・大型カルバート・シェッド・橋梁・トンネル等）の台帳
+            道路土工構造物点検（法面構造物：切土・盛土・擁壁・ブロック積等）の台帳
           </p>
         </div>
         <Link
