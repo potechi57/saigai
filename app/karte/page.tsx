@@ -224,6 +224,11 @@ export default async function KarteListPage({
             （「検索・条件クリア後、何も表示されず処理中か分からない」というUX
             指摘への対応。app/karte/loading.tsxとあわせて2段構えにしている）。 */}
         <Form action="" className="space-y-3">
+          {/* 表示方法（地図/一覧）は、送信ボタンのname/valueではなくこの隠しinputで
+              保持する（SearchSubmitButtonのコメント参照。next/formの<Form>は
+              送信ボタン自身のname/valueをクエリに含めないため、ボタンのonClickで
+              この値を直接書き換えてから送信させる方式にしている）。 */}
+          <input type="hidden" name="view" defaultValue={view} />
           <SearchField name="q" label="施設管理番号 / カルテ番号" defaultValue={params.q} />
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
@@ -274,14 +279,14 @@ export default async function KarteListPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            {/* 検索ボタンと同じ<form>内の別の送信ボタン（name="view"）にすることで、
-                クリックひとつでその場の条件のまま切り替わる（JS不要）。「検索」ボタン側にも
-                同じ現在のviewを持たせているため、条件を変えて検索し直しても表示方法は
-                維持される（そうしないと、一覧表示中に検索し直すたび地図表示に戻ってしまう）。 */}
+            {/* クリック時に隠しinput（name="view"）の値を書き換えてから送信することで、
+                ワンクリックでその場の条件のまま表示方法だけ切り替わる。「検索」ボタン側は
+                targetView=view（現在の表示方法を維持）にしているため、条件を変えて
+                検索し直しても表示方法は維持される（そうしないと、一覧表示中に検索し
+                直すたび地図表示に戻ってしまう）。 */}
             <SearchSubmitButton
               type="submit"
-              name="view"
-              value={view === "list" ? "map" : "list"}
+              targetView={view === "list" ? "map" : "list"}
               className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               {view === "list" ? "地図で表示する" : "検索結果を一覧で表示する"}
@@ -291,8 +296,7 @@ export default async function KarteListPage({
           <div className="flex items-center gap-3 pt-1">
             <SearchSubmitButton
               type="submit"
-              name="view"
-              value={view}
+              targetView={view}
               className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
             >
               検索
