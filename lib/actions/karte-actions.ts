@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { del } from "@vercel/blob";
 import {
   KarteType,
   ProjectCategory,
@@ -159,8 +160,24 @@ export async function updateKarte(karteId: string, formData: FormData) {
 // かえって一覧を汚してしまうと判断した。確認ダイアログ（ConfirmSubmitButton）
 // で誤操作を防ぐ。
 export async function deleteKarte(karteId: string) {
+  // カルテを削除するとPhoto・AttachmentDocumentもDB上はカスケード削除されるが、
+  // それらが指すVercel Blobの実ファイルは自動的には消えない（del()を別途呼ぶ
+  // 必要がある。lib/actions/import-actions.tsのdeletePhotosWithBlobs等と同じ理由）。
+  // カスケードで行が消える前に、参照しているURLを先に控えておく。
+  const [photoUrls, attachmentUrls] = await Promise.all([
+    prisma.photo.findMany({ where: { karteId }, select: { url: true } }),
+    prisma.attachmentDocument.findMany({ where: { karteId }, select: { url: true } }),
+  ]);
+
   // deleteは削除した行そのものを返すため、削除後でもfacilityNo等をログに残せる。
   const karte = await prisma.karte.delete({ where: { id: karteId } });
+
+  const blobUrls = [...photoUrls.map((p) => p.url), ...attachmentUrls.map((a) => a.url)];
+  if (blobUrls.length > 0) {
+    // Blob削除の失敗はベストエフォート。カルテ自体の削除（DB側）は既に完了しており、
+    // それを取り消す必要は無いため、ここで例外を投げてユーザーに再試行させない。
+    await del(blobUrls).catch(() => {});
+  }
 
   await logAudit({
     action: "DELETE",

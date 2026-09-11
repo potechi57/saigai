@@ -3,10 +3,11 @@
 import * as XLSX from "xlsx";
 import * as officeCrypto from "officecrypto-tool";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
+import { put, del } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import {
+  type Prisma,
   KarteType,
   ProjectCategory,
   RoadType,
@@ -85,6 +86,35 @@ function sanitizeForUrl(name: string): string {
 
 function hasBlobCredentials(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN);
+}
+
+// ── Blobの孤立防止 ───────────────────────────────────────────
+// Vercel BlobとDBは別々のストレージのため、`prisma.photo.deleteMany()`等で
+// DBの行を消しても、対応するBlobの実ファイルは自動的には消えない
+// （`del()`を別途呼んで初めて実ファイルが消える）。再取込のたびにこの`del()`を
+// 呼び忘れると、DBのどこからも参照されない「孤立Blob」が積み上がっていく
+// （実際に本番のVercel Blobで発生を確認・調査済み。scripts/audit-blob-usage.ts参照）。
+// この2つのヘルパーで、「削除予定のURLを先に控える→DBの行を消す→Blobの実体も消す」
+// という3ステップを常にセットで行うようにする。
+async function deletePhotosWithBlobs(where: Prisma.PhotoWhereInput): Promise<void> {
+  const old = await prisma.photo.findMany({ where, select: { url: true } });
+  await prisma.photo.deleteMany({ where });
+  if (old.length > 0) {
+    // Blob削除の失敗はベストエフォート（既に手動で消されている等）。
+    // DBの整合性（行が消えていること）には影響させない。
+    await del(old.map((p) => p.url)).catch(() => {});
+  }
+}
+
+// 取込元Excel原本（AttachmentDocument）も同様。このアプリでAttachmentDocumentを
+// 作成しているのはExcel取込処理のみ（他に手動アップロードのUIは無い）ため、
+// 再取込時は「そのカルテの既存AttachmentDocumentを全て消してから作り直す」で問題ない。
+async function deleteAttachmentsWithBlobs(where: Prisma.AttachmentDocumentWhereInput): Promise<void> {
+  const old = await prisma.attachmentDocument.findMany({ where, select: { url: true } });
+  await prisma.attachmentDocument.deleteMany({ where });
+  if (old.length > 0) {
+    await del(old.map((a) => a.url)).catch(() => {});
+  }
 }
 
 // ── Excel取込履歴 ───────────────────────────────────────────
@@ -166,14 +196,12 @@ async function importRecordPhotos(
   try {
     // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の現状記録写真
     // （sourceForm=GENERAL_RECORD）は入れ替える。
-    await prisma.photo.deleteMany({
-      where: {
-        karteId,
-        targetId: null,
-        eventId: null,
-        disasterEventId: null,
-        sourceForm: PhotoSourceForm.GENERAL_RECORD,
-      },
+    await deletePhotosWithBlobs({
+      karteId,
+      targetId: null,
+      eventId: null,
+      disasterEventId: null,
+      sourceForm: PhotoSourceForm.GENERAL_RECORD,
     });
     // captionには実際のキャプション文字列（Excel上の「起点側全景」等）を入れる。
     // displayOrderには元シートの通し番号（0始まり）を入れ、カルテ詳細画面側は
@@ -379,14 +407,12 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
         // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の様式Ａ写真
         // （sourceForm=FORM_A）は入れ替える。手動アップロード分（sourceForm=OTHER）は
         // 対象外なので消えない。
-        await prisma.photo.deleteMany({
-          where: {
-            karteId: karte.id,
-            targetId: null,
-            eventId: null,
-            disasterEventId: null,
-            sourceForm: PhotoSourceForm.FORM_A,
-          },
+        await deletePhotosWithBlobs({
+          karteId: karte.id,
+          targetId: null,
+          eventId: null,
+          disasterEventId: null,
+          sourceForm: PhotoSourceForm.FORM_A,
         });
         for (const [i, img] of formAImages.entries()) {
           const blob = await put(`karte-imports/${facilityNo}-formA-${Date.now()}-${i}.${img.ext}`, img.data, {
@@ -410,7 +436,11 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
   // 取込元のExcelそのものをカルテ資料として保存しておく（抽出結果の検証・原本保全用、
   // ベストエフォート）。ブラウザから直接Blobへアップロード済みのURLをそのまま
   // 資料として記録するだけでよく、サーバー側から再度アップロードし直す必要はない。
+  // このアプリでAttachmentDocumentを作るのはExcel取込処理のみのため、再取込時は
+  // 前回分を消してから作り直す（消さずに増やし続けると、Blobの容量を最も圧迫する
+  // 「取込元Excel原本」の重複が無限に積み上がってしまうため）。
   try {
+    await deleteAttachmentsWithBlobs({ karteId: karte.id });
     await prisma.attachmentDocument.create({
       data: { karteId: karte.id, title: `取込元Excel（${fileName}）`, url: blobUrl, fileType: "xls" },
     });
@@ -485,7 +515,7 @@ async function runImportPhase2(karteId: string, blobUrl: string, sheetName: stri
     const formBImages = await extractSheetImages(sourceBuffer, sheetName);
     if (formBImages.length > 0) {
       try {
-        await prisma.photo.deleteMany({ where: { targetId: target.id, sourceForm: PhotoSourceForm.FORM_B } });
+        await deletePhotosWithBlobs({ targetId: target.id, sourceForm: PhotoSourceForm.FORM_B });
         for (const [j, img] of formBImages.entries()) {
           const blob = await put(`karte-imports/${karteId}-formB-${seq}-${Date.now()}-${j}.${img.ext}`, img.data, {
             access: "public",
@@ -779,8 +809,12 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
     const formAImages = await extractFormAImages(sourceBuffer);
     if (formAImages.length > 0) {
       try {
-        await prisma.photo.deleteMany({
-          where: { karteId: karte.id, targetId: null, eventId: null, disasterEventId: null, sourceForm: PhotoSourceForm.FORM_A },
+        await deletePhotosWithBlobs({
+          karteId: karte.id,
+          targetId: null,
+          eventId: null,
+          disasterEventId: null,
+          sourceForm: PhotoSourceForm.FORM_A,
         });
         for (const [i, img] of formAImages.entries()) {
           const blob = await put(`karte-imports/${facilityNo}-formA-${Date.now()}-${i}.${img.ext}`, img.data, {
@@ -830,7 +864,7 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
       const formBImages = await extractSheetImages(sourceBuffer, sheetName);
       if (formBImages.length > 0) {
         try {
-          await prisma.photo.deleteMany({ where: { targetId: target.id, sourceForm: PhotoSourceForm.FORM_B } });
+          await deletePhotosWithBlobs({ targetId: target.id, sourceForm: PhotoSourceForm.FORM_B });
           for (const [j, img] of formBImages.entries()) {
             const blob = await put(`karte-imports/${facilityNo}-formB-${seq}-${Date.now()}-${j}.${img.ext}`, img.data, {
               access: "public",
@@ -919,6 +953,9 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
 
   if (hasBlobCredentials()) {
     try {
+      // 前回分を消してから作り直す（理由はphase1側のimportPhase1KarteAndFormAの
+      // 同種の処理のコメント参照）。
+      await deleteAttachmentsWithBlobs({ karteId: karte.id });
       const blob = await put(`karte-imports/${facilityNo}-${Date.now()}.xls`, buffer, {
         access: "public",
         addRandomSuffix: false,
