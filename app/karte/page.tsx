@@ -15,37 +15,62 @@ import PendingLink from "@/components/PendingLink";
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
 export const dynamic = "force-dynamic";
 
+// 検索条件は「防災カルテ点検」側と「道路土工構造物点検」側で完全に別のキーにしている
+// （対象施設・対象事象が異なるため、絞り込み条件も別物になる。詳細はGROUPS参照:
+// app/import/page.tsx）。KARTE_PARAM_KEYS/FACILITY_PARAM_KEYSは、hasSearched判定
+// （キーの有無で判定）・条件クリア・もう片方の検索状態の保持（隠しinputでの引き継ぎ）
+// の3箇所で共通して使うため、配列としてまとめている。
+const KARTE_PARAM_KEYS = ["q", "routeName", "routeNo", "location", "karteType", "responseCategory"] as const;
+const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "facilityType", "soundnessGrade"] as const;
+
 type SearchParams = {
-  q?: string; // 施設管理番号／カルテ番号（同一フィールドのため一本化）
+  q?: string; // 施設管理番号（カルテ側）
   routeName?: string;
   routeNo?: string;
   location?: string;
-  karteType?: string;
+  karteType?: string; // 災害区分
   responseCategory?: string;
+  fq?: string; // 管理番号（道路土工構造物点検＝施設一覧側）
+  facRouteName?: string;
+  facLocation?: string;
+  facilityType?: string;
+  soundnessGrade?: string;
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
 };
+
+// 現在のsearchParamsから、指定したキー群を除いた（またはoverridesで上書きした）
+// クエリ文字列を作る。「キーが存在するかどうか」でhasSearched等を判定しているため、
+// 単に値を""にするのではなく、キーそのものを含めるかどうかを制御できるようにしている。
+function buildQuery(
+  params: SearchParams,
+  options: { remove?: readonly string[]; overrides?: Partial<SearchParams> } = {}
+): string {
+  const usp = new URLSearchParams();
+  const merged: SearchParams = { ...params, ...options.overrides };
+  for (const [key, value] of Object.entries(merged)) {
+    if (options.remove?.includes(key)) continue;
+    if (value !== undefined) usp.set(key, value);
+  }
+  return usp.toString();
+}
 
 // 「地図を中心とした画面」（ホーム画面）。指示書19章の方針に沿い、検索画面（6章）・
 // カルテ一覧画面（8章）・地図検索画面（7章）を1画面に統合している。
 //
-// 以前は検索フォームの下に「一覧」「地図」タブを並べて表示していたが、
-// 「地図を中心とした画面にしてほしい。初期表示は地図だけ、一覧は表示しない」
-// という要望を受けて、次のレイアウトに刷新した:
+// 検索条件パネルには「防災カルテ点検」「道路土工構造物点検」の2つの独立した検索フォーム
+// を並べている（施設台帳機能の追加に伴い、カルテ以外の点検対象も検索できるようにする
+// 要望への対応）。地図には、検索済みの系統のピンだけを表示する（未検索の系統は表示
+// しない＝「防災カルテと同じように検索時に表示される」という要望に対応）。台帳（画像、
+// 現状トンネルのみ）は件数が少なく複雑な検索条件が不要なため、従来どおり常時表示する。
 //   - 画面いっぱい（ヘッダー直下〜画面下端）を使い、左に検索条件パネル、
 //     中央（残り全体）に地図を常時表示する（PCでの基本レイアウト）。
-//   - 初期表示（条件無し）では地図だけを見せ、カルテの一覧テーブルは出さない。
-//     地図には現在の検索条件に一致するカルテのピンだけを最小限の情報で表示し、
-//     詳細はピンをクリックした時のポップアップに追い出す（components/MapView.tsx）。
+//   - 初期表示（条件無し）では地図だけを見せ、一覧テーブルは出さない。
 //   - 「一覧」表示に切り替えられる唯一の入り口は検索条件パネル内の
-//     「検索結果を一覧で表示する」ボタン（検索ボタンと同じ<form>内の別の送信ボタン。
-//     name="view"の値だけが異なる）。押すと地図の代わりにカルテ一覧テーブルを表示する。
-//   - 初期表示（一度も検索していない状態）では、カルテ本体のDB検索クエリ自体を
-//     実行しない（下記hasSearched参照）。単に全件取得して画面上で隠すのではなく、
-//     クエリそのものをスキップすることで、データ件数増加時のDB負荷・通信量・
-//     地図描画負荷を抑える。ユーザーが検索フォームを送信（検索/一覧表示ボタン、
-//     または「最近の検索」からの再訪問）した時点で初めてDBへ問い合わせる。
-//     条件が3つとも「すべて」のまま送信された場合は、全件取得して構わない
-//     （「検索した」という事実がある以上、全件表示は妥当な結果のため）。
+//     「検索結果を一覧で表示する」ボタン（防災カルテ側フォームの送信ボタン。
+//     name="view"の値だけが異なる。道路土工構造物点検フォームにも同じ隠しinputで
+//     現在のviewを引き継がせているため、どちらの検索を実行してもview状態は保たれる）。
+//   - 初期表示（一度も検索していない状態）では、検索クエリ自体を実行しない
+//     （下記hasSearched/hasFacSearched参照）。系統ごとに独立して判定する。
 export default async function KarteListPage({
   searchParams,
 }: {
@@ -54,6 +79,7 @@ export default async function KarteListPage({
   const params = await searchParams;
   const view: "map" | "list" = params.view === "list" ? "list" : "map";
 
+  // ---- 防災カルテ点検側 ----
   const where: Prisma.KarteWhereInput = {};
   if (params.q) {
     where.facilityNo = { contains: params.q, mode: "insensitive" };
@@ -64,12 +90,6 @@ export default async function KarteListPage({
   if (params.routeNo) {
     where.routeNo = { contains: params.routeNo, mode: "insensitive" };
   }
-  // 所在地はlocationDistrict（郡・市〜町村種別まで）とlocationTown（大字等）の2カラムに
-  // 分けて格納しているが、一覧・検索条件では{district}{town}を結合した1つの文字列として
-  // 見せている。locationDistrict/locationTownをそれぞれ別々にcontains検索すると、
-  // 表示上の「所在地」欄でしか繋がらない検索語（districtの末尾〜townの先頭にまたがる語、
-  // 例:"広瀬町 祖父谷"）を拾えない不具合があったため、DBのwhereでは絞り込まず、
-  // 他の条件で絞り込んだ結果に対して結合済み文字列でJS側フィルタする（下記）。
   // <select>のoption値はKARTE_TYPE_LABEL/RESPONSE_METAのキー（＝enumのメンバー名そのもの）
   // からしか生成していないため、想定外の値が来ることはない前提でキャストする。
   if (params.karteType && params.karteType in KarteType) {
@@ -79,31 +99,45 @@ export default async function KarteListPage({
     where.responseCategory = params.responseCategory as ResponseCategory;
   }
 
-  const hasCondition = ["q", "routeName", "routeNo", "location", "karteType", "responseCategory"].some(
-    (k) => params[k as keyof SearchParams]
-  );
-
+  const hasCondition = KARTE_PARAM_KEYS.some((k) => params[k]);
   // 「検索が実行されたかどうか」は、条件の値ではなくURLにそのキー自体が
   // 含まれているかで判定する（値が空でも、フォーム送信時はname付きの全フィールドが
-  // 送られるため`q=`のようにキーは残る。一方、初めて/karteを開いた場合や
-  // 「条件をクリア」で戻ってきた場合はキー自体が無い）。これにより、
-  // 「3条件すべて『すべて』のまま検索ボタンを押した」場合は全件取得してよいが、
-  // 「まだ何も検索していない初期表示」ではDBへの検索クエリ自体を実行しない、
-  // という区別ができる。
-  const hasSearched = (["q", "routeName", "routeNo", "location", "karteType", "responseCategory"] as const).some(
-    (k) => k in params
-  );
+  // 送られるため`q=`のようにキーは残る）。
+  const hasSearched = KARTE_PARAM_KEYS.some((k) => k in params);
 
-  // 路線名は自由入力だと表記ゆれ（全角/半角、送り仮名等）で検索漏れが起きやすいため、
-  // 実際に登録されている路線名から選ぶセレクトボックスにしている（フィルタ条件に関わらず
-  // 全カルテから候補を集める。「今の検索結果に無い路線名」も選べた方が使い勝手が良いため）。
-  // トンネル台帳等（FacilityLedger）は、カルテの検索条件・hasSearchedとは無関係に
-  // 常に取得する（件数が少ない想定のため、カルテのような「検索するまで表示しない」
-  // 制御はしていない。lib/actions/facility-ledger-actions.ts参照）。
-  // 施設一覧Excelから取り込んだ施設（FacilityListItem）も、ledgersと同じ理由で
-  // カルテの検索条件・hasSearchedとは無関係に常に取得する
-  // （lib/actions/facility-list-actions.ts参照）。
-  const [routeNameRows, settings, facilityLedgersRaw, facilityListItemsRaw] = await Promise.all([
+  // ---- 道路土工構造物点検側（施設一覧＝FacilityListItem） ----
+  const facWhere: Prisma.FacilityListItemWhereInput = {};
+  if (params.fq) {
+    facWhere.managementNo = { contains: params.fq, mode: "insensitive" };
+  }
+  if (params.facRouteName) {
+    facWhere.routeName = params.facRouteName;
+  }
+  if (params.facLocation) {
+    facWhere.location = { contains: params.facLocation, mode: "insensitive" };
+  }
+  if (params.facilityType) {
+    facWhere.facilityType = params.facilityType;
+  }
+  if (params.soundnessGrade) {
+    facWhere.soundnessGrade = params.soundnessGrade;
+  }
+  const hasFacCondition = FACILITY_PARAM_KEYS.some((k) => params[k]);
+  const hasFacSearched = FACILITY_PARAM_KEYS.some((k) => k in params);
+
+  // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
+  // いる値から選ぶセレクトボックスにしている（フィルタ条件に関わらず全件から候補を
+  // 集める）。防災カルテ・道路土工構造物点検はデータが別物のため、選択肢も別々に集計
+  // する。トンネル台帳等（FacilityLedger）は、件数が少ない想定のため検索条件を持たせず
+  // 常に取得する（lib/actions/facility-ledger-actions.ts参照）。
+  const [
+    routeNameRows,
+    settings,
+    facilityLedgersRaw,
+    facRouteNameRows,
+    facilityTypeRows,
+    soundnessGradeRows,
+  ] = await Promise.all([
     prisma.karte.findMany({
       distinct: ["routeName"],
       select: { routeName: true },
@@ -111,9 +145,27 @@ export default async function KarteListPage({
     }),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
     prisma.facilityLedger.findMany({ where: { latitude: { not: null }, longitude: { not: null } } }),
-    prisma.facilityListItem.findMany({ where: { latitude: { not: null }, longitude: { not: null } } }),
+    prisma.facilityListItem.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true },
+      orderBy: { routeName: "asc" },
+    }),
+    prisma.facilityListItem.findMany({
+      distinct: ["facilityType"],
+      select: { facilityType: true },
+      orderBy: { facilityType: "asc" },
+    }),
+    prisma.facilityListItem.findMany({
+      distinct: ["soundnessGrade"],
+      select: { soundnessGrade: true },
+      orderBy: { soundnessGrade: "asc" },
+    }),
   ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
+  const facRouteNameOptions = facRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
+  const facilityTypeOptions = facilityTypeRows.map((r) => r.facilityType).filter((v): v is string => !!v);
+  const soundnessGradeOptions = soundnessGradeRows.map((r) => r.soundnessGrade).filter((v): v is string => !!v);
+
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
     id: l.id,
     categoryLabel: FACILITY_LEDGER_CATEGORY_LABEL[l.category] ?? l.category,
@@ -125,20 +177,6 @@ export default async function KarteListPage({
     imageUrl: l.imageUrl,
     note: l.note,
   }));
-  const mapFacilityListItems: MapFacilityListItem[] = facilityListItemsRaw.map((f) => ({
-    id: f.id,
-    managementNo: f.managementNo,
-    officeName: f.officeName,
-    routeName: f.routeName,
-    facilityType: f.facilityType,
-    location: f.location,
-    latitude: Number(f.latitude),
-    longitude: Number(f.longitude),
-    soundnessGrade: f.soundnessGrade,
-    inspectionDateLabel: f.inspectionDate ? new Date(f.inspectionDate).toLocaleDateString("ja-JP") : null,
-    mainFindings: f.mainFindings,
-    remarks: f.remarks,
-  }));
 
   const home: HomeLocation =
     settings?.homeLatitude != null && settings?.homeLongitude != null
@@ -149,10 +187,9 @@ export default async function KarteListPage({
         }
       : null;
 
-  // 初期表示（まだ検索していない状態）では、カルテ本体の検索クエリ自体を
-  // 実行しない（データ件数が増えた場合のDB負荷・通信量・地図描画負荷を抑えるため。
-  // 単にDBから全件取得して画面側で非表示にするのではなく、クエリそのものを
-  // スキップする点がポイント）。
+  // 初期表示（まだ検索していない状態）では、検索クエリ自体を実行しない（データ件数が
+  // 増えた場合のDB負荷・通信量・地図描画負荷を抑えるため。単にDBから全件取得して画面側
+  // で非表示にするのではなく、クエリそのものをスキップする点がポイント）。
   const kartesBeforeLocationFilter = hasSearched
     ? await prisma.karte.findMany({
         where,
@@ -169,13 +206,20 @@ export default async function KarteListPage({
       })
     : [];
 
-  // 所在地検索は上記コメントの通り、結合済み文字列に対するJS側フィルタで行う。
+  // 所在地はlocationDistrict（郡・市〜町村種別まで）とlocationTown（大字等）の2カラムに
+  // 分けて格納しているが、検索条件では{district}{town}を結合した1つの文字列として
+  // 見せている。DBのwhereでは絞り込まず、他の条件で絞り込んだ結果に対して結合済み
+  // 文字列でJS側フィルタする（districtの末尾〜townの先頭にまたがる語を拾うため）。
   const kartes = params.location
     ? kartesBeforeLocationFilter.filter((k) => {
         const combined = [k.locationDistrict, k.locationTown].filter(Boolean).join(" ").toLowerCase();
         return combined.includes(params.location!.toLowerCase());
       })
     : kartesBeforeLocationFilter;
+
+  const facilityItems = hasFacSearched
+    ? await prisma.facilityListItem.findMany({ where: facWhere, orderBy: { managementNo: "asc" } })
+    : [];
 
   // 地図用データ。検索フォームと同じ絞り込み結果からそのまま作る
   // （地図だけ別条件になってしまっていた従来の問題を防ぐ）。
@@ -202,8 +246,26 @@ export default async function KarteListPage({
   }));
   const withoutCoordsCount = kartes.length - mapKartes.length;
 
+  const facilityItemsWithCoords = facilityItems.filter((f) => f.latitude != null && f.longitude != null);
+  const mapFacilityListItems: MapFacilityListItem[] = facilityItemsWithCoords.map((f) => ({
+    id: f.id,
+    managementNo: f.managementNo,
+    officeName: f.officeName,
+    routeName: f.routeName,
+    facilityType: f.facilityType,
+    location: f.location,
+    latitude: Number(f.latitude),
+    longitude: Number(f.longitude),
+    soundnessGrade: f.soundnessGrade,
+    inspectionDateLabel: f.inspectionDate ? new Date(f.inspectionDate).toLocaleDateString("ja-JP") : null,
+    mainFindings: f.mainFindings,
+    remarks: f.remarks,
+  }));
+  const facWithoutCoordsCount = facilityItems.length - mapFacilityListItems.length;
+
   // 「最近の検索」（左パネル下部）に記録する内容。表示方法（view）は検索条件では
   // ないため、記録対象からは除外する（一覧⇔地図の切替だけでは履歴を増やさない）。
+  // 現状は防災カルテ側の検索のみを対象にしている（道路土工構造物点検側の履歴は今後の課題）。
   const historyParams = new URLSearchParams();
   if (params.q) historyParams.set("q", params.q);
   if (params.routeName) historyParams.set("routeName", params.routeName);
@@ -226,6 +288,10 @@ export default async function KarteListPage({
   }
   const currentSearchLabel = conditionLabels.length > 0 ? conditionLabels.join(" ・ ") : null;
 
+  const toggleViewHref = `/karte?${buildQuery(params, { overrides: { view: view === "list" ? "map" : "list" } })}`;
+  const clearKarteHref = `/karte?${buildQuery(params, { remove: KARTE_PARAM_KEYS })}`;
+  const clearFacHref = `/karte?${buildQuery(params, { remove: FACILITY_PARAM_KEYS })}`;
+
   return (
     // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
     // 分け合う（このページだけの都合のレイアウトのため、他ページのようなmx-auto
@@ -233,24 +299,40 @@ export default async function KarteListPage({
     // app/layout.tsxのコメント参照）。
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
       <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-r border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 lg:w-96">
-        <h1 className="mb-3 text-lg font-bold text-gray-800 dark:text-gray-100">防災点検検索</h1>
+        <h1 className="mb-1 text-lg font-bold text-gray-800 dark:text-gray-100">点検・台帳検索</h1>
+        <p className="mb-3 text-xs text-gray-400 dark:text-gray-500">
+          <PendingLink href={toggleViewHref} className="text-blue-600 dark:text-blue-400 hover:underline">
+            {view === "list" ? "地図で表示する" : "検索結果を一覧で表示する"}
+          </PendingLink>
+        </p>
+
+        {/* --- 防災カルテ点検 --- */}
+        <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">防災カルテ点検</h2>
         {/* next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
             従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
             （ページ全体のリロードをしない）とloading.tsxのフォールバック表示を
             有効にする。SearchSubmitButtonがuseFormStatus()で送信中を検知し、
-            即座にスピナー表示できるのもこの<Form>の子孫だからこそ
-            （「検索・条件クリア後、何も表示されず処理中か分からない」というUX
-            指摘への対応。app/karte/loading.tsxとあわせて2段構えにしている）。 */}
+            即座にスピナー表示できるのもこの<Form>の子孫だからこそ。 */}
         <Form action="" className="space-y-3">
           {/* 表示方法（地図/一覧）は、送信ボタンのname/valueではなくこの隠しinputで
-              保持する（SearchSubmitButtonのコメント参照。next/formの<Form>は
-              送信ボタン自身のname/valueをクエリに含めないため、ボタンのonClickで
-              この値を直接書き換えてから送信させる方式にしている）。 */}
+              保持する（SearchSubmitButtonのコメント参照）。 */}
           <input type="hidden" name="view" defaultValue={view} />
-          <SearchField name="q" label="施設管理番号" defaultValue={params.q} />
+          {/* 道路土工構造物点検側が検索済みの場合のみ、その現在値を隠しinputで引き継ぐ
+              （このフォームの送信で相手側の検索状態を消してしまわないため。未検索の
+              場合は何も引き継がない＝相手側もhasFacSearched=falseのまま維持される）。 */}
+          {hasFacSearched &&
+            FACILITY_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
+          <SearchField key={`q-${params.q ?? ""}`} name="q" label="施設管理番号" defaultValue={params.q} />
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+            {/* keyにdefaultValueを含めることで、リンク経由の遷移（条件クリア・最近の検索等）
+                でこのフィールドの値が変わった時にDOMごと作り直させ、defaultValueが再適用
+                されるようにしている。next/formの<Form>によるフォーム送信の場合は
+                ページ全体が作り直されるため本来は不要だが、リンク遷移では同じDOMノードが
+                再利用され、defaultValue（=uncontrolled）は初回マウント時にしか効かないため
+                古い表示のまま残ってしまう問題への対処。 */}
             <select
+              key={params.routeName ?? ""}
               name="routeName"
               defaultValue={params.routeName ?? ""}
               className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
@@ -263,11 +345,12 @@ export default async function KarteListPage({
               ))}
             </select>
           </div>
-          <SearchField name="routeNo" label="路線番号" defaultValue={params.routeNo} />
-          <SearchField name="location" label="所在地" defaultValue={params.location} />
+          <SearchField key={`routeNo-${params.routeNo ?? ""}`} name="routeNo" label="路線番号" defaultValue={params.routeNo} />
+          <SearchField key={`location-${params.location ?? ""}`} name="location" label="所在地" defaultValue={params.location} />
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
             <select
+              key={params.karteType ?? ""}
               name="karteType"
               defaultValue={params.karteType ?? ""}
               className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
@@ -283,6 +366,7 @@ export default async function KarteListPage({
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
             <select
+              key={params.responseCategory ?? ""}
               name="responseCategory"
               defaultValue={params.responseCategory ?? ""}
               className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
@@ -296,19 +380,95 @@ export default async function KarteListPage({
             </select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            {/* クリック時に隠しinput（name="view"）の値を書き換えてから送信することで、
-                ワンクリックでその場の条件のまま表示方法だけ切り替わる。「検索」ボタン側は
-                targetView=view（現在の表示方法を維持）にしているため、条件を変えて
-                検索し直しても表示方法は維持される（そうしないと、一覧表示中に検索し
-                直すたび地図表示に戻ってしまう）。 */}
+          <div className="flex items-center gap-3 pt-1">
             <SearchSubmitButton
               type="submit"
-              targetView={view === "list" ? "map" : "list"}
-              className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+              targetView={view}
+              className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
             >
-              {view === "list" ? "地図で表示する" : "検索結果を一覧で表示する"}
+              検索
             </SearchSubmitButton>
+            {hasCondition && (
+              <PendingLink href={clearKarteHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+                条件をクリア
+              </PendingLink>
+            )}
+          </div>
+        </Form>
+        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+          {!hasSearched
+            ? "検索条件を指定して「検索」を押してください。"
+            : hasCondition
+              ? `検索結果 ${kartes.length} 件`
+              : `全 ${kartes.length} 件を地図に表示中`}
+          {hasSearched && withoutCoordsCount > 0 && `（うち座標未登録 ${withoutCoordsCount} 件は地図に表示できません）`}
+        </p>
+
+        <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
+
+        {/* --- 道路土工構造物点検（施設一覧） --- */}
+        <h2 className="mb-2 mt-5 border-t border-gray-200 pt-4 text-sm font-bold text-gray-700 dark:border-gray-700 dark:text-gray-200">
+          道路土工構造物点検
+        </h2>
+        <Form action="" className="space-y-3">
+          <input type="hidden" name="view" defaultValue={view} />
+          {/* 防災カルテ側が検索済みの場合のみ、その現在値を隠しinputで引き継ぐ（上記と対称）。 */}
+          {hasSearched &&
+            KARTE_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
+          <SearchField key={`fq-${params.fq ?? ""}`} name="fq" label="管理番号" defaultValue={params.fq} />
+          <div>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+            <select
+              key={params.facRouteName ?? ""}
+              name="facRouteName"
+              defaultValue={params.facRouteName ?? ""}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">すべて</option>
+              {facRouteNameOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <SearchField
+            key={`facLocation-${params.facLocation ?? ""}`}
+            name="facLocation"
+            label="所在地"
+            defaultValue={params.facLocation}
+          />
+          <div>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">施設種別</label>
+            <select
+              key={params.facilityType ?? ""}
+              name="facilityType"
+              defaultValue={params.facilityType ?? ""}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">すべて</option>
+              {facilityTypeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">健全度</label>
+            <select
+              key={params.soundnessGrade ?? ""}
+              name="soundnessGrade"
+              defaultValue={params.soundnessGrade ?? ""}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="">すべて</option>
+              {soundnessGradeOptions.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center gap-3 pt-1">
@@ -319,86 +479,138 @@ export default async function KarteListPage({
             >
               検索
             </SearchSubmitButton>
-            {hasCondition && (
-              <PendingLink href="/karte" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+            {hasFacCondition && (
+              <PendingLink href={clearFacHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
                 条件をクリア
               </PendingLink>
             )}
           </div>
         </Form>
-
-        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-          {!hasSearched
+        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+          {!hasFacSearched
             ? "検索条件を指定して「検索」を押してください。"
-            : hasCondition
-              ? `検索結果 ${kartes.length} 件`
-              : `全 ${kartes.length} 件を地図に表示中`}
-          {hasSearched && withoutCoordsCount > 0 && `（うち座標未登録 ${withoutCoordsCount} 件は地図に表示できません）`}
+            : hasFacCondition
+              ? `検索結果 ${facilityItems.length} 件`
+              : `全 ${facilityItems.length} 件を地図に表示中`}
+          {hasFacSearched &&
+            facWithoutCoordsCount > 0 &&
+            `（うち座標未登録 ${facWithoutCoordsCount} 件は地図に表示できません）`}
         </p>
-
-        <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
       </aside>
 
       <main className="relative flex-1 bg-gray-100 dark:bg-gray-950">
         {view === "list" ? (
-          <div className="h-full overflow-y-auto p-4">
-            <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
-                  <tr>
-                    <th className="px-3 py-2"></th>
-                    <th className="px-3 py-2">施設管理番号</th>
-                    <th className="px-3 py-2">災害種別</th>
-                    <th className="px-3 py-2">路線名</th>
-                    <th className="px-3 py-2">所在地</th>
-                    <th className="px-3 py-2">対象数</th>
-                    <th className="px-3 py-2">最新点検日</th>
-                    <th className="px-3 py-2">対応区分</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {kartes.map((k) => {
-                    const resp = responseMeta(k.responseCategory);
-                    return (
-                      <tr key={k.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="px-3 py-2 text-yellow-500">{k.favorite ? "★" : ""}</td>
-                        <td className="px-3 py-2">
-                          <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
-                            {k.facilityNo}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2">{KARTE_TYPE_LABEL[k.karteType] ?? k.karteType}</td>
-                        <td className="px-3 py-2">{k.routeName}</td>
-                        <td className="px-3 py-2">
-                          {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
-                        </td>
-                        <td className="px-3 py-2">{k.targets.length}</td>
-                        <td className="px-3 py-2">
-                          {k.events[0]?.inspectionDate
-                            ? new Date(k.events[0].inspectionDate).toLocaleDateString("ja-JP")
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className={`rounded px-2 py-0.5 text-xs ${resp.badgeColor}`}>{resp.label}</span>
+          <div className="h-full space-y-6 overflow-y-auto p-4">
+            <div>
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">防災カルテ点検 検索結果</h2>
+              <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2"></th>
+                      <th className="px-3 py-2">施設管理番号</th>
+                      <th className="px-3 py-2">災害種別</th>
+                      <th className="px-3 py-2">路線名</th>
+                      <th className="px-3 py-2">所在地</th>
+                      <th className="px-3 py-2">対象数</th>
+                      <th className="px-3 py-2">最新点検日</th>
+                      <th className="px-3 py-2">対応区分</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kartes.map((k) => {
+                      const resp = responseMeta(k.responseCategory);
+                      return (
+                        <tr key={k.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <td className="px-3 py-2 text-yellow-500">{k.favorite ? "★" : ""}</td>
+                          <td className="px-3 py-2">
+                            <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                              {k.facilityNo}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2">{KARTE_TYPE_LABEL[k.karteType] ?? k.karteType}</td>
+                          <td className="px-3 py-2">{k.routeName}</td>
+                          <td className="px-3 py-2">
+                            {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
+                          </td>
+                          <td className="px-3 py-2">{k.targets.length}</td>
+                          <td className="px-3 py-2">
+                            {k.events[0]?.inspectionDate
+                              ? new Date(k.events[0].inspectionDate).toLocaleDateString("ja-JP")
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded px-2 py-0.5 text-xs ${resp.badgeColor}`}>{resp.label}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {kartes.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                          {!hasSearched ? (
+                            "検索条件を指定して「検索」を押してください。"
+                          ) : hasCondition ? (
+                            "条件に一致する点検記録がありません。"
+                          ) : (
+                            <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>
+                          )}
                         </td>
                       </tr>
-                    );
-                  })}
-                  {kartes.length === 0 && (
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">道路土工構造物点検 検索結果</h2>
+              <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
                     <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
-                        {!hasSearched ? (
-                          "検索条件を指定して「検索」を押してください。"
-                        ) : hasCondition ? (
-                          "条件に一致する点検記録がありません。"
-                        ) : (
-                          <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>
-                        )}
-                      </td>
+                      <th className="px-3 py-2">管理番号</th>
+                      <th className="px-3 py-2">管轄事務所</th>
+                      <th className="px-3 py-2">路線名</th>
+                      <th className="px-3 py-2">施設種別</th>
+                      <th className="px-3 py-2">所在地</th>
+                      <th className="px-3 py-2">健全度</th>
+                      <th className="px-3 py-2">点検実施日</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {facilityItems.map((f) => (
+                      <tr key={f.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-gray-800 dark:text-gray-100">{f.managementNo}</td>
+                        <td className="px-3 py-2">{f.officeName ?? "—"}</td>
+                        <td className="px-3 py-2">{f.routeName ?? "—"}</td>
+                        <td className="px-3 py-2">{f.facilityType ?? "—"}</td>
+                        <td className="px-3 py-2">{f.location ?? "—"}</td>
+                        <td className="px-3 py-2">{f.soundnessGrade ?? "—"}</td>
+                        <td className="px-3 py-2">
+                          {f.inspectionDate ? new Date(f.inspectionDate).toLocaleDateString("ja-JP") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {facilityItems.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                          {!hasFacSearched ? (
+                            "検索条件を指定して「検索」を押してください。"
+                          ) : (
+                            "条件に一致する施設がありません。"
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                <Link href="/facility-list" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  施設一覧（全件）を見る →
+                </Link>
+              </p>
             </div>
           </div>
         ) : (
