@@ -45,7 +45,7 @@ export type MapLedger = {
   note?: string | null;
 };
 
-// 「施設一覧」形式のExcel（Accessの施設管理データベース出力）から取り込んだ
+// 「施設一覧」形式のExcel（道路施設の管理台帳の出力）から取り込んだ
 // 施設（prisma/schema.prismaのFacilityListItem参照）。カルテ・トンネル台帳とは
 // さらに別のデータで、様式Ａ〜Ｄのような詳細記録は無く、施設の基本情報＋
 // 直近点検の要約だけを持つ。台帳（FacilityLedger）と同様、件数が少ない想定
