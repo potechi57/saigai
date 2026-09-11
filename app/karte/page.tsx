@@ -233,7 +233,7 @@ export default async function KarteListPage({
     // app/layout.tsxのコメント参照）。
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
       <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-r border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 lg:w-96">
-        <h1 className="mb-3 text-lg font-bold text-gray-800 dark:text-gray-100">カルテ検索</h1>
+        <h1 className="mb-3 text-lg font-bold text-gray-800 dark:text-gray-100">防災点検検索</h1>
         {/* next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
             従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
             （ページ全体のリロードをしない）とloading.tsxのフォールバック表示を
@@ -247,7 +247,7 @@ export default async function KarteListPage({
               送信ボタン自身のname/valueをクエリに含めないため、ボタンのonClickで
               この値を直接書き換えてから送信させる方式にしている）。 */}
           <input type="hidden" name="view" defaultValue={view} />
-          <SearchField name="q" label="施設管理番号 / カルテ番号" defaultValue={params.q} />
+          <SearchField name="q" label="施設管理番号" defaultValue={params.q} />
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
             <select
@@ -266,7 +266,7 @@ export default async function KarteListPage({
           <SearchField name="routeNo" label="路線番号" defaultValue={params.routeNo} />
           <SearchField name="location" label="所在地" defaultValue={params.location} />
           <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">カルテ区分</label>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
             <select
               name="karteType"
               defaultValue={params.karteType ?? ""}
@@ -348,7 +348,7 @@ export default async function KarteListPage({
                   <tr>
                     <th className="px-3 py-2"></th>
                     <th className="px-3 py-2">施設管理番号</th>
-                    <th className="px-3 py-2">カルテ種別</th>
+                    <th className="px-3 py-2">災害種別</th>
                     <th className="px-3 py-2">路線名</th>
                     <th className="px-3 py-2">所在地</th>
                     <th className="px-3 py-2">対象数</th>
@@ -390,7 +390,7 @@ export default async function KarteListPage({
                         {!hasSearched ? (
                           "検索条件を指定して「検索」を押してください。"
                         ) : hasCondition ? (
-                          "条件に一致するカルテがありません。"
+                          "条件に一致する点検記録がありません。"
                         ) : (
                           <>データがありません。<code>npm run db:seed</code> でサンプルデータを投入してください。</>
                         )}

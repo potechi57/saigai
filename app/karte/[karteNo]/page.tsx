@@ -109,7 +109,7 @@ export default async function KarteDetailPage({
         <HeaderItem label="管理機関名">{karte.manageOrgName || "—"}</HeaderItem>
         <HeaderItem label="管理機関コード">{karte.manageOrgCode || "—"}</HeaderItem>
         <HeaderItem label="施設管理番号">{karte.facilityNo}</HeaderItem>
-        <HeaderItem label="カルテ区分">{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}</HeaderItem>
+        <HeaderItem label="災害区分">{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}</HeaderItem>
         <HeaderItem label="路線名">{karte.routeName}</HeaderItem>
         <HeaderItem label="台帳番号">{karte.ledgerNo || "—"}</HeaderItem>
         <HeaderItem label="距離標">

@@ -47,7 +47,7 @@ export type KarteFormValues = {
 };
 
 // カルテ編集画面（指示書12章）。新規登録・既存編集の両方をこのコンポーネントで賄う。
-// 落石・崩壊固有項目は常に表示し「カルテ区分が落石・崩壊の場合のみ使用される」旨を注記する
+// 落石・崩壊固有項目は常に表示し「災害区分が落石・崩壊の場合のみ使用される」旨を注記する
 // （区分に応じた出し分けにはクライアントJSが必要になるため、MVPでは簡素な形にとどめている）。
 export default function KarteForm({
   action,
@@ -65,7 +65,7 @@ export default function KarteForm({
         <TextField name="facilityNo" label="施設管理番号" defaultValue={v.facilityNo} required />
         <SelectField
           name="karteType"
-          label="カルテ区分"
+          label="災害区分"
           defaultValue={v.karteType}
           options={KARTE_TYPE_LABEL}
           includeBlank={false}
@@ -113,7 +113,7 @@ export default function KarteForm({
         <TextAreaField name="specialistComment" label="専門技術者のコメント" defaultValue={v.specialistComment} />
       </Section>
 
-      <Section title="落石・崩壊カルテ固有項目" note="カルテ区分が「落石・崩壊」の場合のみ使用されます">
+      <Section title="落石・崩壊固有項目" note="災害区分が「落石・崩壊」の場合のみ使用されます">
         <CheckboxField name="mainFormRockfall" label="主な災害形態：落石" defaultChecked={v.mainFormRockfall} />
         <CheckboxField name="mainFormCollapse" label="主な災害形態：崩壊" defaultChecked={v.mainFormCollapse} />
       </Section>

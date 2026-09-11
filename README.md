@@ -1,4 +1,4 @@
-# 道路防災カルテ Web GIS（MVP）
+# 道路施設管理 Web GIS（MVP）
 
 島根県の道路防災カルテ点検業務をWeb GIS化するプロジェクト。設計の背景は
 [../12_DATA_MODEL_WEBGIS_MVP.md](../12_DATA_MODEL_WEBGIS_MVP.md) を参照。
