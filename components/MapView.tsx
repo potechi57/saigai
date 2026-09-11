@@ -29,6 +29,22 @@ export type MapKarte = {
   lastInspectionDateLabel?: string | null; // 最終点検日時（表示用に整形済みの文字列）
 };
 
+// トンネル台帳等、道路防災カルテ（Karte）とは別枠の台帳（画像1枚＋最低限の
+// 基本情報のみ。prisma/schema.prismaのFacilityLedger参照）。カルテの検索条件とは
+// 無関係に、緯度経度が登録されているものは常に地図へ表示する（件数が少ない想定のため、
+// カルテのような「検索するまで表示しない」制御はしていない）。
+export type MapLedger = {
+  id: string;
+  categoryLabel: string;
+  name: string;
+  routeName?: string | null;
+  location?: string | null;
+  latitude: number;
+  longitude: number;
+  imageUrl: string;
+  note?: string | null;
+};
+
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
 
 // 地図APIはGoogle Maps等への差し替えを見据え、業務データ（MapKarte）とは疎結合にしている
@@ -43,10 +59,12 @@ export default function MapView({
   kartes,
   home,
   allowSetHome = false,
+  ledgers = [],
 }: {
   kartes: MapKarte[];
   home?: HomeLocation;
   allowSetHome?: boolean;
+  ledgers?: MapLedger[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -61,6 +79,8 @@ export default function MapView({
   // リセットされるといった不要な副作用が出るため、実際にID集合が変わった
   // （＝新しい検索が行われた）ときだけ作り直す。
   const lastKarteIdsKeyRef = useRef<string | null>(null);
+  // トンネル台帳等のマーカー一式（カルテとは別レイヤー。検索条件の影響を受けない）。
+  const ledgerLayerRef = useRef<L.LayerGroup | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -99,14 +119,16 @@ export default function MapView({
       maxZoom: 19,
     }).addTo(map);
 
-    // カルテのマーカーは下の専用effect（[kartes]依存）が構築する。
+    // カルテ・台帳のマーカーは下のそれぞれ専用のeffectが構築する。
     // ここでは入れ物のレイヤーグループを地図に追加するだけ。
     karteLayerRef.current = L.layerGroup().addTo(map);
+    ledgerLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
       mapRef.current = null;
       karteLayerRef.current = null;
+      ledgerLayerRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -270,6 +292,35 @@ export default function MapView({
     // （home/現在地が変わるたびにマーカーを作り直す必要は無いため）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kartes]);
+
+  // トンネル台帳等のマーカーを構築する専用effect。カルテの検索条件とは無関係に、
+  // ledgersが変わるたびにそのまま作り直す（件数が少ない想定のため、カルテのような
+  // 「同じ内容なら作り直さない」最適化はしていない。シンプルさ優先）。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = ledgerLayerRef.current;
+    if (!map || !layer) return;
+
+    layer.clearLayers();
+
+    for (const l of ledgers) {
+      const marker = L.marker([l.latitude, l.longitude], { icon: buildLedgerMarkerIcon() }).addTo(layer);
+      marker.bindPopup(
+        `<div style="font-size:13px;min-width:180px;">
+           <div style="font-weight:600;">${escapeHtml(l.name)}</div>
+           <div style="color:#666;">${escapeHtml(l.categoryLabel)}</div>
+           ${l.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(l.routeName)}</div>` : ""}
+           ${l.location ? `<div style="color:#374151;">所在地: ${escapeHtml(l.location)}</div>` : ""}
+           <a href="${escapeHtml(l.imageUrl)}" target="_blank" rel="noreferrer" style="display:block;margin-top:6px;">
+             <img src="${escapeHtml(l.imageUrl)}" style="width:350px;max-width:350px;object-fit:contain;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+           </a>
+           ${l.note ? `<div style="margin-top:6px;color:#374151;white-space:pre-wrap;">${escapeHtml(l.note)}</div>` : ""}
+           <div style="margin-top:6px;"><a href="/ledgers" style="color:#2563eb;">台帳一覧を見る →</a></div>
+         </div>`,
+        { maxWidth: 400 }
+      );
+    }
+  }, [ledgers]);
 
   // ホーム位置ピンは、地図本体を作り直さずに独立して追加・更新・削除する
   // （上の初期化effectとは別立てにする理由は直上のコメントの通り）。
@@ -532,6 +583,25 @@ function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: bool
     iconSize: [28, 28],
     iconAnchor: [14, 28],
     popupAnchor: [0, -28],
+  });
+}
+
+// トンネル台帳等のマーカーアイコン。カルテのしずく型（涙滴形）マーカーとは
+// 見た目を変え、別種のピンだと一目で分かるようにしている（丸型・紫系の色）。
+function buildLedgerMarkerIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        background:#7c3aed;
+        width:26px;height:26px;border-radius:50%;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+        font-size:14px;
+      ">🚇</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
   });
 }
 

@@ -520,3 +520,37 @@ model ImportHistory {
 
   @@index([startedAt])
 }
+
+// ── その他の台帳（トンネル台帳など） ─────────────────────────────
+// 道路防災カルテ（Karte）とは別の枠組み。既存の紙台帳がスキャン画像でしか
+// 残っておらず、Excelのような構造化データが無い（＝項目ごとに取り込む
+// karte-import.tsのような抽出ロジックを組む対象にならない）台帳を、
+// 「画像1枚＋最低限の基本情報」という単純な形で登録し、地図上のピンから
+// 参照できるようにするためのもの。まずはトンネル台帳のみに対応する
+// （将来、橋梁・法面等の台帳にも同じ仕組みを流用する想定でcategoryを
+// enumにしている）。
+enum FacilityLedgerCategory {
+  TUNNEL // トンネル台帳
+}
+
+model FacilityLedger {
+  id String @id @default(cuid())
+
+  category  FacilityLedgerCategory @default(TUNNEL)
+  name      String // 台帳名（例: 魚瀬トンネル）
+  routeName String? // 路線名
+  location  String? // 所在地（自由記述。例: 自 松江市秋鹿町 至 松江市魚瀬町）
+
+  // 地図上のピン表示に使う座標。karte-import.ts同様、度分秒ではなく
+  // 10進度に変換して保持する想定（登録画面から手入力する）。
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+
+  imageUrl String // 台帳のスキャン画像（Vercel Blob）
+  note     String? // 特記事項等の自由記述欄
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}

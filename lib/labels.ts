@@ -15,6 +15,12 @@ export const KARTE_TYPE_LABEL: Record<string, string> = {
   OTHER: "その他",
 };
 
+// トンネル台帳等、カルテとは別枠の台帳の種別ラベル
+// （prisma/schema.prismaのFacilityLedgerCategory参照。現状はトンネルのみ）。
+export const FACILITY_LEDGER_CATEGORY_LABEL: Record<string, string> = {
+  TUNNEL: "トンネル台帳",
+};
+
 export const WEATHER_LABEL: Record<string, string> = {
   SUNNY: "晴",
   CLOUDY: "曇",

@@ -61,6 +61,9 @@ export default function RootLayout({
             <a href="/karte/import" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
               Excelから取込
             </a>
+            <a href="/ledgers" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+              台帳（画像）
+            </a>
             <a
               href="/karte/new"
               className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"

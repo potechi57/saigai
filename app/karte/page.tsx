@@ -3,9 +3,10 @@ import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
-import type { MapKarte, HomeLocation } from "@/components/MapLoader";
+import type { MapKarte, HomeLocation, MapLedger } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
+import { FACILITY_LEDGER_CATEGORY_LABEL } from "@/lib/labels";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
@@ -93,15 +94,30 @@ export default async function KarteListPage({
   // 路線名は自由入力だと表記ゆれ（全角/半角、送り仮名等）で検索漏れが起きやすいため、
   // 実際に登録されている路線名から選ぶセレクトボックスにしている（フィルタ条件に関わらず
   // 全カルテから候補を集める。「今の検索結果に無い路線名」も選べた方が使い勝手が良いため）。
-  const [routeNameRows, settings] = await Promise.all([
+  // トンネル台帳等（FacilityLedger）は、カルテの検索条件・hasSearchedとは無関係に
+  // 常に取得する（件数が少ない想定のため、カルテのような「検索するまで表示しない」
+  // 制御はしていない。lib/actions/facility-ledger-actions.ts参照）。
+  const [routeNameRows, settings, facilityLedgersRaw] = await Promise.all([
     prisma.karte.findMany({
       distinct: ["routeName"],
       select: { routeName: true },
       orderBy: { routeName: "asc" },
     }),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
+    prisma.facilityLedger.findMany({ where: { latitude: { not: null }, longitude: { not: null } } }),
   ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
+  const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
+    id: l.id,
+    categoryLabel: FACILITY_LEDGER_CATEGORY_LABEL[l.category] ?? l.category,
+    name: l.name,
+    routeName: l.routeName,
+    location: l.location,
+    latitude: Number(l.latitude),
+    longitude: Number(l.longitude),
+    imageUrl: l.imageUrl,
+    note: l.note,
+  }));
 
   const home: HomeLocation =
     settings?.homeLatitude != null && settings?.homeLongitude != null
@@ -349,7 +365,7 @@ export default async function KarteListPage({
             </div>
           </div>
         ) : (
-          <MapView kartes={mapKartes} home={home} allowSetHome />
+          <MapView kartes={mapKartes} home={home} allowSetHome ledgers={mapLedgers} />
         )}
       </main>
     </div>
