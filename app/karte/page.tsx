@@ -35,6 +35,7 @@ type SearchParams = {
   facLocation?: string;
   facilityType?: string;
   soundnessGrade?: string;
+  tab?: string; // "facility"のときだけ道路土工構造物点検タブを表示する（既定はカルテ）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
 };
 
@@ -57,18 +58,24 @@ function buildQuery(
 // 「地図を中心とした画面」（ホーム画面）。指示書19章の方針に沿い、検索画面（6章）・
 // カルテ一覧画面（8章）・地図検索画面（7章）を1画面に統合している。
 //
-// 検索条件パネルには「防災カルテ点検」「道路土工構造物点検」の2つの独立した検索フォーム
-// を並べている（施設台帳機能の追加に伴い、カルテ以外の点検対象も検索できるようにする
-// 要望への対応）。地図には、検索済みの系統のピンだけを表示する（未検索の系統は表示
-// しない＝「防災カルテと同じように検索時に表示される」という要望に対応）。台帳（画像、
+// 検索条件パネルは「防災カルテ点検」「道路土工構造物点検」をタブで切り替える構成に
+// している（縦に2つのフォームを並べると長くなりすぎるため）。ただし管理番号・路線名・
+// 所在地はどちらの系統でも意味が同じ条件のため、タブの外（上）に共通フィールドとして
+// 1つだけ配置し、タブ内には各系統固有の条件（カルテ側：災害区分・対応区分・路線番号、
+// 道路土工構造物点検側：施設種別・健全度）だけを置く。共通フィールドの実体（name属性）
+// はタブごとに異なるDB項目に対応する（カルテ側はq/routeName/location、施設一覧側は
+// fq/facRouteName/facLocation）が、これは表示中のタブに応じてinputのnameを
+// 切り替えることで実現している（下記JSX参照）。
+//
+// 地図には、検索済みの系統のピンだけを表示する（未検索の系統は表示しない＝「防災カルテ
+// と同じように検索時に表示される」という要望に対応）。タブを切り替えても、もう一方の
+// 検索結果は消えない（互いの検索状態を隠しinputで引き継いでいるため）。台帳（画像、
 // 現状トンネルのみ）は件数が少なく複雑な検索条件が不要なため、従来どおり常時表示する。
 //   - 画面いっぱい（ヘッダー直下〜画面下端）を使い、左に検索条件パネル、
 //     中央（残り全体）に地図を常時表示する（PCでの基本レイアウト）。
 //   - 初期表示（条件無し）では地図だけを見せ、一覧テーブルは出さない。
-//   - 「一覧」表示に切り替えられる唯一の入り口は検索条件パネル内の
-//     「検索結果を一覧で表示する」ボタン（防災カルテ側フォームの送信ボタン。
-//     name="view"の値だけが異なる。道路土工構造物点検フォームにも同じ隠しinputで
-//     現在のviewを引き継がせているため、どちらの検索を実行してもview状態は保たれる）。
+//   - 「一覧」表示への切替はパネル上部のリンク（現在のタブ・両系統の検索条件を維持した
+//     まま、viewだけ書き換えたクエリへのリンク）で行う。
 //   - 初期表示（一度も検索していない状態）では、検索クエリ自体を実行しない
 //     （下記hasSearched/hasFacSearched参照）。系統ごとに独立して判定する。
 export default async function KarteListPage({
@@ -78,6 +85,7 @@ export default async function KarteListPage({
 }) {
   const params = await searchParams;
   const view: "map" | "list" = params.view === "list" ? "list" : "map";
+  const tab: "karte" | "facility" = params.tab === "facility" ? "facility" : "karte";
 
   // ---- 防災カルテ点検側 ----
   const where: Prisma.KarteWhereInput = {};
@@ -165,6 +173,11 @@ export default async function KarteListPage({
   const facRouteNameOptions = facRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
   const facilityTypeOptions = facilityTypeRows.map((r) => r.facilityType).filter((v): v is string => !!v);
   const soundnessGradeOptions = soundnessGradeRows.map((r) => r.soundnessGrade).filter((v): v is string => !!v);
+  // 路線名は共通フィールドとして1つの<select>にまとめるため、両系統の選択肢を
+  // 合わせて（重複除去のうえ）1つのリストにする。
+  const combinedRouteNameOptions = Array.from(new Set([...routeNameOptions, ...facRouteNameOptions])).sort((a, b) =>
+    a.localeCompare(b, "ja")
+  );
 
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
     id: l.id,
@@ -291,6 +304,14 @@ export default async function KarteListPage({
   const toggleViewHref = `/karte?${buildQuery(params, { overrides: { view: view === "list" ? "map" : "list" } })}`;
   const clearKarteHref = `/karte?${buildQuery(params, { remove: KARTE_PARAM_KEYS })}`;
   const clearFacHref = `/karte?${buildQuery(params, { remove: FACILITY_PARAM_KEYS })}`;
+  // タブ切替時、共通フィールド（管理番号・路線名・所在地）に今入力済みの値を、
+  // 切替先タブの項目名へそのまま引き継ぐ（同じ意味の条件を再入力させないため）。
+  const facilityTabHref = `/karte?${buildQuery(params, {
+    overrides: { tab: "facility", fq: params.q, facRouteName: params.routeName, facLocation: params.location },
+  })}`;
+  const karteTabHref = `/karte?${buildQuery(params, {
+    overrides: { tab: "karte", q: params.fq, routeName: params.facRouteName, location: params.facLocation },
+  })}`;
 
   return (
     // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
@@ -306,126 +327,51 @@ export default async function KarteListPage({
           </PendingLink>
         </p>
 
-        {/* --- 防災カルテ点検 --- */}
-        <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">防災カルテ点検</h2>
         {/* next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
             従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
             （ページ全体のリロードをしない）とloading.tsxのフォールバック表示を
             有効にする。SearchSubmitButtonがuseFormStatus()で送信中を検知し、
-            即座にスピナー表示できるのもこの<Form>の子孫だからこそ。 */}
+            即座にスピナー表示できるのもこの<Form>の子孫だからこそ。
+            表示中のタブに応じて、共通フィールドのname属性・タブ固有フィールドの
+            内容を切り替える（1つのフォームで両系統をカバーする）。 */}
         <Form action="" className="space-y-3">
-          {/* 表示方法（地図/一覧）は、送信ボタンのname/valueではなくこの隠しinputで
-              保持する（SearchSubmitButtonのコメント参照）。 */}
+          {/* 表示方法（地図/一覧）・現在のタブは、送信ボタンのname/valueではなくこの
+              隠しinputで保持する（SearchSubmitButtonのコメント参照）。 */}
           <input type="hidden" name="view" defaultValue={view} />
-          {/* 道路土工構造物点検側が検索済みの場合のみ、その現在値を隠しinputで引き継ぐ
+          <input type="hidden" name="tab" defaultValue={tab} />
+          {/* 表示していない方のタブが検索済みの場合のみ、その現在値を隠しinputで引き継ぐ
               （このフォームの送信で相手側の検索状態を消してしまわないため。未検索の
-              場合は何も引き継がない＝相手側もhasFacSearched=falseのまま維持される）。 */}
-          {hasFacSearched &&
+              場合は何も引き継がない＝相手側もhasXSearched=falseのまま維持される）。 */}
+          {tab === "karte" &&
+            hasFacSearched &&
             FACILITY_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
-          <SearchField key={`q-${params.q ?? ""}`} name="q" label="施設管理番号" defaultValue={params.q} />
-          <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
-            {/* keyにdefaultValueを含めることで、リンク経由の遷移（条件クリア・最近の検索等）
-                でこのフィールドの値が変わった時にDOMごと作り直させ、defaultValueが再適用
-                されるようにしている。next/formの<Form>によるフォーム送信の場合は
-                ページ全体が作り直されるため本来は不要だが、リンク遷移では同じDOMノードが
-                再利用され、defaultValue（=uncontrolled）は初回マウント時にしか効かないため
-                古い表示のまま残ってしまう問題への対処。 */}
-            <select
-              key={params.routeName ?? ""}
-              name="routeName"
-              defaultValue={params.routeName ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="">すべて</option>
-              {routeNameOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <SearchField key={`routeNo-${params.routeNo ?? ""}`} name="routeNo" label="路線番号" defaultValue={params.routeNo} />
-          <SearchField key={`location-${params.location ?? ""}`} name="location" label="所在地" defaultValue={params.location} />
-          <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
-            <select
-              key={params.karteType ?? ""}
-              name="karteType"
-              defaultValue={params.karteType ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="">すべて</option>
-              {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
-            <select
-              key={params.responseCategory ?? ""}
-              name="responseCategory"
-              defaultValue={params.responseCategory ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="">すべて</option>
-              {Object.entries(RESPONSE_META).map(([value, meta]) => (
-                <option key={value} value={value}>
-                  {meta.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-3 pt-1">
-            <SearchSubmitButton
-              type="submit"
-              targetView={view}
-              className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
-            >
-              検索
-            </SearchSubmitButton>
-            {hasCondition && (
-              <PendingLink href={clearKarteHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-                条件をクリア
-              </PendingLink>
-            )}
-          </div>
-        </Form>
-        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          {!hasSearched
-            ? "検索条件を指定して「検索」を押してください。"
-            : hasCondition
-              ? `検索結果 ${kartes.length} 件`
-              : `全 ${kartes.length} 件を地図に表示中`}
-          {hasSearched && withoutCoordsCount > 0 && `（うち座標未登録 ${withoutCoordsCount} 件は地図に表示できません）`}
-        </p>
-
-        <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
-
-        {/* --- 道路土工構造物点検（施設一覧） --- */}
-        <h2 className="mb-2 mt-5 border-t border-gray-200 pt-4 text-sm font-bold text-gray-700 dark:border-gray-700 dark:text-gray-200">
-          道路土工構造物点検
-        </h2>
-        <Form action="" className="space-y-3">
-          <input type="hidden" name="view" defaultValue={view} />
-          {/* 防災カルテ側が検索済みの場合のみ、その現在値を隠しinputで引き継ぐ（上記と対称）。 */}
-          {hasSearched &&
+          {tab === "facility" &&
+            hasSearched &&
             KARTE_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
-          <SearchField key={`fq-${params.fq ?? ""}`} name="fq" label="管理番号" defaultValue={params.fq} />
+
+          {/* --- 共通フィールド（管理番号・路線名・所在地）。カルテ・道路土工構造物点検の
+              どちらでも意味が同じ条件のため、タブの外に1つだけ配置する。name属性は
+              表示中のタブに応じて切り替える。 */}
+          <SearchField
+            key={`num-${tab}-${(tab === "karte" ? params.q : params.fq) ?? ""}`}
+            name={tab === "karte" ? "q" : "fq"}
+            label="管理番号"
+            defaultValue={tab === "karte" ? params.q : params.fq}
+          />
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+            {/* keyにdefaultValueを含めることで、リンク経由の遷移（タブ切替・条件クリア・
+                最近の検索等）でこのフィールドの値が変わった時にDOMごと作り直させ、
+                defaultValueが再適用されるようにしている（uncontrolledな要素は
+                マウント時にしかdefaultValueが効かないため）。 */}
             <select
-              key={params.facRouteName ?? ""}
-              name="facRouteName"
-              defaultValue={params.facRouteName ?? ""}
+              key={`route-${tab}-${(tab === "karte" ? params.routeName : params.facRouteName) ?? ""}`}
+              name={tab === "karte" ? "routeName" : "facRouteName"}
+              defaultValue={(tab === "karte" ? params.routeName : params.facRouteName) ?? ""}
               className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="">すべて</option>
-              {facRouteNameOptions.map((name) => (
+              {combinedRouteNameOptions.map((name) => (
                 <option key={name} value={name}>
                   {name}
                 </option>
@@ -433,43 +379,112 @@ export default async function KarteListPage({
             </select>
           </div>
           <SearchField
-            key={`facLocation-${params.facLocation ?? ""}`}
-            name="facLocation"
+            key={`loc-${tab}-${(tab === "karte" ? params.location : params.facLocation) ?? ""}`}
+            name={tab === "karte" ? "location" : "facLocation"}
             label="所在地"
-            defaultValue={params.facLocation}
+            defaultValue={tab === "karte" ? params.location : params.facLocation}
           />
-          <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">施設種別</label>
-            <select
-              key={params.facilityType ?? ""}
-              name="facilityType"
-              defaultValue={params.facilityType ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="">すべて</option>
-              {facilityTypeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+
+          {/* --- タブ切替 --- */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700">
+            {tab === "karte" ? (
+              <span className="border-b-2 border-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-800 dark:border-gray-100 dark:text-gray-100">
+                防災カルテ点検
+              </span>
+            ) : (
+              <PendingLink
+                href={karteTabHref}
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
+              >
+                防災カルテ点検
+              </PendingLink>
+            )}
+            {tab === "facility" ? (
+              <span className="border-b-2 border-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-800 dark:border-gray-100 dark:text-gray-100">
+                道路土工構造物点検
+              </span>
+            ) : (
+              <PendingLink
+                href={facilityTabHref}
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
+              >
+                道路土工構造物点検
+              </PendingLink>
+            )}
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">健全度</label>
-            <select
-              key={params.soundnessGrade ?? ""}
-              name="soundnessGrade"
-              defaultValue={params.soundnessGrade ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="">すべて</option>
-              {soundnessGradeOptions.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-          </div>
+
+          {tab === "karte" ? (
+            <>
+              <SearchField key={`routeNo-${params.routeNo ?? ""}`} name="routeNo" label="路線番号" defaultValue={params.routeNo} />
+              <div>
+                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
+                <select
+                  key={params.karteType ?? ""}
+                  name="karteType"
+                  defaultValue={params.karteType ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">すべて</option>
+                  {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
+                <select
+                  key={params.responseCategory ?? ""}
+                  name="responseCategory"
+                  defaultValue={params.responseCategory ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">すべて</option>
+                  {Object.entries(RESPONSE_META).map(([value, meta]) => (
+                    <option key={value} value={value}>
+                      {meta.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">施設種別</label>
+                <select
+                  key={params.facilityType ?? ""}
+                  name="facilityType"
+                  defaultValue={params.facilityType ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">すべて</option>
+                  {facilityTypeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">健全度</label>
+                <select
+                  key={params.soundnessGrade ?? ""}
+                  name="soundnessGrade"
+                  defaultValue={params.soundnessGrade ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">すべて</option>
+                  {soundnessGradeOptions.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="flex items-center gap-3 pt-1">
             <SearchSubmitButton
@@ -479,23 +494,43 @@ export default async function KarteListPage({
             >
               検索
             </SearchSubmitButton>
-            {hasFacCondition && (
+            {tab === "karte" && hasCondition && (
+              <PendingLink href={clearKarteHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+                条件をクリア
+              </PendingLink>
+            )}
+            {tab === "facility" && hasFacCondition && (
               <PendingLink href={clearFacHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
                 条件をクリア
               </PendingLink>
             )}
           </div>
         </Form>
-        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-          {!hasFacSearched
-            ? "検索条件を指定して「検索」を押してください。"
-            : hasFacCondition
-              ? `検索結果 ${facilityItems.length} 件`
-              : `全 ${facilityItems.length} 件を地図に表示中`}
-          {hasFacSearched &&
-            facWithoutCoordsCount > 0 &&
-            `（うち座標未登録 ${facWithoutCoordsCount} 件は地図に表示できません）`}
+
+        {/* 表示中でない方のタブの検索状態も、地図には反映され続けるため、見落とさない
+            ようにここで両系統の状況を常に表示する。 */}
+        <p className="mt-2 space-y-0.5 text-xs text-gray-400 dark:text-gray-500">
+          <span className="block">
+            防災カルテ点検：
+            {!hasSearched
+              ? "未検索"
+              : hasCondition
+                ? `検索結果 ${kartes.length} 件`
+                : `全 ${kartes.length} 件を地図に表示中`}
+            {hasSearched && withoutCoordsCount > 0 && `（座標未登録 ${withoutCoordsCount} 件を除く）`}
+          </span>
+          <span className="block">
+            道路土工構造物点検：
+            {!hasFacSearched
+              ? "未検索"
+              : hasFacCondition
+                ? `検索結果 ${facilityItems.length} 件`
+                : `全 ${facilityItems.length} 件を地図に表示中`}
+            {hasFacSearched && facWithoutCoordsCount > 0 && `（座標未登録 ${facWithoutCoordsCount} 件を除く）`}
+          </span>
         </p>
+
+        {tab === "karte" && <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />}
       </aside>
 
       <main className="relative flex-1 bg-gray-100 dark:bg-gray-950">
