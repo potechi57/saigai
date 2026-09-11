@@ -26,8 +26,13 @@ export async function getStartEndRecordPhotos(karteIds: string[]): Promise<Map<s
   const result = new Map<string, StartEndPhotos>();
   for (const p of photos) {
     const entry = result.get(p.karteId) ?? {};
-    if (!entry.startPhotoUrl && p.caption?.includes("起点")) entry.startPhotoUrl = p.url;
-    if (!entry.endPhotoUrl && p.caption?.includes("終点")) entry.endPhotoUrl = p.url;
+    const hasStart = p.caption?.includes("起点") ?? false;
+    const hasEnd = p.caption?.includes("終点") ?? false;
+    // キャプションに「起点」「終点」の両方が含まれる場合（例:「起点〜終点間の全景」）は、
+    // どちらの地点の写真とも決め切れないため、誤って同じ写真が起点・終点の両方に
+    // 表示されてしまわないよう、あえてどちらにも割り当てない（ベストエフォート）。
+    if (hasStart && !hasEnd && !entry.startPhotoUrl) entry.startPhotoUrl = p.url;
+    if (hasEnd && !hasStart && !entry.endPhotoUrl) entry.endPhotoUrl = p.url;
     result.set(p.karteId, entry);
   }
   return result;
