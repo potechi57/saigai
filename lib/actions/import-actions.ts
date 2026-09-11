@@ -87,13 +87,45 @@ function hasBlobCredentials(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN);
 }
 
+// ── Excel取込履歴 ───────────────────────────────────────────
+// 「どのExcelファイルをいつ取り込んだか」をExcel取込画面（app/karte/import/page.tsx）に
+// 表示するための履歴。取込処理の開始時にIN_PROGRESSで作成し、完了時にSUCCESS/FAILUREへ
+// 更新する（本体の一括版importKarteExcel、フェーズ分割版importPhase1〜3の両方から使う）。
+// 履歴の読み書き自体が失敗しても本来の取込処理には影響させない（ベストエフォート。
+// 呼び出し元はhistoryIdが空文字の場合は以降の更新呼び出しを素通りさせるだけでよい）。
+async function createImportHistory(fileName: string): Promise<string> {
+  try {
+    const history = await prisma.importHistory.create({ data: { fileName } });
+    return history.id;
+  } catch {
+    return "";
+  }
+}
+
+async function finishImportHistorySuccess(
+  historyId: string,
+  data: { facilityNo: string; targetCount: number; eventCount: number }
+): Promise<void> {
+  if (!historyId) return;
+  await prisma.importHistory
+    .update({ where: { id: historyId }, data: { status: "SUCCESS", finishedAt: new Date(), ...data } })
+    .catch(() => {});
+}
+
+async function finishImportHistoryFailure(historyId: string, errorMessage: string): Promise<void> {
+  if (!historyId) return;
+  await prisma.importHistory
+    .update({ where: { id: historyId }, data: { status: "FAILURE", finishedAt: new Date(), errorMessage } })
+    .catch(() => {});
+}
+
 // 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真をまとめる別シート。
 // findRecordPhotoSheetNamesのコメント参照）に埋め込まれた画像を取り込む。
-// 様式Ａの写真取込と同じ「先頭からの画像を全部取り込む」方式だが、キャプション
-// （各写真の下にあるコメント欄のセル）は取り込んでいない。様式Ｂのような構造化された
-// テキスト項目が無く、キャプションのセル位置が写真の枚数によって変わる（実データで
-// 1シート内に最大4枚＝2列×2行の配置を確認）ため、位置から機械的に対応付けるのが
-// 様式Ｂほど単純ではなく、今回は画像の取込のみに範囲を絞った（要改善点）。
+// 各写真の下にある結合セルのキャプション（「起点側全景」等）も、貼り付け位置
+// （列・行）から機械的に対応付けて取り込む（下記extractRecordPhotoCaptions・
+// assignRecordPhotoGrid参照）。しきい値による位置判定はあくまで実データに基づく
+// ヒューリスティックであり、列幅の違い等で稀に区画を取り違える可能性がある点は
+// 既知の限界（要改善点）。
 // 呼び出し側と同じくBlob未設定環境では何もしない（ベストエフォート）。
 // 「現状記録写真」シートの画像は、貼り付け位置（列・行）から左上/右上/左下/右下の
 // いずれかに機械的に振り分ける（extractRecordPhotoCaptionsのG23/AY23/G41/AY41と
@@ -216,10 +248,29 @@ async function loadWorkbookFromBlob(blobUrl: string): Promise<{ wb: XLSX.WorkBoo
 // 各フェーズが完了するたびに呼び出し元（ExcelImportForm.tsx）が進捗表示を更新するため、
 // 「今何件目の点検対象を処理しているか」等が実際の処理と一致した状態で分かる。
 export type ImportPhase1Result =
-  | { ok: true; karteId: string; facilityNo: string; formBSheetNames: string[] }
+  | { ok: true; karteId: string; facilityNo: string; formBSheetNames: string[]; historyId: string }
   | { ok: false; error: string };
 
+// フェーズ1の入り口。取込履歴（ImportHistory）をIN_PROGRESSで作成し、実際の処理
+// （runImportPhase1）を呼ぶ。失敗（想定内のエラー・想定外の例外いずれも）は
+// 履歴をFAILUREに更新してから返す（項目4「取込に失敗した場合も、可能な限り
+// 失敗履歴を残す」対応）。
 export async function importPhase1KarteAndFormA(blobUrl: string, fileName: string): Promise<ImportPhase1Result> {
+  const historyId = await createImportHistory(fileName);
+  try {
+    const result = await runImportPhase1(blobUrl, fileName, historyId);
+    if (!result.ok) {
+      await finishImportHistoryFailure(historyId, result.error);
+    }
+    return result;
+  } catch (err) {
+    const message = `取込に失敗しました（詳細: ${err instanceof Error ? err.message : String(err)}）`;
+    await finishImportHistoryFailure(historyId, message);
+    return { ok: false, error: message };
+  }
+}
+
+async function runImportPhase1(blobUrl: string, fileName: string, historyId: string): Promise<ImportPhase1Result> {
   const loaded = await loadWorkbookFromBlob(blobUrl);
   if ("error" in loaded) return { ok: false, error: loaded.error };
   const { wb, sourceBuffer } = loaded;
@@ -367,18 +418,35 @@ export async function importPhase1KarteAndFormA(blobUrl: string, fileName: strin
     // 原本保存はベストエフォート。失敗してもインポート結果には影響させない。
   }
 
-  return { ok: true, karteId: karte.id, facilityNo, formBSheetNames: findFormBSheetNames(wb) };
+  return { ok: true, karteId: karte.id, facilityNo, formBSheetNames: findFormBSheetNames(wb), historyId };
 }
 
 // ── フェーズ2: 様式Ｂ1シート分（変状/点検対象1件） ────────────────────────
 // シートごとに呼び出す（点検対象1件ずつ進捗を進められるようにするため）。
 export type ImportPhase2Result = { ok: true } | { ok: false; error: string };
 
+// historyIdは、この途中フェーズが失敗した場合に取込履歴をFAILUREへ更新するためだけに
+// 使う（成功時は何もしない。最終的な成功はフェーズ3で記録する）。
 export async function importPhase2FormBTarget(
   karteId: string,
   blobUrl: string,
-  sheetName: string
+  sheetName: string,
+  historyId: string
 ): Promise<ImportPhase2Result> {
+  try {
+    const result = await runImportPhase2(karteId, blobUrl, sheetName);
+    if (!result.ok) {
+      await finishImportHistoryFailure(historyId, result.error);
+    }
+    return result;
+  } catch (err) {
+    const message = `取込に失敗しました（詳細: ${err instanceof Error ? err.message : String(err)}）`;
+    await finishImportHistoryFailure(historyId, message);
+    return { ok: false, error: message };
+  }
+}
+
+async function runImportPhase2(karteId: string, blobUrl: string, sheetName: string): Promise<ImportPhase2Result> {
   const loaded = await loadWorkbookFromBlob(blobUrl);
   if ("error" in loaded) return { ok: false, error: loaded.error };
   const { wb, sourceBuffer } = loaded;
@@ -443,11 +511,31 @@ export type ImportPhase3Result =
   | { ok: true; eventsImported: number }
   | { ok: false; error: string };
 
+// フェーズ3は取込作業全体の最終フェーズなので、成功時はここで取込履歴を
+// SUCCESSに確定させる（点検対象数・点検記録数もあわせて記録する）。
 export async function importPhase3Events(
   karteId: string,
   facilityNo: string,
-  blobUrl: string
+  blobUrl: string,
+  historyId: string
 ): Promise<ImportPhase3Result> {
+  try {
+    const result = await runImportPhase3(karteId, facilityNo, blobUrl);
+    if (result.ok) {
+      const targetCount = await prisma.inspectionTarget.count({ where: { karteId } });
+      await finishImportHistorySuccess(historyId, { facilityNo, targetCount, eventCount: result.eventsImported });
+    } else {
+      await finishImportHistoryFailure(historyId, result.error);
+    }
+    return result;
+  } catch (err) {
+    const message = `取込に失敗しました（詳細: ${err instanceof Error ? err.message : String(err)}）`;
+    await finishImportHistoryFailure(historyId, message);
+    return { ok: false, error: message };
+  }
+}
+
+async function runImportPhase3(karteId: string, facilityNo: string, blobUrl: string): Promise<ImportPhase3Result> {
   const loaded = await loadWorkbookFromBlob(blobUrl);
   if ("error" in loaded) return { ok: false, error: loaded.error };
   const { wb } = loaded;
@@ -539,6 +627,7 @@ export async function importPhase3Events(
 
   revalidatePath(`/karte/${facilityNo}`);
   revalidatePath("/karte");
+  revalidatePath("/karte/import"); // 取込履歴一覧を最新化する
 
   return { ok: true, eventsImported: imported };
 }
@@ -554,6 +643,9 @@ export type ImportKarteResult =
   | { ok: true; facilityNo: string; eventsImported: number }
   | { ok: false; error: string };
 
+// この一括版も、フェーズ分割版と同じくImportHistoryを作成・確定させる
+// （ファイルが選択されていない場合はまだfileNameが分からないため、履歴自体を
+// 作らずそのままエラーを返す）。
 export async function importKarteExcel(
   _prevState: ImportKarteResult | null,
   formData: FormData
@@ -562,6 +654,21 @@ export async function importKarteExcel(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "ファイルが選択されていません。" };
   }
+  const historyId = await createImportHistory(file.name);
+  try {
+    const result = await runImportKarteExcel(file, historyId);
+    if (!result.ok) {
+      await finishImportHistoryFailure(historyId, result.error);
+    }
+    return result;
+  } catch (err) {
+    const message = `取込に失敗しました（詳細: ${err instanceof Error ? err.message : String(err)}）`;
+    await finishImportHistoryFailure(historyId, message);
+    return { ok: false, error: message };
+  }
+}
+
+async function runImportKarteExcel(file: File, historyId: string): Promise<ImportKarteResult> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileName = file.name;
 
@@ -833,6 +940,13 @@ export async function importKarteExcel(
 
   revalidatePath(`/karte/${facilityNo}`);
   revalidatePath("/karte");
+  revalidatePath("/karte/import"); // 取込履歴一覧を最新化する
+
+  await finishImportHistorySuccess(historyId, {
+    facilityNo,
+    targetCount: targetsBySeq.size,
+    eventCount: imported,
+  });
 
   return { ok: true, facilityNo, eventsImported: imported };
 }

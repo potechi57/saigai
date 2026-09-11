@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import Link from "next/link";
 import {
@@ -37,6 +38,7 @@ type Progress =
   | { kind: "step"; label: string; completed: number; total: number };
 
 export default function ExcelImportForm() {
+  const router = useRouter();
   const [progress, setProgress] = useState<Progress>({ kind: "idle" });
   const [result, setResult] = useState<ImportKarteResult | null>(null);
 
@@ -56,6 +58,7 @@ export default function ExcelImportForm() {
       const r = await importKarteExcel(null, fd);
       setResult(r);
       setProgress({ kind: "idle" });
+      router.refresh(); // 取込履歴一覧（このページ内）を最新化する
       return;
     }
 
@@ -77,6 +80,7 @@ export default function ExcelImportForm() {
       const r = await importKarteExcel(null, fd);
       setResult(r);
       setProgress({ kind: "idle" });
+      router.refresh(); // 取込履歴一覧（このページ内）を最新化する
       return;
     }
 
@@ -100,7 +104,7 @@ export default function ExcelImportForm() {
           completed,
           total,
         });
-        const phase2 = await importPhase2FormBTarget(phase1.karteId, blobUrl, phase1.formBSheetNames[i]);
+        const phase2 = await importPhase2FormBTarget(phase1.karteId, blobUrl, phase1.formBSheetNames[i], phase1.historyId);
         if (!phase2.ok) {
           setResult(phase2);
           return;
@@ -110,7 +114,7 @@ export default function ExcelImportForm() {
       }
 
       setProgress({ kind: "step", label: "点検記録（様式Ｃ）を取込中...", completed, total });
-      const phase3 = await importPhase3Events(phase1.karteId, phase1.facilityNo, blobUrl);
+      const phase3 = await importPhase3Events(phase1.karteId, phase1.facilityNo, blobUrl, phase1.historyId);
       completed++;
       setProgress({ kind: "step", label: "完了", completed, total });
 
@@ -126,6 +130,7 @@ export default function ExcelImportForm() {
       });
     } finally {
       setProgress({ kind: "idle" });
+      router.refresh(); // 取込履歴一覧（このページ内）を最新化する（成功・失敗いずれの場合も）
     }
   }
 

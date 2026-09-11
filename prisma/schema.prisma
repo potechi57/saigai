@@ -481,3 +481,42 @@ model AttachmentDocument {
   fileType   String? // "pdf" 等
   uploadedAt DateTime @default(now())
 }
+
+// ── Excel取込履歴 ───────────────────────────────────────────
+// 「どのExcelファイルをいつ取り込んだか」を確認できるようにするための履歴。
+// 取込処理の開始時にIN_PROGRESSで作成し、完了時にSUCCESS/FAILUREへ更新する
+// （lib/actions/import-actions.tsのcreateImportHistory/finishImportHistory*参照）。
+// ブラウザのlocalStorageではなくDBに保存することで、複数端末・複数職員での
+// 共有履歴として機能する。
+
+enum ImportHistoryStatus {
+  IN_PROGRESS
+  SUCCESS
+  FAILURE
+}
+
+model ImportHistory {
+  id     String              @id @default(cuid())
+  status ImportHistoryStatus @default(IN_PROGRESS)
+
+  fileName String // 取り込んだExcelファイル名
+
+  // AuditLogと同じ方針で、カルテ削除等で参照先が無くなっても履歴自体は残したいため
+  // Karteへの外部キーは張らずファシリティ番号の文字列だけを保持する。取込処理の
+  // 早い段階（ファイルの解析前）ではまだ判明していないためnull、様式Ａの解析後に埋める。
+  facilityNo String?
+
+  targetCount Int? // 取り込んだ点検対象（様式Ｂ）数
+  eventCount  Int? // 取り込んだ点検記録（様式Ｃ）数
+
+  errorMessage String? // 失敗時のエラー内容（取込ボタンを押した画面にそのまま表示されたもの）
+
+  // 将来、ログイン機能を追加した際に「誰が取り込んだか」を埋める想定の予約フィールド
+  // （現状はログイン機能が無いため常にnull）。
+  importedBy String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([startedAt])
+}

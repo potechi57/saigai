@@ -1,7 +1,14 @@
 import Link from "next/link";
 import ExcelImportForm from "@/components/ExcelImportForm";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+
+const IMPORT_HISTORY_STATUS_LABEL: Record<string, { label: string; className: string }> = {
+  IN_PROGRESS: { label: "処理中", className: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" },
+  SUCCESS: { label: "成功", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+  FAILURE: { label: "失敗", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+};
 
 // Excel取込画面（指示書17章「データ取り込み」）。
 // 防災カルテ様式（全国地質調査業協会連合会版）のExcel（暗号化保護されている場合も含む）
@@ -9,7 +16,15 @@ export const dynamic = "force-dynamic";
 // 様式Ａ・様式Ｂ・「現状記録写真」シートの写真を読み取ってカルテを新規登録／更新する。
 // 様式Ｄ（災害履歴）はカルテ詳細画面での表示のみ対応しており、Excelからの取込は未対応
 // （下記「現時点の制限」参照）。
-export default function ImportKartePage() {
+export default async function ImportKartePage() {
+  // 直近の取込履歴（項目4「Excel取り込み履歴を表示する」）。DBに保存しているため、
+  // 端末・ブラウザを問わず、事務所内の誰が取り込んだ履歴も共有で確認できる
+  // （lib/actions/import-actions.tsのcreateImportHistory等参照）。
+  const history = await prisma.importHistory.findMany({
+    orderBy: { startedAt: "desc" },
+    take: 10,
+  });
+
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
       <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
@@ -23,6 +38,65 @@ export default function ImportKartePage() {
         （点検記録は点検日単位で重複登録されません）。
       </p>
       <ExcelImportForm />
+
+      <div className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">取込履歴（直近10件）</h2>
+        </div>
+        {history.length === 0 ? (
+          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">まだ取込履歴はありません。</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800 text-left text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="px-3 py-2">取込日時</th>
+                  <th className="px-3 py-2">ファイル名</th>
+                  <th className="px-3 py-2">結果</th>
+                  <th className="px-3 py-2">施設管理番号</th>
+                  <th className="px-3 py-2">点検対象</th>
+                  <th className="px-3 py-2">点検記録</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => {
+                  const status = IMPORT_HISTORY_STATUS_LABEL[h.status] ?? IMPORT_HISTORY_STATUS_LABEL.IN_PROGRESS;
+                  return (
+                    <tr key={h.id} className="border-t border-gray-200 dark:border-gray-700">
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                        {h.startedAt.toLocaleString("ja-JP")}
+                      </td>
+                      <td className="max-w-[16rem] truncate px-3 py-2 text-gray-800 dark:text-gray-100" title={h.fileName}>
+                        {h.fileName}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`rounded px-2 py-0.5 text-xs ${status.className}`}>{status.label}</span>
+                        {h.status === "FAILURE" && h.errorMessage && (
+                          <p className="mt-0.5 max-w-[20rem] truncate text-xs text-red-500 dark:text-red-400" title={h.errorMessage}>
+                            {h.errorMessage}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {h.facilityNo ? (
+                          <Link href={`/karte/${h.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {h.facilityNo}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{h.targetCount ?? "—"}</td>
+                      <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{h.eventCount ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="rounded border border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950 p-3 text-xs text-yellow-800 dark:text-yellow-300">
         <p className="font-semibold">現時点の制限</p>
         <ul className="mt-1 list-disc pl-4">
