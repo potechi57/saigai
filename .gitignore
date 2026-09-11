@@ -6,3 +6,7 @@ out/
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# scripts/audit-blob-usage.ts の出力（Vercel BlobのURL一覧を含むため、
+# 診断のたびに手元で生成される想定でリポジトリには含めない）
+blob-audit-orphans.json
