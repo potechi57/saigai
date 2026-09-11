@@ -5,8 +5,9 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 
 export const dynamic = "force-dynamic";
 
-// 「施設一覧」形式のExcelから取り込んだ施設の一覧画面。防災カルテの検索・
-// 一覧画面（/karte）とは別の、シンプルな全件テーブル表示にしている
+// 「施設一覧」形式のExcelから取り込んだ、道路土工構造物等（法面構造物・大型カルバート・
+// シェッド・橋梁・ブロック積等）の台帳一覧画面。防災カルテ（自然斜面の落石・崩壊等が
+// 対象）の検索・一覧画面（/karte）とは別の、シンプルな全件テーブル表示にしている
 // （件数規模が施設一覧＝台帳全体であり、カルテほど複雑な検索条件は
 // 今のところ不要なため）。地図（/karte）にはピンとして表示される。
 export default async function FacilityListPage() {
@@ -18,7 +19,12 @@ export default async function FacilityListPage() {
         ← 資料読み込みに戻る
       </Link>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">施設一覧（{items.length}件）</h1>
+        <div>
+          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">施設一覧（{items.length}件）</h1>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            道路土工構造物等（法面構造物・大型カルバート・シェッド・橋梁・ブロック積等）の台帳
+          </p>
+        </div>
         <Link
           href="/facility-list/import"
           className="rounded bg-gray-800 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
