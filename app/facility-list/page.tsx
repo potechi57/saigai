@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { deleteFacilityListItem } from "@/lib/actions/facility-list-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import { formatFacilityType } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function FacilityListPage() {
                   <td className="px-3 py-2 text-gray-800 dark:text-gray-100">{it.managementNo}</td>
                   <td className="px-3 py-2">{it.officeName ?? "—"}</td>
                   <td className="px-3 py-2">{it.routeName ?? "—"}</td>
-                  <td className="px-3 py-2">{it.facilityType ?? "—"}</td>
+                  <td className="px-3 py-2">{formatFacilityType(it.facilityType, it.facilitySubType) ?? "—"}</td>
                   <td className="px-3 py-2">{it.location ?? "—"}</td>
                   <td className="px-3 py-2">{it.soundnessGrade ?? "—"}</td>
                   <td className="px-3 py-2">

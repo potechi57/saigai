@@ -2,7 +2,7 @@ import Link from "next/link";
 import Form from "next/form";
 import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
+import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
@@ -266,6 +266,7 @@ export default async function KarteListPage({
     officeName: f.officeName,
     routeName: f.routeName,
     facilityType: f.facilityType,
+    facilitySubType: f.facilitySubType,
     location: f.location,
     latitude: Number(f.latitude),
     longitude: Number(f.longitude),
@@ -619,7 +620,7 @@ export default async function KarteListPage({
                         <td className="px-3 py-2 text-gray-800 dark:text-gray-100">{f.managementNo}</td>
                         <td className="px-3 py-2">{f.officeName ?? "—"}</td>
                         <td className="px-3 py-2">{f.routeName ?? "—"}</td>
-                        <td className="px-3 py-2">{f.facilityType ?? "—"}</td>
+                        <td className="px-3 py-2">{formatFacilityType(f.facilityType, f.facilitySubType) ?? "—"}</td>
                         <td className="px-3 py-2">{f.location ?? "—"}</td>
                         <td className="px-3 py-2">{f.soundnessGrade ?? "—"}</td>
                         <td className="px-3 py-2">

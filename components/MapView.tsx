@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { RESPONSE_META, responseMeta } from "@/lib/labels";
+import { RESPONSE_META, responseMeta, formatFacilityType } from "@/lib/labels";
 import { haversineDistanceMeters, formatDistanceMeters } from "@/lib/geo";
 import { setHomeLocation, clearHomeLocation } from "@/lib/actions/settings-actions";
 import { setFavorite } from "@/lib/actions/favorite-actions";
@@ -56,6 +56,7 @@ export type MapFacilityListItem = {
   officeName?: string | null;
   routeName?: string | null;
   facilityType?: string | null;
+  facilitySubType?: string | null;
   location?: string | null;
   latitude: number;
   longitude: number;
@@ -359,10 +360,11 @@ export default function MapView({
 
     for (const f of facilityListItems) {
       const marker = L.marker([f.latitude, f.longitude], { icon: buildFacilityListMarkerIcon() }).addTo(layer);
+      const facilityTypeLabel = formatFacilityType(f.facilityType, f.facilitySubType);
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
            <div style="font-weight:600;">${escapeHtml(f.managementNo)}</div>
-           ${f.facilityType ? `<div style="color:#666;">${escapeHtml(f.facilityType)}</div>` : ""}
+           ${facilityTypeLabel ? `<div style="color:#666;">${escapeHtml(facilityTypeLabel)}</div>` : ""}
            ${f.officeName ? `<div style="margin-top:4px;color:#374151;">管轄事務所: ${escapeHtml(f.officeName)}</div>` : ""}
            ${f.routeName ? `<div style="color:#374151;">路線名: ${escapeHtml(f.routeName)}</div>` : ""}
            ${f.location ? `<div style="color:#374151;">所在地: ${escapeHtml(f.location)}</div>` : ""}

@@ -21,6 +21,21 @@ export const FACILITY_LEDGER_CATEGORY_LABEL: Record<string, string> = {
   TUNNEL: "トンネル台帳",
 };
 
+// 施設一覧（FacilityListItem）の施設種別表示。原本の「施設種別」列は、门型標識等の
+// 道路附属物では「道路付属物」のように大分類止まりで、具体的な種類（例:「道路標識
+// （门型）」）は「施設細別」列の方に入っている。施設種別だけでは何の施設か分からない
+// ケースがあるため、施設細別があれば併記する（例:「道路付属物（道路標識（门型））」）。
+// 施設細別が無い場合（法面施設等）は、施設種別のみをそのまま表示する。
+export function formatFacilityType(facilityType?: string | null, facilitySubType?: string | null): string | null {
+  // 実データでは、施設細別が施設種別と同じ値になっている行（法面施設等）があり、
+  // その場合に併記すると「道路法面施設（道路法面施設）」のような冗長な表示になる
+  // ため、値が異なる場合のみ併記する。
+  if (facilitySubType && facilitySubType !== facilityType) {
+    return facilityType ? `${facilityType}（${facilitySubType}）` : facilitySubType;
+  }
+  return facilityType ?? facilitySubType ?? null;
+}
+
 export const WEATHER_LABEL: Record<string, string> = {
   SUNNY: "晴",
   CLOUDY: "曇",
