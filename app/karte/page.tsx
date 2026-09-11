@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Form from "next/form";
 import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
@@ -7,6 +8,8 @@ import type { MapKarte, HomeLocation, MapLedger } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
 import { FACILITY_LEDGER_CATEGORY_LABEL } from "@/lib/labels";
+import SearchSubmitButton from "@/components/SearchSubmitButton";
+import PendingLink from "@/components/PendingLink";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
@@ -213,7 +216,14 @@ export default async function KarteListPage({
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
       <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-r border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 lg:w-96">
         <h1 className="mb-3 text-lg font-bold text-gray-800 dark:text-gray-100">カルテ検索</h1>
-        <form className="space-y-3">
+        {/* next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
+            従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
+            （ページ全体のリロードをしない）とloading.tsxのフォールバック表示を
+            有効にする。SearchSubmitButtonがuseFormStatus()で送信中を検知し、
+            即座にスピナー表示できるのもこの<Form>の子孫だからこそ
+            （「検索・条件クリア後、何も表示されず処理中か分からない」というUX
+            指摘への対応。app/karte/loading.tsxとあわせて2段構えにしている）。 */}
+        <Form action="" className="space-y-3">
           <SearchField name="q" label="施設管理番号 / カルテ番号" defaultValue={params.q} />
           <div>
             <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
@@ -268,27 +278,32 @@ export default async function KarteListPage({
                 クリックひとつでその場の条件のまま切り替わる（JS不要）。「検索」ボタン側にも
                 同じ現在のviewを持たせているため、条件を変えて検索し直しても表示方法は
                 維持される（そうしないと、一覧表示中に検索し直すたび地図表示に戻ってしまう）。 */}
-            <button
+            <SearchSubmitButton
               type="submit"
               name="view"
               value={view === "list" ? "map" : "list"}
               className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               {view === "list" ? "地図で表示する" : "検索結果を一覧で表示する"}
-            </button>
+            </SearchSubmitButton>
           </div>
 
           <div className="flex items-center gap-3 pt-1">
-            <button type="submit" name="view" value={view} className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600">
+            <SearchSubmitButton
+              type="submit"
+              name="view"
+              value={view}
+              className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
+            >
               検索
-            </button>
+            </SearchSubmitButton>
             {hasCondition && (
-              <Link href="/karte" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+              <PendingLink href="/karte" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
                 条件をクリア
-              </Link>
+              </PendingLink>
             )}
           </div>
-        </form>
+        </Form>
 
         <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
           {!hasSearched

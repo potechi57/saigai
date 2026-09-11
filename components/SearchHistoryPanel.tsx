@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import PendingLink from "@/components/PendingLink";
 
 // 検索条件パネルに表示する「最近の検索」。ログイン機能が無いMVPのため、
 // 事務所で共有するのではなく端末（ブラウザ）ごとのlocalStorageに保持する
@@ -67,13 +67,13 @@ export default function SearchHistoryPanel({
       <ul className="space-y-0.5">
         {history.map((h) => (
           <li key={h.query + h.savedAt}>
-            <Link
+            <PendingLink
               href={`/karte${h.query ? `?${h.query}` : ""}`}
               title={h.label}
               className="block truncate rounded px-2 py-1 text-xs text-blue-600 hover:bg-gray-100 dark:text-blue-400 dark:hover:bg-gray-800"
             >
               {h.label}
-            </Link>
+            </PendingLink>
           </li>
         ))}
       </ul>

@@ -3,6 +3,12 @@
 // 継承される）。DBへの再フェッチが終わるまでNext.jsが自動的にこれを表示するため、
 // 検索条件を変えて再送信したときや、別のカルテへ遷移したときに画面が何も変わらず
 // 「止まったのか」と誤解されることを防げる。
+//
+// 検索画面（app/karte/page.tsx）自体の検索・条件クリア・最近の検索については、
+// これに加えてSearchSubmitButton（useFormStatus）・PendingLink（useLinkStatus）で
+// クリックした要素自体に即座のフィードバックも出している。このloading.tsxは
+// /karte配下の全ルート共通のフォールバックのため、検索画面固有のレイアウトに
+// 寄せた見た目にはしていない（カルテ詳細・編集画面等では見た目が合わなくなるため）。
 export default function Loading() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center">
