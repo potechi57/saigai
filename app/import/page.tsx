@@ -27,10 +27,9 @@ export const dynamic = "force-dynamic";
 // 防災カルテを用いた点検（落石・崩壊、盛土、擁壁について）を参考資料として位置づけて
 // おり、明確に排他的な分類ではない。
 type Method = {
-  icon: string;
   title: string;
   description: string;
-  when: string;
+  example: string;
   href: string;
 };
 
@@ -45,18 +44,16 @@ const GROUPS: {
       "自然災害・斜面災害のリスクを対象とする点検です。落石・崩壊、岩盤崩壊、地すべり、雪崩、土石流、盛土、擁壁、橋梁基礎の洗掘、地吹雪等が対象です。",
     methods: [
       {
-        icon: "📋",
         title: "防災カルテExcelの取込",
         description:
           "様式Ａ〜Ｄ（点検地点位置図・詳細スケッチ・点検履歴・災害履歴）を含む、防災カルテ様式のExcelファイル（全国地質調査業協会連合会版）を取り込みます。写真も自動で取り込まれます。",
-        when: "県土整備事務所から配布される、防災カルテ様式そのもののExcelファイルを受け取った場合。",
+        example: "県土整備事務所から配布される、防災カルテ様式そのもののExcelファイルを受け取った場合。",
         href: "/karte/import",
       },
       {
-        icon: "✍️",
         title: "手入力で新規登録",
         description: "Excelも画像も無い場合に、フォームから直接カルテを1件ずつ新規登録します。",
-        when: "これから新しく防災カルテを作成する場合。",
+        example: "これから新しく防災カルテを作成する場合。",
         href: "/karte/new",
       },
     ],
@@ -67,11 +64,10 @@ const GROUPS: {
       "法面構造物の健全性・安定性を対象とする点検です。切土・のり面、盛土、擁壁、ブロック積等が対象です（道路土工構造物点検要領）。盛土・擁壁は防災カルテ点検とも対象が重なります。",
     methods: [
       {
-        icon: "🛣️",
         title: "施設一覧Excelの取込",
         description:
           "Accessの施設管理データベースから出力されたと思われる、道路法面施設等の「施設一覧」形式のExcel（管理番号・路線名・所在地・緯度経度・直近点検の健全度等が一覧で並ぶ表）を取り込みます。管理番号ごとにDBへ登録し、地図にピンで表示します。",
-        when: "「施設一覧」「◯◯台帳」といった、多数の施設が一覧表になったExcelを受け取った場合（防災カルテ様式そのものではないもの）。",
+        example: "「施設一覧」「◯◯台帳」といった、多数の施設が一覧表になったExcelを受け取った場合（防災カルテ様式そのものではないもの）。",
         href: "/facility-list/import",
       },
     ],
@@ -82,11 +78,10 @@ const GROUPS: {
       "施設の健全性・損傷を対象とする、道路法施行規則に基づく法定点検（5年に1回の近接目視が義務）です。橋梁、トンネル、シェッド・大型カルバート、门型標識等が対象で、施設ごとに別の定期点検要領があります。",
     methods: [
       {
-        icon: "🚇",
         title: "台帳（画像）の登録",
         description:
           "トンネル台帳等、Excelのような構造化データが無く、スキャン画像でしか残っていない台帳を、画像1枚と最低限の基本情報（台帳名・路線名・所在地・緯度経度）だけで登録します。現状はトンネルのみ対応しています。",
-        when: "紙の台帳をスキャンした画像（PDF・JPG等）しか手元に無く、Excelデータが存在しない場合。",
+        example: "紙の台帳をスキャンした画像（PDF・JPG等）しか手元に無く、Excelデータが存在しない場合。",
         href: "/ledgers/new",
       },
     ],
@@ -110,28 +105,27 @@ export default function ImportHubPage() {
         </p>
       </div>
 
-      {GROUPS.map((group) => (
+      {GROUPS.map((group, groupIndex) => (
         <div key={group.title} className="space-y-2">
-          <div>
-            <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">{group.title}</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500">{group.scope}</p>
+          <div className="border-b border-gray-300 pb-1.5 dark:border-gray-700">
+            <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">
+              {groupIndex + 1}. {group.title}
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{group.scope}</p>
           </div>
-          <ul className="space-y-3">
+          <ul className="space-y-2">
             {group.methods.map((m) => (
-              <li key={m.href} className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-                <Link href={m.href} className="block">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl" aria-hidden>
-                      {m.icon}
-                    </span>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-800 dark:text-gray-100 hover:underline">{m.title}</h3>
-                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{m.description}</p>
-                      <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                        <span className="font-medium text-gray-500 dark:text-gray-400">こんな時に:</span> {m.when}
-                      </p>
-                    </div>
-                  </div>
+              <li key={m.href} className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <Link
+                  href={m.href}
+                  className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{m.title}</h3>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{m.description}</p>
+                  <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                    <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
+                    {m.example}
+                  </p>
                 </Link>
               </li>
             ))}
