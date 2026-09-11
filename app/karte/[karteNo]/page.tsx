@@ -678,29 +678,39 @@ export default async function KarteDetailPage({
                   </table>
 
                   <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
-                    {/* 左: 平面図・現況写真スケッチ（いずれも被災・対策の様子） */}
+                    {/* 左: 平面図・現況写真スケッチ（いずれも被災・対策の様子）。
+                        写真の大きさは様式Ｂ（<詳細スケッチ欄>）と同じ基準に揃えている
+                        （w-2/3。aspect-videoで縦横比は保ったまま既定サイズの2/3程度に縮小）。 */}
                     <div className="space-y-3 p-3">
                       <div>
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                           &lt;平面図（被災・対策）&gt;
                         </h3>
-                        <PhotoSlot photo={planPhoto} />
+                        <div className="mx-auto w-2/3">
+                          <PhotoSlot photo={planPhoto} />
+                        </div>
                       </div>
                       <div>
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                           &lt;現況写真・スケッチ（被災・対策）&gt;
                         </h3>
-                        <PhotoSlot photo={sitePhoto} />
+                        <div className="mx-auto w-2/3">
+                          <PhotoSlot photo={sitePhoto} />
+                        </div>
                       </div>
                     </div>
 
-                    {/* 右: 断面図＋特記事項（発生年月日・規模・誘因・被害・通行止実績・対策工） */}
-                    <div className="space-y-3 p-3 text-xs">
+                    {/* 右: 断面図＋特記事項（発生年月日・規模・誘因・被害・通行止実績・対策工）。
+                        文字サイズも様式Ｂの右列（<写真張付欄>・着目すべき点等）と同じtext-smに
+                        揃えている（従来text-xsで様式Ｂより一回り小さかった）。 */}
+                    <div className="space-y-3 p-3 text-sm">
                       <div>
                         <h3 className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                           &lt;断面図（被災・対策）&gt;
                         </h3>
-                        <PhotoSlot photo={sectionPhoto} />
+                        <div className="mx-auto w-2/3">
+                          <PhotoSlot photo={sectionPhoto} />
+                        </div>
                       </div>
 
                       <table className="w-full table-fixed border-collapse">
