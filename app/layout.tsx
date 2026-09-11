@@ -48,8 +48,11 @@ export default function RootLayout({
             <span className="text-sm font-normal text-gray-500 dark:text-gray-400">MVP</span>
           </a>
           {/* 「設定やらいろいろ」置き場。カルテ検索画面自体には検索条件パネルしか
-              置かない方針にしたため、そこに間借りしていたExcel取込・新規登録の導線を
-              含め、画面をまたいで常に使う操作はすべてここへ集約している。 */}
+              置かない方針にしたため、画面をまたいで常に使う操作はすべてここへ集約
+              している。データの追加方法（Excel取込・台帳画像登録・手入力など）が
+              複数存在するようになったため、それぞれを個別にヘッダーへ並べるのではなく
+              「資料読み込み」1つのボタンにまとめ、遷移先（/import）で各手法を
+              説明付きで案内する構成にしている。 */}
           <nav className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
             <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
               ★ お気に入り
@@ -58,17 +61,11 @@ export default function RootLayout({
               編集履歴
             </a>
             <ViewHistoryButton />
-            <a href="/karte/import" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-              Excelから取込
-            </a>
-            <a href="/ledgers" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-              台帳（画像）
-            </a>
             <a
-              href="/karte/new"
+              href="/import"
               className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
             >
-              ＋ 新規カルテ登録
+              ＋ 資料読み込み
             </a>
             <ThemeToggle />
           </nav>

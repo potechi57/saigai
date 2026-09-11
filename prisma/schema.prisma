@@ -554,3 +554,57 @@ model FacilityLedger {
 
   @@index([category])
 }
+
+// ── 施設一覧（Access等から出力される施設管理台帳） ────────────────────
+// 島根県の実データ「施設一覧(道路法面施設).xlsx」で構造を確認済み。
+// 防災カルテ（Karte）とは全く別の形式・目的のデータで、1シートに多数の
+// 施設が一覧で並ぶ「施設管理データベース」の出力そのもの。様式Ａ〜Ｄの
+// ような詳細記録は無く、施設の基本情報＋直近点検の要約（健全度・点検日・
+// 所見）だけを持つ、より軽量な台帳データ。カルテのような複雑な様式では
+// なくフラットな表形式のため、専用の軽量モデルとして取り込む
+// （lib/excel/facility-list-import.ts参照）。管理番号で一意に識別され、
+// 再取込のたびに同じ管理番号の行は上書き更新される（カルテのfacilityNoと
+// 同じ考え方）。
+model FacilityListItem {
+  id String @id @default(cuid())
+
+  managementNo    String  @unique // 管理番号（例: A01-AH-900051）
+  oldManagementNo String? // 旧管理番号
+  officeName      String? // 管轄事務所
+  facilityField   String? // 施設分野（例: 道路）
+  routeType       String? // 路線種別（原本ヘッダーは「道川湾地区種別」という表記だが、
+  // 実データの値は「国道」「主要地方道」「一般県道」等の道路種別そのもの）
+  routeName       String? // 路線名（原本ヘッダーは「道川湾地区名」。実データは「（国）４３１号」等）
+  facilityType    String? // 施設種別
+  facilitySubType String? // 施設細別
+  facilityName    String? // 施設名称
+  location        String? // 所在地
+
+  // 原本は「緯度経度」列に"35.488,133.083"のようなカンマ区切り文字列で
+  // 入っているため、取込時に分解して保持する。
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+
+  constructionYear String? // 建設年度（実データにExcel日付起因と思われる"1899"等の
+  // 異常値が混在していたため、数値化・日付化せず文字列のまま保持する）
+  remarks          String? // 備考
+
+  regulationLedgerName      String? // 法令台帳・名称
+  regulationLedgerUpdatedAt String? // 法令台帳・作成・更新
+  facilityLedgerName        String? // 施設台帳・名称（将来、FacilityLedgerと紐付ける余地あり）
+  facilityLedgerUpdatedAt   String? // 施設台帳・作成・更新
+
+  inspectionType String? // 点検種別
+  soundnessGrade String? // 健全度（例: "Ⅱ"）
+  inspectionDate DateTime? // 点検実施日
+  inspector      String? // 点検実施者
+  mainFindings   String? // 主な所見
+  repairDate     String? // 修繕年月日
+  repairRemarks  String? // 修繕記録の備考
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([officeName])
+  @@index([facilityType])
+}

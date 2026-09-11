@@ -45,6 +45,26 @@ export type MapLedger = {
   note?: string | null;
 };
 
+// 「施設一覧」形式のExcel（Accessの施設管理データベース出力）から取り込んだ
+// 施設（prisma/schema.prismaのFacilityListItem参照）。カルテ・トンネル台帳とは
+// さらに別のデータで、様式Ａ〜Ｄのような詳細記録は無く、施設の基本情報＋
+// 直近点検の要約だけを持つ。台帳（FacilityLedger）と同様、件数が少ない想定
+// （事務所単位の台帳全体）のため、カルテの検索条件とは無関係に常に表示する。
+export type MapFacilityListItem = {
+  id: string;
+  managementNo: string;
+  officeName?: string | null;
+  routeName?: string | null;
+  facilityType?: string | null;
+  location?: string | null;
+  latitude: number;
+  longitude: number;
+  soundnessGrade?: string | null;
+  inspectionDateLabel?: string | null;
+  mainFindings?: string | null;
+  remarks?: string | null;
+};
+
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
 
 // 地図APIはGoogle Maps等への差し替えを見据え、業務データ（MapKarte）とは疎結合にしている
@@ -60,11 +80,13 @@ export default function MapView({
   home,
   allowSetHome = false,
   ledgers = [],
+  facilityListItems = [],
 }: {
   kartes: MapKarte[];
   home?: HomeLocation;
   allowSetHome?: boolean;
   ledgers?: MapLedger[];
+  facilityListItems?: MapFacilityListItem[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -81,6 +103,8 @@ export default function MapView({
   const lastKarteIdsKeyRef = useRef<string | null>(null);
   // トンネル台帳等のマーカー一式（カルテとは別レイヤー。検索条件の影響を受けない）。
   const ledgerLayerRef = useRef<L.LayerGroup | null>(null);
+  // 施設一覧Excelから取り込んだ施設のマーカー一式（同様に検索条件の影響を受けない）。
+  const facilityListLayerRef = useRef<L.LayerGroup | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -119,16 +143,18 @@ export default function MapView({
       maxZoom: 19,
     }).addTo(map);
 
-    // カルテ・台帳のマーカーは下のそれぞれ専用のeffectが構築する。
+    // カルテ・台帳・施設一覧のマーカーは下のそれぞれ専用のeffectが構築する。
     // ここでは入れ物のレイヤーグループを地図に追加するだけ。
     karteLayerRef.current = L.layerGroup().addTo(map);
     ledgerLayerRef.current = L.layerGroup().addTo(map);
+    facilityListLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
       mapRef.current = null;
       karteLayerRef.current = null;
       ledgerLayerRef.current = null;
+      facilityListLayerRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -321,6 +347,35 @@ export default function MapView({
       );
     }
   }, [ledgers]);
+
+  // 施設一覧Excelから取り込んだ施設のマーカーを構築する専用effect。トンネル台帳
+  // 同様、カルテの検索条件とは無関係に常に表示する。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = facilityListLayerRef.current;
+    if (!map || !layer) return;
+
+    layer.clearLayers();
+
+    for (const f of facilityListItems) {
+      const marker = L.marker([f.latitude, f.longitude], { icon: buildFacilityListMarkerIcon() }).addTo(layer);
+      marker.bindPopup(
+        `<div style="font-size:13px;min-width:180px;">
+           <div style="font-weight:600;">${escapeHtml(f.managementNo)}</div>
+           ${f.facilityType ? `<div style="color:#666;">${escapeHtml(f.facilityType)}</div>` : ""}
+           ${f.officeName ? `<div style="margin-top:4px;color:#374151;">管轄事務所: ${escapeHtml(f.officeName)}</div>` : ""}
+           ${f.routeName ? `<div style="color:#374151;">路線名: ${escapeHtml(f.routeName)}</div>` : ""}
+           ${f.location ? `<div style="color:#374151;">所在地: ${escapeHtml(f.location)}</div>` : ""}
+           ${f.soundnessGrade ? `<div style="margin-top:4px;color:#374151;">健全度: ${escapeHtml(f.soundnessGrade)}</div>` : ""}
+           ${f.inspectionDateLabel ? `<div style="color:#374151;">点検実施日: ${escapeHtml(f.inspectionDateLabel)}</div>` : ""}
+           ${f.mainFindings ? `<div style="margin-top:6px;color:#374151;white-space:pre-wrap;">主な所見: ${escapeHtml(f.mainFindings)}</div>` : ""}
+           ${f.remarks ? `<div style="margin-top:4px;color:#6b7280;white-space:pre-wrap;">備考: ${escapeHtml(f.remarks)}</div>` : ""}
+           <div style="margin-top:6px;"><a href="/facility-list" style="color:#2563eb;">施設一覧を見る →</a></div>
+         </div>`,
+        { maxWidth: 360 }
+      );
+    }
+  }, [facilityListItems]);
 
   // ホーム位置ピンは、地図本体を作り直さずに独立して追加・更新・削除する
   // （上の初期化effectとは別立てにする理由は直上のコメントの通り）。
@@ -602,6 +657,25 @@ function buildLedgerMarkerIcon(): L.DivIcon {
     iconSize: [26, 26],
     iconAnchor: [13, 13],
     popupAnchor: [0, -13],
+  });
+}
+
+// 施設一覧Excelから取り込んだ施設のマーカーアイコン。カルテ（しずく型）・
+// トンネル台帳（丸型・紫）とも見た目を変え、正方形・オレンジ系の色にしている。
+function buildFacilityListMarkerIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        background:#ea580c;
+        width:22px;height:22px;border-radius:4px;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+        font-size:11px;
+      ">🛣️</div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11],
   });
 }
 

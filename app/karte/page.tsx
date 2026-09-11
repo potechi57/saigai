@@ -4,7 +4,7 @@ import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
-import type { MapKarte, HomeLocation, MapLedger } from "@/components/MapLoader";
+import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
 import { FACILITY_LEDGER_CATEGORY_LABEL } from "@/lib/labels";
@@ -100,7 +100,10 @@ export default async function KarteListPage({
   // トンネル台帳等（FacilityLedger）は、カルテの検索条件・hasSearchedとは無関係に
   // 常に取得する（件数が少ない想定のため、カルテのような「検索するまで表示しない」
   // 制御はしていない。lib/actions/facility-ledger-actions.ts参照）。
-  const [routeNameRows, settings, facilityLedgersRaw] = await Promise.all([
+  // 施設一覧Excelから取り込んだ施設（FacilityListItem）も、ledgersと同じ理由で
+  // カルテの検索条件・hasSearchedとは無関係に常に取得する
+  // （lib/actions/facility-list-actions.ts参照）。
+  const [routeNameRows, settings, facilityLedgersRaw, facilityListItemsRaw] = await Promise.all([
     prisma.karte.findMany({
       distinct: ["routeName"],
       select: { routeName: true },
@@ -108,6 +111,7 @@ export default async function KarteListPage({
     }),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
     prisma.facilityLedger.findMany({ where: { latitude: { not: null }, longitude: { not: null } } }),
+    prisma.facilityListItem.findMany({ where: { latitude: { not: null }, longitude: { not: null } } }),
   ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
@@ -120,6 +124,20 @@ export default async function KarteListPage({
     longitude: Number(l.longitude),
     imageUrl: l.imageUrl,
     note: l.note,
+  }));
+  const mapFacilityListItems: MapFacilityListItem[] = facilityListItemsRaw.map((f) => ({
+    id: f.id,
+    managementNo: f.managementNo,
+    officeName: f.officeName,
+    routeName: f.routeName,
+    facilityType: f.facilityType,
+    location: f.location,
+    latitude: Number(f.latitude),
+    longitude: Number(f.longitude),
+    soundnessGrade: f.soundnessGrade,
+    inspectionDateLabel: f.inspectionDate ? new Date(f.inspectionDate).toLocaleDateString("ja-JP") : null,
+    mainFindings: f.mainFindings,
+    remarks: f.remarks,
   }));
 
   const home: HomeLocation =
@@ -384,7 +402,13 @@ export default async function KarteListPage({
             </div>
           </div>
         ) : (
-          <MapView kartes={mapKartes} home={home} allowSetHome ledgers={mapLedgers} />
+          <MapView
+            kartes={mapKartes}
+            home={home}
+            allowSetHome
+            ledgers={mapLedgers}
+            facilityListItems={mapFacilityListItems}
+          />
         )}
       </main>
     </div>

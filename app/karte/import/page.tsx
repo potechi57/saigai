@@ -27,8 +27,8 @@ export default async function ImportKartePage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-        ← 検索・一覧に戻る
+      <Link href="/import" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+        ← 資料読み込みに戻る
       </Link>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Excelから取り込む</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
