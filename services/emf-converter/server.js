@@ -159,7 +159,10 @@ function execFileAsync(cmd, args, opts) {
 
 const RANGE_RENDER_DPI = 300;
 
-// xlsxの指定シート・指定セル範囲だけを1枚のPNGに変換する。防災カルテの
+// xlsxの指定シート・指定セル範囲だけを1枚の画像に変換する。出力形式はPNG/JPEGの
+// うち小さい方を都度選ぶ（理由は下記の切り出し処理部分のコメント参照）ため、
+// 戻り値は{ data, contentType }。関数名はPNG固定だった時代の名残でconvertRangeToPngの
+// まま。防災カルテの
 // 様式Ａ（点検地点位置図欄）・様式Ｂ（詳細スケッチ欄）は、EMF/WMFスケッチの上に
 // 赤枠・注記テキスト・矢印・写真がグループ化されて重ねて配置されており、
 // 画像を個別に抜き出すだけではこれらの重なりが失われる（実データで確認済み）。
@@ -203,8 +206,11 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     }
 
     const pdfPath = path.join(workDir, "input.pdf");
+    // 中間生成物（内容領域の検出・切り出し元）は無劣化のPNGのまま扱う。劣化するのは
+    // 最終出力（resultPngPath/resultJpgPath）だけにする。
     const fullPagePath = path.join(workDir, "fullpage.png");
-    const pngPath = path.join(workDir, "result.png");
+    const resultPngPath = path.join(workDir, "result.png");
+    const resultJpgPath = path.join(workDir, "result.jpg");
     const pdfPage = `${pdfPath}[${cropInfo.pdfPageIndex}]`;
 
     // まずページ全体（トリミングなし）をラスタライズする。
@@ -313,17 +319,34 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     // （lib/excel/emf-convert.ts参照）のため、この切り出し後にファイルごとの
     // 内容量で変わってしまう追加のトリミングは行わない（+repageで仮想
     // キャンバスをリセットするのみ）。
+    //
+    // 【PNG・JPEGの両方を作り、小さい方を採用する理由】
+    // 詳細スケッチ欄の中身によって最適な形式が逆転することを実データで確認した:
+    // 中身が普通の写真（JPEG）の場合、欄全体を300dpiでラスタライズしたPNG（可逆圧縮）は
+    // 元のJPEG写真より数倍〜十倍近く重くなる。一方、中身が線画中心のEMF（ベクター図形。
+    // 背景が白一色に近い）の場合は逆で、JPEGは白背景にもブロックノイズが乗るため、
+    // PNGの数倍重くなることがあった（様式Ａで実測: PNG 32KB → JPEG 264KB）。
+    // 事前にどちらが有利か判定するヒューリスティックは作らず、単純に両方生成して
+    // ファイルサイズで比較する（このサイズの画像なら二重にconvertしても数百ms程度）。
     try {
       await execFileAsync(
         "convert",
-        [fullPagePath, "-crop", `${cropWidth}x${cropHeight}+${cropX}+${cropY}`, "+repage", pngPath],
+        [fullPagePath, "-crop", `${cropWidth}x${cropHeight}+${cropX}+${cropY}`, "+repage", resultPngPath],
+        { timeout: CONVERT_RANGE_TIMEOUT_MS }
+      );
+      await execFileAsync(
+        "convert",
+        [fullPagePath, "-crop", `${cropWidth}x${cropHeight}+${cropX}+${cropY}`, "+repage", "-quality", "90", resultJpgPath],
         { timeout: CONVERT_RANGE_TIMEOUT_MS }
       );
     } catch ({ error, stderr }) {
       throw new HttpError(502, `画像の切り出しに失敗しました: ${stderr || error.message}`);
     }
 
-    return await fs.readFile(pngPath);
+    const [pngBuffer, jpgBuffer] = await Promise.all([fs.readFile(resultPngPath), fs.readFile(resultJpgPath)]);
+    return pngBuffer.length <= jpgBuffer.length
+      ? { data: pngBuffer, contentType: "image/png" }
+      : { data: jpgBuffer, contentType: "image/jpeg" };
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
@@ -357,9 +380,9 @@ const server = http.createServer(async (req, res) => {
         throw new HttpError(400, "リクエストボディが空です");
       }
 
-      const png = await convertRangeToPng(body, sheet, range);
-      res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.length });
-      res.end(png);
+      const result = await convertRangeToPng(body, sheet, range);
+      res.writeHead(200, { "Content-Type": result.contentType, "Content-Length": result.data.length });
+      res.end(result.data);
       return;
     }
 

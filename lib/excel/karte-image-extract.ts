@@ -261,9 +261,12 @@ export async function extractFormRangeImage(
 ): Promise<ExtractedImage | null> {
   if (!hasEmfConverterCredentials()) return null;
   try {
-    const png = await convertSheetRangeToPng(buffer, sheetName, range);
-    if (!png) return null;
-    return { data: png, ext: "png", fromCol: 0, fromRow: 0 };
+    const result = await convertSheetRangeToPng(buffer, sheetName, range);
+    if (!result) return null;
+    // Cloud Run側（services/emf-converter/server.js）がPNG/JPEGのうちサイズが
+    // 小さい方を都度選んで返すため、実際の形式（result.ext）をそのまま使う
+    // （会話ログ・engineering-lessons-learned.md参照）。
+    return { data: result.data, ext: result.ext, fromCol: 0, fromRow: 0 };
   } catch {
     return null;
   }
