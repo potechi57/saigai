@@ -2,9 +2,12 @@
   "name": "emf-converter",
   "version": "1.0.0",
   "private": true,
-  "description": "EMF/WMFをPNGに変換するだけの小さなHTTPサーバー（Cloud Run上で稼働。LibreOffice headlessを呼び出す）。Next.js側の依存を増やさないため、外部npmパッケージは使わずNode.js組み込みモジュールのみで実装している。",
+  "description": "EMF/WMFのPNG変換、および防災カルテExcelの指定セル範囲のPNG変換を行う小さなHTTPサーバー（Cloud Run上で稼働。LibreOffice headlessを呼び出す）。Next.js本体とは別デプロイのため、ここでのnpm依存追加はNext.js側のバンドルサイズに影響しない。jszipは/convert-range向けに、xlsx内の列幅・行高・ページ余白を読み取るためだけに使用（xlsx自体は書き換えない。printArea.js参照）。",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
   }
 }

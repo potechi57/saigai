@@ -61,3 +61,66 @@ export async function convertEmfToPng(data: Buffer, sourceExt: "emf" | "wmf"): P
     return null;
   }
 }
+
+// 様式Ａ・様式Ｂのシート上に重なって配置されている写真・図形・注記テキストを
+// まとめて1枚のPNGとして取り込むための変換。
+//
+// 【なぜ個別の画像抽出ではなく範囲まるごと画像化するのか】
+// 実データ（サンプルExcel複数件）を調査した結果、これらのシートには
+// EMF/WMFスケッチの上に赤枠・注記テキスト・矢印・写真がdrawingMLの
+// グループ図形として重ねて配置されており、写真だけを個別に抜き出す
+// （karte-image-extract.tsの従来ロジック）ではこれらの重なりが失われることが
+// わかった。セル範囲ごとPDF化→画像化すれば、載せる図形やテキストの数に
+// 関わらず、見た目どおりに欠落なく取り込める。
+//
+// 【なぜ範囲をファイルごとに動的計算せず固定値にしているか】
+// 当初はシート内の図形アンカーから範囲を動的に計算する案だったが、
+// ファイルによって実際の内容の位置・広さが異なる（例: 左端がC列の
+// ファイルもあればP列のファイルもある）ため、動的計算だと切り出し結果の
+// 画像サイズ・内容の位置がファイルごとにばらついてしまう。全ファイルに
+// 同じ固定範囲を使うことで、この見た目のばらつきを無くしている。
+// 範囲は実データ4件（様式Ａ・様式Ｂ）の内容の和集合に余裕を持たせた値
+//（詳細はコミット時の説明・会話ログ参照）。将来、この範囲を超える内容を
+// 持つファイルが見つかった場合は、ここを調整する。
+export const FORM_A_RANGE = "B6:CL30";
+
+// 様式Ｂは「詳細スケッチ欄」（EMF/WMFスケッチに注記テキスト・図形が重なることが
+// 多い）だけを対象にする。「写真張り付け欄」（詳細スケッチ欄より右側、実データで
+// ほとんどの場合図形・テキストが重ねられていないことを確認済み）は、まとめて
+// 画像化する必要が無いため対象外とし、従来どおり個別の写真抽出に任せる
+// （karte-image-extract.tsのextractFormBImages参照。「詳細スケッチ欄を1枚の
+// 合成画像＋写真張り付け欄の個別写真」という組み合わせになる）。
+export const FORM_B_RANGE = "B7:AS42";
+// 個別抽出した画像のうち、上記FORM_B_RANGEの右端列（AS）より右にアンカーされて
+// いるものだけを「写真張り付け欄の写真」とみなし、合成画像と組み合わせる
+// （extractFormBImages参照）。範囲を変更した場合はこちらも合わせて調整すること。
+export const FORM_B_SKETCH_RANGE_END_COL_0INDEXED = 44; // AS列（1始まり45列目）の0始まり値
+
+// xlsxバイト列（ファイル全体）の指定シート・指定範囲を1枚のPNGに変換する。
+// convertEmfToPng同様、環境変数未設定・通信失敗時はnullを返すベストエフォート。
+export async function convertSheetRangeToPng(
+  xlsxBuffer: Buffer,
+  sheetName: string,
+  range: string
+): Promise<Buffer | null> {
+  const baseUrl = getConverterUrl();
+  if (!baseUrl) return null;
+
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+    const apiKey = process.env.EMF_CONVERTER_API_KEY;
+    if (apiKey) headers["X-Api-Key"] = apiKey;
+
+    const params = new URLSearchParams({ sheet: sheetName, range });
+    const res = await fetch(`${baseUrl}/convert-range?${params.toString()}`, {
+      method: "POST",
+      headers,
+      body: new Uint8Array(xlsxBuffer),
+    });
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch {
+    return null;
+  }
+}

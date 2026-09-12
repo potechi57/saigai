@@ -1,5 +1,12 @@
 import * as XLSX from "xlsx";
-import { convertEmfToPng, hasEmfConverterCredentials } from "@/lib/excel/emf-convert";
+import {
+  convertEmfToPng,
+  convertSheetRangeToPng,
+  hasEmfConverterCredentials,
+  FORM_A_RANGE,
+  FORM_B_RANGE,
+  FORM_B_SKETCH_RANGE_END_COL_0INDEXED,
+} from "@/lib/excel/emf-convert";
 
 // 指定したシートに埋め込まれた画像（写真）を抽出する共通処理。
 // 様式Ａの「点検地点位置図・現況写真」欄、様式Ｂの「詳細スケッチ欄・写真張付欄」で使う。
@@ -180,3 +187,44 @@ export async function extractSheetImages(buffer: Buffer, sheetName: string): Pro
 export async function extractFormAImages(buffer: Buffer): Promise<ExtractedImage[]> {
   return extractSheetImages(buffer, "様式Ａ");
 }
+
+// 指定シートの固定範囲（FORM_A_RANGE/FORM_B_RANGE）を1枚のPNGとして取り込む。
+// 新規カルテ取込専用（lib/actions/import-actions.tsのisNewKarte分岐参照）。
+// Cloud Run変換サービスが未設定・応答失敗等の場合はnullを返し、呼び出し側で
+// 従来のextractSheetImages（個別写真抽出）にフォールバックする。
+export async function extractFormRangeImage(
+  buffer: Buffer,
+  sheetName: string,
+  range: string
+): Promise<ExtractedImage | null> {
+  if (!hasEmfConverterCredentials()) return null;
+  try {
+    const png = await convertSheetRangeToPng(buffer, sheetName, range);
+    if (!png) return null;
+    return { data: png, ext: "png", fromCol: 0, fromRow: 0 };
+  } catch {
+    return null;
+  }
+}
+
+// 様式Ｂ専用: 「詳細スケッチ欄」（FORM_B_RANGE）だけをまとめて1枚のPNGに変換し、
+// 「写真張り付け欄」（詳細スケッチ欄より右側）の写真は従来どおり個別に抜き出して
+// 後ろに続ける。写真張り付け欄はほとんどの場合、図形・注記テキストが重ねて
+// 配置されていないことを実データで確認済みのため、まとめて画像化する必要が無く、
+// 個別抽出のままの方が（画像が分かれている分）見やすい。
+// 新規カルテ取込専用（lib/actions/import-actions.tsのisNewKarte分岐参照）。
+// 合成画像の取得に失敗した場合（Cloud Run変換サービス未設定・応答失敗等）はnullを
+// 返し、呼び出し側で従来のextractSheetImages（全画像の個別抽出）にフォールバックする。
+export async function extractFormBImages(buffer: Buffer, sheetName: string): Promise<ExtractedImage[] | null> {
+  const sketchImage = await extractFormRangeImage(buffer, sheetName, FORM_B_RANGE);
+  if (!sketchImage) return null;
+
+  const allImages = await extractSheetImages(buffer, sheetName);
+  const photoAreaImages = allImages.filter((img) => img.fromCol > FORM_B_SKETCH_RANGE_END_COL_0INDEXED);
+
+  // extractSheetImagesの並び順（列→行）を踏襲するため、合成画像（fromCol=0）は
+  // 常に先頭になる。
+  return [sketchImage, ...photoAreaImages];
+}
+
+export { FORM_A_RANGE, FORM_B_RANGE };

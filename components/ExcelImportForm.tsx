@@ -104,7 +104,13 @@ export default function ExcelImportForm() {
           completed,
           total,
         });
-        const phase2 = await importPhase2FormBTarget(phase1.karteId, blobUrl, phase1.formBSheetNames[i], phase1.historyId);
+        const phase2 = await importPhase2FormBTarget(
+          phase1.karteId,
+          blobUrl,
+          phase1.formBSheetNames[i],
+          phase1.historyId,
+          phase1.isNewKarte
+        );
         if (!phase2.ok) {
           setResult(phase2);
           return;

@@ -1,8 +1,29 @@
 # emf-converter
 
-Excelに埋め込まれたEMF/WMF（ベクター形式のスケッチ画像）をPNGに変換するだけの、
-小さなHTTPサーバー。防災カルテWebアプリ（`../../`、Next.js／Vercel）のExcel取込処理
+Excelに埋め込まれたEMF/WMF（ベクター形式のスケッチ画像）をPNGに変換する、および
+防災カルテExcelの指定シート・指定セル範囲をまるごと1枚のPNGに変換する、小さな
+HTTPサーバー。防災カルテWebアプリ（`../../`、Next.js／Vercel）のExcel取込処理
 （`lib/excel/emf-convert.ts`）から呼び出される。
+
+## エンドポイント
+
+- `GET /health`: 疎通確認用。`ok`を返す。
+- `POST /convert?ext=emf|wmf`: EMF/WMFファイルのバイト列をリクエストボディで受け取り、
+  PNGに変換して返す（様式Ａ・様式Ｂの個別画像抽出で使用）。
+- `POST /convert-range?sheet=<シート名>&range=<A1形式の範囲>`: xlsxファイル全体（本体）を
+  リクエストボディで受け取り、指定シートの指定セル範囲だけを切り出したPNGを返す。
+  新規カルテ取込時、様式Ａ・様式Ｂの上に重なって配置された写真・図形・注記テキストを
+  まとめて欠落なく取り込むために使う（`lib/excel/karte-image-extract.ts`の
+  `extractFormRangeImage`から呼ばれる）。`/convert`よりファイルサイズが大きく処理も
+  重いため、別途タイムアウト・上限（`MAX_XLSX_BODY_BYTES`・`CONVERT_RANGE_TIMEOUT_MS`。
+  `server.js`参照）を設けている。
+  - 内部では、xlsxファイル自体は書き換えず、LibreOfficeの`calc_pdf_Export`フィルタの
+    `SinglePageSheets`オプションでシート全体を1ページのPDFとして出力した上で、対象範囲が
+    シート全体に対して占める位置・大きさの比率（列幅・行の高さ・ページ余白から算出。
+    `printArea.js`参照）をもとにImageMagickの`-crop`で切り出している。当初はxlsx側の
+    `Print_Area`や`pageSetup`（scale/fitToWidth等）を書き換えて「印刷範囲だけを1ページに
+    収める」方式を試みたが、LibreOfficeのヘッドレス変換ではこれらの設定が反映されない
+    ことを実機検証で確認したため、この比率ベースの切り出し方式にしている。
 
 ## なぜこのサーバーが別コンポーネントとして存在するか
 
@@ -39,6 +60,16 @@ curl -X POST "http://localhost:8080/convert?ext=emf" \
   --output result.png
 ```
 
+`/convert-range`も同様に確認できる（`sheet`・`range`はURLエンコードした
+クエリパラメータとして渡す）:
+
+```bash
+curl -X POST "http://localhost:8080/convert-range?sheet=%E6%A7%98%E5%BC%8F%EF%BC%A1&range=B6:CL30" \
+  -H "X-Api-Key: devsecret" \
+  --data-binary @sample.xlsx \
+  --output range-result.png
+```
+
 `result.png`が正しく開ければ成功。`API_KEY`環境変数を省略するとローカルでは
 認証チェックをスキップする（本番では必ず設定すること。下記参照）。
 
@@ -65,7 +96,7 @@ gcloud run deploy emf-converter \
   --concurrency 1 \
   --memory 2Gi \
   --cpu 2 \
-  --timeout 60 \
+  --timeout 120 \
   --min-instances 0 \
   --max-instances 3 \
   --set-env-vars API_KEY=<手順2で生成した値>
@@ -83,6 +114,9 @@ gcloud run deploy emf-converter \
   実用上問題にならない。
 - `--memory 2Gi` / `--cpu 2`: LibreOfficeの起動・変換にはある程度のメモリ・CPUが
   必要。実際の負荷を見て調整可能。
+- `--timeout 120`: `/convert-range`（サーバー内部のタイムアウトは
+  `CONVERT_RANGE_TIMEOUT_MS`=90秒）がCloud Runのリクエストタイムアウトで
+  途中で打ち切られないよう、内部タイムアウトより長めに設定している。
 - `--allow-unauthenticated` ＋ アプリ側の`X-Api-Key`ヘッダー認証:
   Cloud RunのIAM認証（サービスアカウント＋IDトークン）の方がより堅牢だが、
   Vercel側にサービスアカウント鍵を持たせる構成はMVPには過剰と判断し、
@@ -105,8 +139,12 @@ EMF_CONVERTER_API_KEY=<手順2で生成した値>
 - [ ] `curl https://<デプロイ後のURL>/health` が `ok` を返す
 - [ ] 実際のカルテExcelから抽出したEMFファイルで`/convert?ext=emf`を試し、
       得られたPNGを目視確認する（向き・欠け・文字化けが無いか）
+- [ ] 実際のカルテExcel（様式Ａ・様式Ｂ）で`/convert-range`を試し、写真・図形・
+      注記テキストが欠落なく写っているか目視確認する
 - [ ] Next.jsアプリ側の環境変数（`EMF_CONVERTER_URL`・`EMF_CONVERTER_API_KEY`）を
-      設定した状態でExcel取込を実行し、様式ＡのEMFスケッチがPNGとして取り込まれることを確認する
+      設定した状態で**新規**Excel取込を実行し、様式Ａ・様式Ｂが1枚の合成画像として
+      取り込まれることを確認する（既存カルテの再取込では従来どおり個別画像抽出に
+      なる。`lib/actions/import-actions.ts`の`isNewKarte`分岐参照）
 
 ## 既知の制限・今後の改善候補
 
