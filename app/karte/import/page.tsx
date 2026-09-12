@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ExcelImportForm from "@/components/ExcelImportForm";
 import { prisma } from "@/lib/prisma";
+import { formatJstDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,7 @@ export default async function ImportKartePage() {
                   return (
                     <tr key={h.id} className="border-t border-gray-200 dark:border-gray-700">
                       <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                        {h.startedAt.toLocaleString("ja-JP")}
+                        {formatJstDateTime(h.startedAt)}
                       </td>
                       <td className="max-w-[16rem] truncate px-3 py-2 text-gray-800 dark:text-gray-100" title={h.fileName}>
                         {h.fileName}
