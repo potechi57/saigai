@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ExcelImportForm from "@/components/ExcelImportForm";
+import BulkExcelImportForm from "@/components/BulkExcelImportForm";
 import { prisma } from "@/lib/prisma";
 import { formatJstDateTime } from "@/lib/format";
 
@@ -39,6 +40,8 @@ export default async function ImportKartePage() {
         （点検記録は点検日単位で重複登録されません）。
       </p>
       <ExcelImportForm />
+
+      <BulkExcelImportForm />
 
       <div className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
