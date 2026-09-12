@@ -40,6 +40,18 @@ export type ExtractedImage = {
 const RASTER_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "bmp", "webp"]);
 const VECTOR_EXTENSIONS = new Set(["emf", "wmf"]);
 
+function colToNum(col: string): number {
+  let n = 0;
+  for (const ch of col) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n; // A=1
+}
+
+function parseA1Ref(ref: string): { col: number; row: number } {
+  const m = ref.match(/^([A-Z]+)(\d+)$/);
+  if (!m) throw new Error(`不正なセル参照です: ${ref}`);
+  return { col: colToNum(m[1]), row: Number(m[2]) };
+}
+
 function attr(tag: string, name: string): string | null {
   const re = new RegExp(name.replace(/:/g, "\\:") + '="([^"]*)"');
   const m = tag.match(re);
@@ -184,6 +196,60 @@ export async function extractSheetImages(buffer: Buffer, sheetName: string): Pro
   }
 }
 
+// シートに宣言されているPrint_Area（印刷範囲）を0始まりの列・行番号で返す。
+// 見つからない場合（Print_Area未設定・解析失敗等）はnull。
+//
+// 【なぜ必要か】実データ（様式Ｂ④）で、印刷範囲の右外側に古い図形の残骸と
+// 見られる写真が取り残されているケースが見つかった。個別抽出（extractSheetImages）
+// は貼り付け位置に関わらず全ての画像を拾うため、そのままでは印刷範囲外の
+// 無関係な写真まで「写真張付欄」の一部として取り込んでしまう。この範囲を使い、
+// extractFormAImages/extractFormBImagesで印刷範囲外の画像を除外する
+// （services/emf-converter/printArea.jsのgetSheetAnchorExtentも参照。あちらは
+// 逆に「印刷範囲外の図形が合成画像の切り出し位置をずらす」不具合の対策）。
+function getPrintAreaBounds0Indexed(
+  buffer: Buffer,
+  sheetName: string
+): { startCol0: number; startRow0: number; endCol0: number; endRow0: number } | null {
+  try {
+    const cfb = XLSX.CFB.read(buffer, { type: "buffer" });
+    const getText = (path: string): string | null => {
+      const entry = XLSX.CFB.find(cfb, "Root Entry/" + path);
+      if (!entry || entry.content == null) return null;
+      return Buffer.isBuffer(entry.content) ? entry.content.toString("utf8") : String(entry.content);
+    };
+
+    const workbookXml = getText("xl/workbook.xml");
+    if (!workbookXml) return null;
+
+    let localSheetId = -1;
+    const sheetTags = tags(workbookXml, "sheet");
+    for (let i = 0; i < sheetTags.length; i++) {
+      if (attr(sheetTags[i], "name") === sheetName) {
+        localSheetId = i;
+        break;
+      }
+    }
+    if (localSheetId < 0) return null;
+
+    const printAreaMatch = workbookXml.match(
+      new RegExp(`<definedName name="_xlnm\\.Print_Area" localSheetId="${localSheetId}">([^<]*)</definedName>`)
+    );
+    if (!printAreaMatch) return null;
+
+    // 例:「様式Ｂ④!$B$2:$CJ$43」からセル範囲部分だけを取り出す。
+    const rangeMatch = printAreaMatch[1].match(/!(\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?)$/);
+    if (!rangeMatch) return null;
+    const range = rangeMatch[1].replace(/\$/g, "");
+    const [fromRef, toRef] = range.split(":");
+    const from = parseA1Ref(fromRef);
+    const to = parseA1Ref(toRef || fromRef);
+
+    return { startCol0: from.col - 1, startRow0: from.row - 1, endCol0: to.col - 1, endRow0: to.row - 1 };
+  } catch {
+    return null;
+  }
+}
+
 // 指定シートの固定範囲（FORM_A_RANGE/FORM_B_RANGE）を1枚のPNGとして取り込む。
 // 新規・再取込を問わず毎回試行する（lib/actions/import-actions.tsのresolveFormAImages/
 // resolveFormBImages参照。会話ログ参照）。Cloud Run変換サービスが未設定・応答失敗等の
@@ -217,7 +283,17 @@ export async function extractFormBImages(buffer: Buffer, sheetName: string): Pro
   if (!sketchImage) return null;
 
   const allImages = await extractSheetImages(buffer, sheetName);
-  const photoAreaImages = allImages.filter((img) => img.fromCol > FORM_B_SKETCH_RANGE_END_COL_0INDEXED);
+  // 印刷範囲外（getPrintAreaBounds0Indexed参照）に取り残された無関係な画像を
+  // 「写真張付欄」に含めてしまわないよう、列条件に加えて印刷範囲内かどうかも
+  // 見る。印刷範囲が取得できない場合（Print_Area未設定等）は従来どおり列だけで判定する。
+  const printArea = getPrintAreaBounds0Indexed(buffer, sheetName);
+  const photoAreaImages = allImages.filter((img) => {
+    if (img.fromCol <= FORM_B_SKETCH_RANGE_END_COL_0INDEXED) return false;
+    if (!printArea) return true;
+    return (
+      img.fromCol <= printArea.endCol0 && img.fromRow >= printArea.startRow0 && img.fromRow <= printArea.endRow0
+    );
+  });
 
   // extractSheetImagesの並び順（列→行）を踏襲するため、合成画像（fromCol=0）は
   // 常に先頭になる。
@@ -236,7 +312,15 @@ export async function extractFormAImages(buffer: Buffer): Promise<ExtractedImage
   if (!sketchImage) return null;
 
   const allImages = await extractSheetImages(buffer, sheetName);
-  const photoAreaImages = allImages.filter((img) => img.fromCol > FORM_A_SKETCH_RANGE_END_COL_0INDEXED);
+  // extractFormBImagesと同じ理由（印刷範囲外に取り残された無関係な画像の除外）。
+  const printArea = getPrintAreaBounds0Indexed(buffer, sheetName);
+  const photoAreaImages = allImages.filter((img) => {
+    if (img.fromCol <= FORM_A_SKETCH_RANGE_END_COL_0INDEXED) return false;
+    if (!printArea) return true;
+    return (
+      img.fromCol <= printArea.endCol0 && img.fromRow >= printArea.startRow0 && img.fromRow <= printArea.endRow0
+    );
+  });
 
   return [sketchImage, ...photoAreaImages];
 }
