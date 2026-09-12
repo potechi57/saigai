@@ -218,19 +218,18 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
       throw new HttpError(502, `PDF→PNG変換に失敗しました: ${stderr || error.message}`);
     }
 
-    // 【なぜページ全体を実際にラスタライズして内容領域を検出するか】
+    // 【なぜページ全体を実際にラスタライズして内容領域を検出するか（横方向）】
     // 当初はPDFページのサイズ（pt）とシートのページ余白（pageMargins）から
     // 内容領域を計算していたが、実機検証の結果、SinglePageSheetsは宣言された
     // pageMargins以外に、独自の「1ページに収める」フィット処理で非対称な余白
     // （例: あるファイルでは右側にだけ約6%の余白）を追加することがあり、
     // これは計算では予測できないことが分かった。そこで、ページ全体を実際に
-        // ラスタライズしたうえでImageMagickの内容領域検出（-format "%@"）を使い、
-    // 実際に描画された内容の範囲を直接測定する方式にした。列・行の比率
-    // （printArea.js参照）は、この「実際の内容領域」に対する割合として適用する。
+    // ラスタライズしたうえでImageMagickの内容領域検出（-format "%@"）を使い、
+    // 実際に描画された内容の範囲を直接測定する方式にした。横方向はこれで
+    // 安定して正しく検出できることを実データ複数件で確認済み（罫線が印刷範囲の
+    // 左右端まで一貫して描かれているため）。
     let contentOffsetXPx;
-    let contentOffsetYPx;
     let contentWidthPx;
-    let contentHeightPx;
     try {
       const { stdout } = await execFileAsync("convert", [fullPagePath, "-format", "%@", "info:"], {
         timeout: CONVERT_RANGE_TIMEOUT_MS,
@@ -238,13 +237,42 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
       const bboxMatch = stdout.trim().match(/^(\d+)x(\d+)\+(\d+)\+(\d+)$/);
       if (!bboxMatch) throw new Error(`unexpected bounding box output: "${stdout}"`);
       contentWidthPx = Number(bboxMatch[1]);
-      contentHeightPx = Number(bboxMatch[2]);
       contentOffsetXPx = Number(bboxMatch[3]);
-      contentOffsetYPx = Number(bboxMatch[4]);
     } catch (e) {
       const detail = e && e.stderr ? e.stderr : e instanceof Error ? e.message : String(e);
       throw new HttpError(502, `内容領域の検出に失敗しました: ${detail}`);
     }
+
+    // ページ全体の実際のピクセルサイズ（内容領域の検出結果に関係なく常に正しい）。
+    let pageHeightPx;
+    try {
+      const { stdout } = await execFileAsync("identify", ["-format", "%h", fullPagePath], {
+        timeout: CONVERT_RANGE_TIMEOUT_MS,
+      });
+      pageHeightPx = Number(stdout.trim());
+      if (!pageHeightPx) throw new Error(`unexpected identify output: "${stdout}"`);
+    } catch (e) {
+      const detail = e && e.stderr ? e.stderr : e instanceof Error ? e.message : String(e);
+      throw new HttpError(502, `ページサイズの取得に失敗しました: ${detail}`);
+    }
+
+    // 【縦方向は画像検出ではなく計算で求める】
+    // 縦方向の内容領域検出は、実データ（B3274A080）で印刷範囲の上部付近に
+    // 可視要素（罫線・塗りつぶし等）がほとんど無いファイルに遭遇し、その空白を
+    // 「余白」と誤認識して内容領域を実際より小さく検出してしまう不具合があった
+    // （printArea.jsのコメント参照）。かわりに、「同じ印刷範囲・列幅・行高を
+    // 持つファイルなら内容領域の縦横比は共通のはず」という考えに基づき、横方向の
+    // 検出結果（信頼できる）と、行の高さ（pt単位で正確）・列幅（文字幅単位）の
+    // 比から計算する。POINTS_PER_COL_WIDTH_UNITは、実データ（269_B3274A090。
+    // 目視で正しく切り出せることを確認済み）から逆算した値
+    // （縦横比が正しく再現される列幅⇔pt換算係数。フォントのMaximum Digit Widthに
+    // 相当し、同じテンプレート・同じフォントを使うファイル間では共通のはず）。
+    // 内容領域は下端がページの下端（下余白はこのテンプレートで一貫して0）に
+    // 揃うことを実データ複数件で確認済みのため、下端を基準に配置する。
+    const POINTS_PER_COL_WIDTH_UNIT = 7.007;
+    const nativeWidthPt = cropInfo.totalWidth * POINTS_PER_COL_WIDTH_UNIT;
+    const contentHeightPx = contentWidthPx * (cropInfo.totalHeight / nativeWidthPt);
+    const contentOffsetYPx = pageHeightPx - contentHeightPx;
 
     // 列幅・行高が印刷範囲内で一様な（防災カルテのExcelで確認済み）場合、
     // printArea.jsの比率計算は理論上ぴったり一致するはずだが、浮動小数点の
@@ -252,7 +280,7 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     const MARGIN_FRACTION = 0.003;
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
     const pageWidthPx = contentOffsetXPx + contentWidthPx;
-    const pageHeightPx = contentOffsetYPx + contentHeightPx;
+    // pageHeightPxは前段でidentifyから取得済み（ページ全体の実際のピクセル高さ）。
 
     const cropX = clamp(
       Math.round(contentOffsetXPx + (cropInfo.offsetXFraction - MARGIN_FRACTION) * contentWidthPx),
