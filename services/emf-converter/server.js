@@ -237,10 +237,11 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     const contentWidthPx = Math.max(1, pageWidthPx - marginLeftPx - marginRightPx);
     const contentHeightPx = Math.max(1, pageHeightPx - marginTopPx - marginBottomPx);
 
-    // 列幅・行高から算出した比率には多少の誤差がありうる（文字幅⇔pixel換算の
-    // 定数項や、極端な行を除く既定値フォールバック等）ため、対象範囲を
-    // 切り落とさないよう全辺に数%の安全マージンを追加する。
-    const MARGIN_FRACTION = 0.03;
+    // 列幅・行高が印刷範囲内で一様な（防災カルテのExcelで確認済み）場合、
+    // printArea.jsの比率計算は理論上ぴったり一致するはずだが、浮動小数点の
+    // 丸め等に備えてごく僅かな安全マージンだけ残す（以前は0.03だったが、
+    // Print_Areaを基準にしたことで系統誤差自体が無くなったため大幅に縮小した）。
+    const MARGIN_FRACTION = 0.003;
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
     const cropX = clamp(

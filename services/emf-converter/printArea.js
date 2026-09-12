@@ -31,7 +31,7 @@
 const JSZip = require("jszip");
 
 // ワークブック内でシート名からシートXMLファイルパスと、SinglePageSheets出力での
-// ページ番号（非表示シートを除いた並び順。0始まり）を求める。
+// ページ番号（非表示シートを除いた並び順。0始まり）、既存のPrint_Area（あれば）を求める。
 async function resolveSheet(zip, sheetName) {
   const workbookXml = await zip.file("xl/workbook.xml").async("string");
 
@@ -48,6 +48,23 @@ async function resolveSheet(zip, sheetName) {
     }
   }
   if (!sheetRid) throw new Error(`シート「${sheetName}」が見つかりません`);
+
+  // このシート向けの既存Print_Area（例:「様式Ａ!$B$2:$CJ$43」）があれば取得する。
+  // 実機検証の結果、SinglePageSheetsは`<dimension>`（シートの使用セル範囲。
+  // フリー図形のはみ出しやExcel側の編集履歴で実態とズレることがある）ではなく、
+  // この既存Print_Areaを基準に「シート全体」を1ページへ収めていることが分かった。
+  // 比率計算の基準（分母）をdimensionではなくPrint_Areaに合わせないと、行・列の
+  // 位置がわずかにずれる（printArea.js全体のコメント・会話ログ参照）。
+  let printAreaRange = null;
+  const printAreaMatch = workbookXml.match(
+    new RegExp(`<definedName name="_xlnm\\.Print_Area" localSheetId="${localSheetId}">([^<]*)</definedName>`)
+  );
+  if (printAreaMatch) {
+    // 例:「様式Ａ!$B$2:$CJ$43」「'様式Ｂ (2)'!$B$2:$CJ$43」からセル範囲部分だけを取り出す。
+    const formula = printAreaMatch[1];
+    const rangeMatch = formula.match(/!(\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?)$/);
+    if (rangeMatch) printAreaRange = rangeMatch[1].replace(/\$/g, "");
+  }
 
   const workbookRelsXml = await zip.file("xl/_rels/workbook.xml.rels").async("string");
   const relTags = workbookRelsXml.match(/<Relationship\b[^>]*\/>/g) || [];
@@ -76,7 +93,7 @@ async function resolveSheet(zip, sheetName) {
     if (!isHidden) pdfPageIndex++;
   }
 
-  return { sheetPath, pdfPageIndex };
+  return { sheetPath, pdfPageIndex, printAreaRange };
 }
 
 const DEFAULT_COL_WIDTH = 8.43; // Excelの一般的な既定値（<sheetFormatPr defaultColWidth>が無い場合のフォールバック）
@@ -136,25 +153,54 @@ function sumRange(lookup, from, to) {
 }
 
 // SinglePageSheetsでシート全体を1ページに収めて出力したPNGの中で、指定範囲
-// （例: "B6:CL30"）が占める位置・大きさを、シート全体に対する比率
+// （例: "B6:CL30"）が占める位置・大きさを、基準範囲（printAreaRangeがあれば
+// それ、無ければ<dimension>＝シートの使用セル範囲）に対する比率
 // （0〜1、上下左右の順にoffset+sizeで表現）として計算する。
-// 列幅・行の高さの単位が異なっていても、「全体に対する割合」という
+// 列幅・行の高さの単位が異なっていても、「基準範囲に対する割合」という
 // スケール非依存の値として扱うため、正しく比較できる（printArea.js先頭の
 // コメント参照）。
-function computeRangeFractions(sheetXml, range) {
+//
+// 【基準範囲になぜ<dimension>ではなくPrint_Areaを優先するか】
+// 実機検証の結果、SinglePageSheetsは`<dimension>`ではなく、シートに既存の
+// Print_Area定義を基準にシート全体を1ページへ収めていることが分かった
+// （resolveSheet参照）。`<dimension>`はセルの使用範囲であり、フリー図形の
+// はみ出しやExcel側の編集履歴で実際の印刷結果とズレることがあるため、
+// Print_Areaが存在する場合はそちらを優先する。
+function computeRangeFractions(sheetXml, range, printAreaRange) {
   const [fromRef, toRef] = range.split(":");
   const from = parseA1Ref(fromRef);
   const to = parseA1Ref(toRef || fromRef);
 
-  const dimMatch = sheetXml.match(/<dimension ref="[^:"]*:([A-Z]+)(\d+)"/);
-  const dimMaxCol = dimMatch ? colToNum(dimMatch[1]) : to.col;
-  const dimMaxRow = dimMatch ? Number(dimMatch[2]) : to.row;
+  let refStartCol = 1;
+  let refStartRow = 1;
+  let refEndCol = to.col;
+  let refEndRow = to.row;
 
-  // 対象範囲がシートの使用範囲（<dimension>）よりわずかに広い場合
-  // （固定範囲に安全マージンを持たせているため。lib/excel/emf-convert.tsの
-  // FORM_A_RANGE/FORM_B_RANGE参照）に備え、比率計算の母数は両者の大きい方にする。
-  const totalCols = Math.max(dimMaxCol, to.col);
-  const totalRows = Math.max(dimMaxRow, to.row);
+  if (printAreaRange) {
+    const [paFromRef, paToRef] = printAreaRange.split(":");
+    const paFrom = parseA1Ref(paFromRef);
+    const paTo = parseA1Ref(paToRef || paFromRef);
+    refStartCol = paFrom.col;
+    refStartRow = paFrom.row;
+    refEndCol = paTo.col;
+    refEndRow = paTo.row;
+  } else {
+    const dimMatch = sheetXml.match(/<dimension ref="([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?"/);
+    if (dimMatch) {
+      refStartCol = colToNum(dimMatch[1]);
+      refStartRow = Number(dimMatch[2]);
+      refEndCol = dimMatch[3] ? colToNum(dimMatch[3]) : refStartCol;
+      refEndRow = dimMatch[4] ? Number(dimMatch[4]) : refStartRow;
+    }
+  }
+
+  // 対象範囲が基準範囲よりわずかに広い場合（固定範囲に安全マージンを持たせているため。
+  // lib/excel/emf-convert.tsのFORM_A_RANGE/FORM_B_RANGE参照）に備え、比率計算の
+  // 母数は両者を包含する範囲にする。
+  const totalStartCol = Math.min(refStartCol, from.col);
+  const totalStartRow = Math.min(refStartRow, from.row);
+  const totalEndCol = Math.max(refEndCol, to.col);
+  const totalEndRow = Math.max(refEndRow, to.row);
 
   const sheetFormatPr = sheetXml.match(/<sheetFormatPr\b[^>]*\/>/);
   const defaultColWidth = sheetFormatPr
@@ -167,12 +213,12 @@ function computeRangeFractions(sheetXml, range) {
   const colWidth = buildColWidthLookup(sheetXml, defaultColWidth);
   const rowHeight = buildRowHeightLookup(sheetXml, defaultRowHeight);
 
-  const totalWidth = sumRange(colWidth, 1, totalCols);
-  const totalHeight = sumRange(rowHeight, 1, totalRows);
+  const totalWidth = sumRange(colWidth, totalStartCol, totalEndCol);
+  const totalHeight = sumRange(rowHeight, totalStartRow, totalEndRow);
 
-  const offsetXFraction = sumRange(colWidth, 1, from.col - 1) / totalWidth;
+  const offsetXFraction = sumRange(colWidth, totalStartCol, from.col - 1) / totalWidth;
   const widthFraction = sumRange(colWidth, from.col, to.col) / totalWidth;
-  const offsetYFraction = sumRange(rowHeight, 1, from.row - 1) / totalHeight;
+  const offsetYFraction = sumRange(rowHeight, totalStartRow, from.row - 1) / totalHeight;
   const heightFraction = sumRange(rowHeight, from.row, to.row) / totalHeight;
 
   return { offsetXFraction, offsetYFraction, widthFraction, heightFraction };
@@ -193,9 +239,9 @@ function getPageMarginsInches(sheetXml) {
 // 切り出すために必要な情報（PDF出力後のページ番号・切り出し位置の比率・ページ余白）を返す。
 async function computeRangeCropInfo(xlsxBuffer, sheetName, range) {
   const zip = await JSZip.loadAsync(xlsxBuffer);
-  const { sheetPath, pdfPageIndex } = await resolveSheet(zip, sheetName);
+  const { sheetPath, pdfPageIndex, printAreaRange } = await resolveSheet(zip, sheetName);
   const sheetXml = await zip.file(sheetPath).async("string");
-  const fractions = computeRangeFractions(sheetXml, range);
+  const fractions = computeRangeFractions(sheetXml, range, printAreaRange);
   const marginsIn = getPageMarginsInches(sheetXml);
   return { pdfPageIndex, ...fractions, marginsIn };
 }
