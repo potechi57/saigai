@@ -620,7 +620,11 @@ export default async function KarteListPage({
                   <tbody>
                     {facilityItems.map((f) => (
                       <tr key={f.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="px-3 py-2 text-gray-800 dark:text-gray-100">{f.managementNo}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/facility-list/${f.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {f.managementNo}
+                          </Link>
+                        </td>
                         <td className="px-3 py-2">{f.officeName ?? "—"}</td>
                         <td className="px-3 py-2">{f.routeName ?? "—"}</td>
                         <td className="px-3 py-2">{formatFacilityType(f.facilityType, f.facilitySubType) ?? "—"}</td>

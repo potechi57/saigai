@@ -8,8 +8,16 @@ import { findFacilityListSheetName, parseFacilityListSheet } from "@/lib/excel/f
 // 「施設一覧」形式のExcel（施設管理台帳の出力）を取り込む。カルテのExcel取込
 // （lib/actions/import-actions.ts）と違い、フラットな一覧表なのでBlobへの写真
 // 保存等は無く、パースしてDBへupsertするだけの単純な処理になっている。
-// 管理番号で一意に識別し、既存行があれば上書き更新する（再取込のたびに増え
-// 続けることはない）。
+// 管理番号で一意に識別し、既存行（台帳本体＝施設諸元＋直近点検のスナップショット）
+// があれば上書き更新する（再取込のたびに増え続けることはない）。
+//
+// ただし点検記録（行の中の点検種別・健全度・点検実施日・点検実施者・主な所見・
+// 修繕記録）は、台帳とは別にFacilityInspectionRecordとして履歴を積み上げる
+// （施設×点検日で一意。カルテのInspectionEvent[karteId, inspectionDate]と同じ
+// 考え方）。構造物は施工時に台帳がまず存在し、点検は後から・繰り返し行われる
+// ものであるため、再取込のたびに直近の点検記録で上書きするだけでは、それ以前の
+// 点検記録が失われてしまう（prisma/schema.prismaのFacilityListItem/
+// FacilityInspectionRecordコメント参照）。
 
 export type ImportFacilityListResult =
   | { ok: true; created: number; updated: number; total: number }
@@ -53,13 +61,45 @@ export async function importFacilityListExcel(
       where: { managementNo: item.managementNo },
       select: { id: true },
     });
-    await prisma.facilityListItem.upsert({
+    const saved = await prisma.facilityListItem.upsert({
       where: { managementNo: item.managementNo },
       create: item,
       update: item,
     });
     if (existing) updated++;
     else created++;
+
+    // 点検実施日が入っている行だけ、点検記録の履歴にも積む（未点検の行は対象外）。
+    if (item.inspectionDate) {
+      await prisma.facilityInspectionRecord.upsert({
+        where: {
+          facilityListItemId_inspectionDate: {
+            facilityListItemId: saved.id,
+            inspectionDate: item.inspectionDate,
+          },
+        },
+        create: {
+          facilityListItemId: saved.id,
+          inspectionType: item.inspectionType,
+          soundnessGrade: item.soundnessGrade,
+          inspectionDate: item.inspectionDate,
+          inspector: item.inspector,
+          mainFindings: item.mainFindings,
+          repairDate: item.repairDate,
+          repairRemarks: item.repairRemarks,
+        },
+        // 同じ施設×同じ点検日の記録が既にある場合（同じファイルの再取込等）は、
+        // 内容だけ最新化する（新しい行は増やさない）。
+        update: {
+          inspectionType: item.inspectionType,
+          soundnessGrade: item.soundnessGrade,
+          inspector: item.inspector,
+          mainFindings: item.mainFindings,
+          repairDate: item.repairDate,
+          repairRemarks: item.repairRemarks,
+        },
+      });
+    }
   }
 
   revalidatePath("/karte");

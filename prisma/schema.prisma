@@ -531,6 +531,8 @@ model ImportHistory {
 // enumにしている）。
 enum FacilityLedgerCategory {
   TUNNEL // トンネル台帳
+  BRIDGE // 橋梁台帳
+  ROAD_LEDGER // 道路台帳（路線そのものの台帳。区域・幅員・舗装等）
 }
 
 model FacilityLedger {
@@ -556,15 +558,23 @@ model FacilityLedger {
 }
 
 // ── 施設一覧（Access等から出力される施設管理台帳） ────────────────────
-// 島根県の実データ「施設一覧(道路法面施設).xlsx」で構造を確認済み。
-// 防災カルテ（Karte）とは全く別の形式・目的のデータで、1シートに多数の
-// 施設が一覧で並ぶ「施設管理データベース」の出力そのもの。様式Ａ〜Ｄの
-// ような詳細記録は無く、施設の基本情報＋直近点検の要約（健全度・点検日・
-// 所見）だけを持つ、より軽量な台帳データ。カルテのような複雑な様式では
-// なくフラットな表形式のため、専用の軽量モデルとして取り込む
-// （lib/excel/facility-list-import.ts参照）。管理番号で一意に識別され、
-// 再取込のたびに同じ管理番号の行は上書き更新される（カルテのfacilityNoと
-// 同じ考え方）。
+// 島根県の実データ「施設一覧(道路法面施設).xlsx」「施設一覧.xlsx」（門型標識）で
+// 構造を確認済み。防災カルテ（Karte）とは全く別の形式・目的のデータで、1シートに
+// 多数の施設が一覧で並ぶ「施設管理データベース」の出力そのもの。様式Ａ〜Ｄのような
+// 詳細記録は無く、施設の基本情報（台帳）＋点検記録という、よりシンプルな構成。
+//
+// カルテと構造物の点検記録の扱い方は、対象の性質上、次のように異なる：
+//   - 防災カルテ（自然斜面）：自然斜面の危険箇所を抽出し「点検すべき対象」として
+//     カルテを作る。カルテという存在自体が点検を目的として作られるため、カルテと
+//     点検はほぼセット（1つのKarteに複数のInspectionEventが紐づく形も、最初から
+//     点検を前提にした設計）。
+//   - 構造物（道路土工構造物・橋梁・门型標識等）：施工時にまず台帳
+//     （FacilityListItem本体）ができ、点検は後から・維持管理の必要性に応じて
+//     繰り返し行われるようになったもの。そのため「台帳（施設諸元）」と
+//     「点検記録の履歴（FacilityInspectionRecord）」を分けている。
+// 管理番号で一意に識別され、台帳側（施設諸元・直近点検のスナップショット）は
+// 再取込のたびに同じ管理番号の行が上書き更新される（カルテのfacilityNoと同じ
+// 考え方）が、点検記録は施設×点検日ごとに追加されていく（上書きされない）。
 model FacilityListItem {
   id String @id @default(cuid())
 
@@ -594,17 +604,52 @@ model FacilityListItem {
   facilityLedgerName        String? // 施設台帳・名称（将来、FacilityLedgerと紐付ける余地あり）
   facilityLedgerUpdatedAt   String? // 施設台帳・作成・更新
 
-  inspectionType String? // 点検種別
-  soundnessGrade String? // 健全度（例: "Ⅱ"）
-  inspectionDate DateTime? // 点検実施日
-  inspector      String? // 点検実施者
-  mainFindings   String? // 主な所見
-  repairDate     String? // 修繕年月日
-  repairRemarks  String? // 修繕記録の備考
+  // 以下は「直近の点検」を示す最新値のスナップショット（一覧表示・検索条件の
+  // 選択肢に使う。Karte.responseCategoryと同じ、現在値を本体に持たせる考え方）。
+  // 実際の点検は施工後に繰り返し行われるものであり、都度の記録はinspections
+  // （FacilityInspectionRecord、下記）に別途保存する。カルテ（自然斜面が相手で、
+  // カルテ自体が点検を目的として作られる）と異なり、構造物は施工時に台帳
+  // （このFacilityListItem本体）が先に存在し、点検はそれに対して後から・繰り返し
+  // 行われるものであるため、「台帳（施設諸元）」と「点検記録の履歴」を分けている
+  // （InspectionEvent/Karteと同じ設計。lib/actions/facility-list-actions.ts参照）。
+  inspectionType String? // 点検種別（最新）
+  soundnessGrade String? // 健全度（最新。例: "Ⅱ"）
+  inspectionDate DateTime? // 点検実施日（最新）
+  inspector      String? // 点検実施者（最新）
+  mainFindings   String? // 主な所見（最新）
+  repairDate     String? // 修繕年月日（最新）
+  repairRemarks  String? // 修繕記録の備考（最新）
+
+  inspections FacilityInspectionRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([officeName])
   @@index([facilityType])
+}
+
+// 道路土工構造物点検要領・道路橋定期点検要領等が想定する「施設ごとに繰り返し行われる
+// 点検」の履歴。台帳（FacilityListItem）は施工時に1つ作られるのに対し、点検記録は
+// 5年に1回等の頻度で何度も作られるため、別テーブルにしている（構造物点検は台帳が
+// 先にあり点検が後から繰り返される、というプロセスをそのままモデル化したもの）。
+// 施設一覧Excelの再取込のたびに同じ点検記録が重複作成されないよう、施設×点検日で
+// 一意にする（InspectionEvent[karteId, inspectionDate]と同じ考え方）。
+model FacilityInspectionRecord {
+  id                 String           @id @default(cuid())
+  facilityListItemId String
+  facilityListItem   FacilityListItem @relation(fields: [facilityListItemId], references: [id], onDelete: Cascade)
+
+  inspectionType String? // 点検種別
+  soundnessGrade String? // 健全度（例: "Ⅱ"）
+  inspectionDate DateTime // 点検実施日
+  inspector      String? // 点検実施者
+  mainFindings   String? // 主な所見
+  repairDate     String? // 修繕年月日
+  repairRemarks  String? // 修繕記録の備考
+
+  createdAt DateTime @default(now())
+
+  @@unique([facilityListItemId, inspectionDate])
+  @@index([facilityListItemId])
 }
