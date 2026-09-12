@@ -15,7 +15,7 @@ import PendingLink from "@/components/PendingLink";
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
 export const dynamic = "force-dynamic";
 
-// 検索条件は「防災カルテ点検」側と「道路土工構造物点検」側で完全に別のキーにしている
+// 検索条件は「防災カルテ点検」側と「施設一覧」側で完全に別のキーにしている
 // （対象施設・対象事象が異なるため、絞り込み条件も別物になる。詳細はGROUPS参照:
 // app/import/page.tsx）。KARTE_PARAM_KEYS/FACILITY_PARAM_KEYSは、hasSearched判定
 // （キーの有無で判定）・条件クリア・もう片方の検索状態の保持（隠しinputでの引き継ぎ）
@@ -30,12 +30,12 @@ type SearchParams = {
   location?: string;
   karteType?: string; // 災害区分
   responseCategory?: string;
-  fq?: string; // 管理番号（道路土工構造物点検＝施設一覧側）
+  fq?: string; // 管理番号（施設一覧側）
   facRouteName?: string;
   facLocation?: string;
   facilityType?: string;
   soundnessGrade?: string;
-  tab?: string; // "facility"のときだけ道路土工構造物点検タブを表示する（既定はカルテ）
+  tab?: string; // "facility"のときだけ施設一覧タブを表示する（既定はカルテ）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
 };
 
@@ -58,14 +58,17 @@ function buildQuery(
 // 「地図を中心とした画面」（ホーム画面）。指示書19章の方針に沿い、検索画面（6章）・
 // カルテ一覧画面（8章）・地図検索画面（7章）を1画面に統合している。
 //
-// 検索条件パネルは「防災カルテ点検」「道路土工構造物点検」をタブで切り替える構成に
-// している（縦に2つのフォームを並べると長くなりすぎるため）。ただし管理番号・路線名・
-// 所在地はどちらの系統でも意味が同じ条件のため、タブの外（上）に共通フィールドとして
-// 1つだけ配置し、タブ内には各系統固有の条件（カルテ側：災害区分・対応区分・路線番号、
-// 道路土工構造物点検側：施設種別・健全度）だけを置く。共通フィールドの実体（name属性）
-// はタブごとに異なるDB項目に対応する（カルテ側はq/routeName/location、施設一覧側は
-// fq/facRouteName/facLocation）が、これは表示中のタブに応じてinputのnameを
-// 切り替えることで実現している（下記JSX参照）。
+// 検索条件パネルは「防災カルテ点検」「施設一覧」をタブで切り替える構成に
+// している（縦に2つのフォームを並べると長くなりすぎるため）。施設一覧側は、
+// 法面構造物・门型標識等の道路附属物・橋梁等、施設種別を問わず同じ「施設一覧」形式の
+// Excelから取り込まれたデータをまとめて検索する（施設種別ごとにタブを分けていない。
+// 詳細はapp/import/page.tsxのコメント参照）。ただし管理番号・路線名・所在地はどちらの
+// 系統でも意味が同じ条件のため、タブの外（上）に共通フィールドとして1つだけ配置し、
+// タブ内には各系統固有の条件（カルテ側：災害区分・対応区分・路線番号、施設一覧側：
+// 施設種別・健全度）だけを置く。共通フィールドの実体（name属性）はタブごとに異なる
+// DB項目に対応する（カルテ側はq/routeName/location、施設一覧側はfq/facRouteName/
+// facLocation）が、これは表示中のタブに応じてinputのnameを切り替えることで実現している
+// （下記JSX参照）。
 //
 // 地図には、検索済みの系統のピンだけを表示する（未検索の系統は表示しない＝「防災カルテ
 // と同じように検索時に表示される」という要望に対応）。タブを切り替えても、もう一方の
@@ -113,7 +116,7 @@ export default async function KarteListPage({
   // 送られるため`q=`のようにキーは残る）。
   const hasSearched = KARTE_PARAM_KEYS.some((k) => k in params);
 
-  // ---- 道路土工構造物点検側（施設一覧＝FacilityListItem） ----
+  // ---- 施設一覧側（FacilityListItem） ----
   const facWhere: Prisma.FacilityListItemWhereInput = {};
   if (params.fq) {
     facWhere.managementNo = { contains: params.fq, mode: "insensitive" };
@@ -135,7 +138,7 @@ export default async function KarteListPage({
 
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
   // いる値から選ぶセレクトボックスにしている（フィルタ条件に関わらず全件から候補を
-  // 集める）。防災カルテ・道路土工構造物点検はデータが別物のため、選択肢も別々に集計
+  // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計
   // する。トンネル台帳等（FacilityLedger）は、件数が少ない想定のため検索条件を持たせず
   // 常に取得する（lib/actions/facility-ledger-actions.ts参照）。
   const [
@@ -279,7 +282,7 @@ export default async function KarteListPage({
 
   // 「最近の検索」（左パネル下部）に記録する内容。表示方法（view）は検索条件では
   // ないため、記録対象からは除外する（一覧⇔地図の切替だけでは履歴を増やさない）。
-  // 現状は防災カルテ側の検索のみを対象にしている（道路土工構造物点検側の履歴は今後の課題）。
+  // 現状は防災カルテ側の検索のみを対象にしている（施設一覧側の履歴は今後の課題）。
   const historyParams = new URLSearchParams();
   if (params.q) historyParams.set("q", params.q);
   if (params.routeName) historyParams.set("routeName", params.routeName);
@@ -350,7 +353,7 @@ export default async function KarteListPage({
             hasSearched &&
             KARTE_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
 
-          {/* --- 共通フィールド（管理番号・路線名・所在地）。カルテ・道路土工構造物点検の
+          {/* --- 共通フィールド（管理番号・路線名・所在地）。カルテ・施設一覧の
               どちらでも意味が同じ条件のため、タブの外に1つだけ配置する。name属性は
               表示中のタブに応じて切り替える。 */}
           <SearchField
@@ -402,14 +405,14 @@ export default async function KarteListPage({
             )}
             {tab === "facility" ? (
               <span className="border-b-2 border-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-800 dark:border-gray-100 dark:text-gray-100">
-                道路土工構造物点検
+                施設一覧
               </span>
             ) : (
               <PendingLink
                 href={facilityTabHref}
                 className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
               >
-                道路土工構造物点検
+                施設一覧
               </PendingLink>
             )}
           </div>
@@ -521,7 +524,7 @@ export default async function KarteListPage({
             {hasSearched && withoutCoordsCount > 0 && `（座標未登録 ${withoutCoordsCount} 件を除く）`}
           </span>
           <span className="block">
-            道路土工構造物点検：
+            施設一覧：
             {!hasFacSearched
               ? "未検索"
               : hasFacCondition
@@ -600,7 +603,7 @@ export default async function KarteListPage({
             </div>
 
             <div>
-              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">道路土工構造物点検 検索結果</h2>
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">施設一覧 検索結果</h2>
               <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
