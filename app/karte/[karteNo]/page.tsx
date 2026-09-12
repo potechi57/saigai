@@ -189,12 +189,18 @@ export default async function KarteDetailPage({
                       横スクロールも使わない。高さを揃える方式だと、横長の現況写真が
                       混じった場合にその1枚だけ幅を取りすぎて横並びが崩れることが
                       あった（実データ・B3274A083で確認済み）。高さを揃えることに
-                      こだわらず、コンテナ幅を写真の枚数で均等に分割し（flex-1・
-                      min-w-0）、各写真をその幅いっぱいに収まる大きさ（w-full h-auto）
-                      で表示することで、常に確実に横1列に収まるようにした。 */}
+                      こだわらず、コンテナ幅を写真の枚数に応じた比率で分割し
+                      （flex-*・min-w-0）、各写真をその幅いっぱいに収まる大きさ
+                      （w-full h-auto）で表示することで、常に確実に横1列に収まる
+                      ようにした。先頭（合成画像。点検地点位置図欄）は現況写真の
+                      1.5倍の比率にし、より大きく見えるようにしている。 */}
                   <div className="flex gap-3">
                     {formAPhotos.map((p, i) => (
-                      <PhotoLightboxThumbnail key={p.id} index={i} className="block min-w-0 flex-1">
+                      <PhotoLightboxThumbnail
+                        key={p.id}
+                        index={i}
+                        className={`block min-w-0 ${i === 0 ? "flex-[1.5]" : "flex-1"}`}
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={p.url}
