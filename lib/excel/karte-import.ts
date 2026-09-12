@@ -293,7 +293,9 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
 const FORM_B_SHEET_PATTERN = /^様式Ｂ(?:\s*\(\d+\))?$/;
 
 export function findFormBSheetNames(wb: WorkBook): string[] {
-  return wb.SheetNames.filter((name) => FORM_B_SHEET_PATTERN.test(name));
+  // シート名の前後に余分な空白が付いている実データ（後述のRECORD_PHOTO_SHEET_PATTERN
+  // 参照）を確認済みのため、判定前にtrimする。
+  return wb.SheetNames.filter((name) => FORM_B_SHEET_PATTERN.test(name.trim()));
 }
 
 // 「現状記録写真」シート（様式Ａ・様式Ｂに収まらなかった写真をまとめる別シート）。
@@ -306,7 +308,11 @@ export function findFormBSheetNames(wb: WorkBook): string[] {
 const RECORD_PHOTO_SHEET_PATTERN = /^R?\d*現状記録写真(?:\s*\(\d+\))?$/;
 
 export function findRecordPhotoSheetNames(wb: WorkBook): string[] {
-  return wb.SheetNames.filter((name) => RECORD_PHOTO_SHEET_PATTERN.test(name));
+  // 実データ（B3257A090）で、シート名が「R7現状記録写真」ではなく末尾に半角
+  // スペースが付いた「R7現状記録写真 」になっているケースを確認済み。この
+  // 空白のせいで正規表現の末尾（$）にマッチせず、シートが1件も見つからず
+  // 現状記録写真が一切取り込まれない不具合になっていたため、判定前にtrimする。
+  return wb.SheetNames.filter((name) => RECORD_PHOTO_SHEET_PATTERN.test(name.trim()));
 }
 
 export type RecordPhotoCaptions = {
