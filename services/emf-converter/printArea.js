@@ -221,7 +221,11 @@ function computeRangeFractions(sheetXml, range, printAreaRange) {
   const offsetYFraction = sumRange(rowHeight, totalStartRow, from.row - 1) / totalHeight;
   const heightFraction = sumRange(rowHeight, from.row, to.row) / totalHeight;
 
-  return { offsetXFraction, offsetYFraction, widthFraction, heightFraction };
+  // totalWidth（基準範囲の列幅の合計。文字幅単位）・totalHeight（同、行の高さの
+  // 合計。pt単位で正確）も返す。server.js側で、内容領域の高さをトリミング検出
+  // ではなく計算で求めるために使う（getPageMarginsInches削除時のコメント・
+  // server.js側のコメント参照）。
+  return { offsetXFraction, offsetYFraction, widthFraction, heightFraction, totalWidth, totalHeight };
 }
 
 // 与えられたxlsxバイト列（読み取りのみ、変更しない）から、対象シート・対象範囲を
@@ -230,11 +234,22 @@ function computeRangeFractions(sheetXml, range, printAreaRange) {
 // 【ページ余白（pageMargins）を別途は加味していないことについて】
 // 以前はシートの宣言された<pageMargins>（インチ単位）を切り出し位置の計算に
 // 加味していたが、実機検証の結果、SinglePageSheetsは宣言されたpageMargins
-// 以外に「1ページに収める」フィット処理由来の非対称な余白（例: 右側にだけ
-// 数%）を追加することがあり、宣言値だけでは実際の余白を正しく予測できない
-// ことが分かった。そのため、ページ余白は個別に扱わず、server.js側で実際に
-// レンダリングした画像から内容領域を直接検出する方式にした（そちらで
-// pageMargins分も含めて一括して吸収される）。
+// 以外に「1ページに収める」フィット処理由来の余白を追加することがあり、
+// 宣言値だけでは実際の余白を正しく予測できないことが分かった。そのため、
+// ページ余白は個別に扱わず、server.js側で実際にレンダリングした画像から
+// 内容領域を直接検出する方式にした。
+//
+// 【横方向は画像検出、縦方向は計算で求める理由】
+// 内容領域を画像から検出する方式（トリミング）は、実データ（B3274A080）で
+// 印刷範囲の上部付近に可視要素（罫線・塗りつぶし等）がほとんど無いファイルに
+// 遭遇し、その空白部分を「余白」と誤認識して内容領域を実際より低い位置・
+// 小さい高さに検出してしまう不具合があった（横方向は、罫線が印刷範囲の
+// 左右端まで届いていることが実データで一貫していたため、この問題は
+// 起きていない）。行の高さはpt単位で正確に分かっている（列幅は文字幅単位で
+// 実際のピクセル換算に不確実性がある）ため、横方向だけ画像検出に頼り、
+// 縦方向は「同じ印刷範囲・列幅・行高を持つファイルなら、内容領域の
+// 縦横比は共通のはず」という考えに基づき、横方向の検出結果から計算で
+// 求める（server.jsのCONTENT_HEIGHT_TO_WIDTH_RATIO参照）。
 async function computeRangeCropInfo(xlsxBuffer, sheetName, range) {
   const zip = await JSZip.loadAsync(xlsxBuffer);
   const { sheetPath, pdfPageIndex, printAreaRange } = await resolveSheet(zip, sheetName);
