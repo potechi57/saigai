@@ -102,11 +102,11 @@ export const FORM_A_SKETCH_RANGE_END_COL_0INDEXED = 60; // BI列（1始まり61�
 // 画像化する必要が無いため対象外とし、従来どおり個別の写真抽出に任せる
 // （karte-image-extract.tsのextractFormBImages参照。「詳細スケッチ欄を1枚の
 // 合成画像＋写真張り付け欄の個別写真」という組み合わせになる）。
-export const FORM_B_RANGE = "C7:AR42";
-// 個別抽出した画像のうち、上記FORM_B_RANGEの右端列（AR）より右にアンカーされて
+export const FORM_B_RANGE = "B7:AS42";
+// 個別抽出した画像のうち、上記FORM_B_RANGEの右端列（AS）より右にアンカーされて
 // いるものだけを「写真張り付け欄の写真」とみなし、合成画像と組み合わせる
 // （extractFormBImages参照）。範囲を変更した場合はこちらも合わせて調整すること。
-export const FORM_B_SKETCH_RANGE_END_COL_0INDEXED = 43; // AR列（1始まり44列目）の0始まり値
+export const FORM_B_SKETCH_RANGE_END_COL_0INDEXED = 44; // AS列（1始まり45列目）の0始まり値
 
 // xlsxバイト列（ファイル全体）の指定シート・指定範囲を1枚のPNGに変換する。
 // convertEmfToPng同様、環境変数未設定・通信失敗時はnullを返すベストエフォート。
