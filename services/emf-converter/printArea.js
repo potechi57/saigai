@@ -30,6 +30,71 @@
 
 const JSZip = require("jszip");
 
+// 例: base="xl/worksheets/sheet1.xml", relative="../drawings/drawing1.xml" → "xl/drawings/drawing1.xml"
+// karte-image-extract.ts（Next.js側の個別画像抽出）にある同名関数と同じロジック。
+function resolveRelative(basePath, relativeTarget) {
+  const baseDir = basePath.split("/").slice(0, -1);
+  for (const part of relativeTarget.split("/")) {
+    if (part === "..") baseDir.pop();
+    else if (part !== ".") baseDir.push(part);
+  }
+  return baseDir.join("/");
+}
+
+// シートに配置されている図形（drawing）のうち、最も右・最も下まで達しているものの
+// セル座標（1始まり）を求める。見つからない場合はnullを返す。
+//
+// 【なぜ必要か（様式Ｂ④での不具合）】
+// SinglePageSheetsは宣言されたPrint_Areaを基準にシート全体を1ページへ収めるが、
+// Print_Areaの範囲より外側（右・下）に図形がはみ出して配置されている場合、
+// その図形も同じ1ページの中に収めようとして実際の描画内容がPrint_Areaより
+// 広がることがある（実データ「様式Ｂ④」で確認: Print_Areaは$B$2:$CJ$43だが、
+// 使われていない古い図形（コピー編集の残骸と見られる）がCJ列より右
+// （CQ列付近）に取り残されていた）。この場合、server.js側で画像から検出する
+// 内容領域の幅（contentWidthPx）はPrint_Areaの範囲より広い実際の描画内容を
+// 反映してしまうため、比率計算の分母（totalWidth/totalHeight、Print_Area基準）
+// との間にズレが生じ、切り出し位置が右に大きくズレる（様式Ｂ④の詳細スケッチ欄を
+// 画像化すると、右側の写真張付欄まで写り込んでしまっていた）。
+// これを防ぐため、Print_Areaだけでなく実際に配置されている図形の最大範囲も
+// 基準範囲（total*）に含める。
+async function getSheetAnchorExtent(zip, sheetPath) {
+  const sheetFileName = sheetPath.split("/").pop();
+  const sheetRelsPath = resolveRelative(sheetPath, `_rels/${sheetFileName}.rels`);
+  const sheetRelsFile = zip.file(sheetRelsPath);
+  if (!sheetRelsFile) return null;
+  const sheetRelsXml = await sheetRelsFile.async("string");
+
+  const relTags = sheetRelsXml.match(/<Relationship\b[^>]*\/>/g) || [];
+  let drawingPath = null;
+  for (const tag of relTags) {
+    const type = (tag.match(/Type="([^"]*)"/) || [])[1] || "";
+    if (!type.includes("/drawing")) continue;
+    const target = (tag.match(/Target="([^"]*)"/) || [])[1];
+    if (target) drawingPath = resolveRelative(sheetPath, target);
+    break;
+  }
+  if (!drawingPath) return null;
+
+  const drawingFile = zip.file(drawingPath);
+  if (!drawingFile) return null;
+  const drawingXml = await drawingFile.async("string");
+
+  const anchorBlocks = drawingXml.match(/<xdr:(?:two|one)CellAnchor\b[^]*?<\/xdr:(?:two|one)CellAnchor>/g) || [];
+  let maxCol = 0;
+  let maxRow = 0;
+  for (const block of anchorBlocks) {
+    // oneCellAnchor（<xdr:to>を持たない）は対象外。実データではtwoCellAnchorのみ
+    // 確認済みで、写真・図形いずれも<xdr:to>を持つ。
+    const toMatch = block.match(/<xdr:to>\s*<xdr:col>(\d+)<\/xdr:col>[^]*?<xdr:row>(\d+)<\/xdr:row>/);
+    if (!toMatch) continue;
+    // <xdr:col>/<xdr:row>は0始まりのため、1始まりのセル座標に揃える。
+    maxCol = Math.max(maxCol, Number(toMatch[1]) + 1);
+    maxRow = Math.max(maxRow, Number(toMatch[2]) + 1);
+  }
+  if (maxCol === 0 && maxRow === 0) return null;
+  return { maxCol, maxRow };
+}
+
 // ワークブック内でシート名からシートXMLファイルパスと、SinglePageSheets出力での
 // ページ番号（非表示シートを除いた並び順。0始まり）、既存のPrint_Area（あれば）を求める。
 async function resolveSheet(zip, sheetName) {
@@ -93,7 +158,9 @@ async function resolveSheet(zip, sheetName) {
     if (!isHidden) pdfPageIndex++;
   }
 
-  return { sheetPath, pdfPageIndex, printAreaRange };
+  const anchorExtent = await getSheetAnchorExtent(zip, sheetPath);
+
+  return { sheetPath, pdfPageIndex, printAreaRange, anchorExtent };
 }
 
 const DEFAULT_COL_WIDTH = 8.43; // Excelの一般的な既定値（<sheetFormatPr defaultColWidth>が無い場合のフォールバック）
@@ -166,7 +233,15 @@ function sumRange(lookup, from, to) {
 // （resolveSheet参照）。`<dimension>`はセルの使用範囲であり、フリー図形の
 // はみ出しやExcel側の編集履歴で実際の印刷結果とズレることがあるため、
 // Print_Areaが存在する場合はそちらを優先する。
-function computeRangeFractions(sheetXml, range, printAreaRange) {
+//
+// 【基準範囲をPrint_Areaより広げることがある理由（anchorExtent）】
+// Print_Areaの範囲外（右・下）に図形がはみ出して配置されている場合、
+// SinglePageSheetsの実際の描画内容はPrint_Areaより広がることがある
+// （getSheetAnchorExtentのコメント・様式Ｂ④の実データ不具合を参照）。
+// この場合、Print_Area基準の比率のままだと切り出し位置がずれるため、
+// 図形の実際の最大範囲（anchorExtent）がPrint_Areaより広ければそちらを
+// 基準範囲として採用する。
+function computeRangeFractions(sheetXml, range, printAreaRange, anchorExtent) {
   const [fromRef, toRef] = range.split(":");
   const from = parseA1Ref(fromRef);
   const to = parseA1Ref(toRef || fromRef);
@@ -196,11 +271,12 @@ function computeRangeFractions(sheetXml, range, printAreaRange) {
 
   // 対象範囲が基準範囲よりわずかに広い場合（固定範囲に安全マージンを持たせているため。
   // lib/excel/emf-convert.tsのFORM_A_RANGE/FORM_B_RANGE参照）に備え、比率計算の
-  // 母数は両者を包含する範囲にする。
+  // 母数は両者を包含する範囲にする。さらに、Print_Areaの外側まではみ出して
+  // 配置されている図形がある場合（上記コメント参照）、その最大範囲も含める。
   const totalStartCol = Math.min(refStartCol, from.col);
   const totalStartRow = Math.min(refStartRow, from.row);
-  const totalEndCol = Math.max(refEndCol, to.col);
-  const totalEndRow = Math.max(refEndRow, to.row);
+  const totalEndCol = Math.max(refEndCol, to.col, anchorExtent ? anchorExtent.maxCol : 0);
+  const totalEndRow = Math.max(refEndRow, to.row, anchorExtent ? anchorExtent.maxRow : 0);
 
   const sheetFormatPr = sheetXml.match(/<sheetFormatPr\b[^>]*\/>/);
   const defaultColWidth = sheetFormatPr
@@ -252,9 +328,9 @@ function computeRangeFractions(sheetXml, range, printAreaRange) {
 // 求める（server.jsのCONTENT_HEIGHT_TO_WIDTH_RATIO参照）。
 async function computeRangeCropInfo(xlsxBuffer, sheetName, range) {
   const zip = await JSZip.loadAsync(xlsxBuffer);
-  const { sheetPath, pdfPageIndex, printAreaRange } = await resolveSheet(zip, sheetName);
+  const { sheetPath, pdfPageIndex, printAreaRange, anchorExtent } = await resolveSheet(zip, sheetName);
   const sheetXml = await zip.file(sheetPath).async("string");
-  const fractions = computeRangeFractions(sheetXml, range, printAreaRange);
+  const fractions = computeRangeFractions(sheetXml, range, printAreaRange, anchorExtent);
   return { pdfPageIndex, ...fractions };
 }
 
