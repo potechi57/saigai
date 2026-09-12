@@ -185,26 +185,22 @@ export default async function KarteDetailPage({
             <td colSpan={13} className="border border-gray-400 bg-white p-3 align-top dark:border-gray-600 dark:bg-gray-900">
               {formAPhotos.length > 0 ? (
                 <PhotoLightboxGroup photos={formAPhotos}>
-                  <div className="flex flex-wrap gap-3">
+                  {/* 「横並びを絶対に崩さない」という要件のため、折り返し（flex-wrap）も
+                      横スクロールも使わない。高さを揃える方式だと、横長の現況写真が
+                      混じった場合にその1枚だけ幅を取りすぎて横並びが崩れることが
+                      あった（実データ・B3274A083で確認済み）。高さを揃えることに
+                      こだわらず、コンテナ幅を写真の枚数で均等に分割し（flex-1・
+                      min-w-0）、各写真をその幅いっぱいに収まる大きさ（w-full h-auto）
+                      で表示することで、常に確実に横1列に収まるようにした。 */}
+                  <div className="flex gap-3">
                     {formAPhotos.map((p, i) => (
-                      <PhotoLightboxThumbnail key={p.id} index={i} className="block">
+                      <PhotoLightboxThumbnail key={p.id} index={i} className="block min-w-0 flex-1">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={p.url}
                           alt={p.caption ?? "点検地点位置図"}
                           title={p.caption ?? undefined}
-                          // 以前は固定の正方形枠（h-[28rem] w-[28rem]）+ object-coverだったため、
-                          // 新方式の合成画像（点検地点位置図欄は横長の長方形になる。
-                          // lib/excel/karte-image-extract.tsのextractFormAImages参照）が
-                          // 正方形にセンタークロップされ、左右が見た目上切れて見えてしまって
-                          // いた。高さだけ固定し、幅は元画像の縦横比のまま（object-contain）
-                          // にすることで、実際に切り出した範囲がそのまま見えるようにした。
-                          //
-                          // 合成画像（点検地点位置図欄）・個別写真（現況写真欄）ともに同じ高さ
-                          // にし、横並びのまま可能な限り大きく表示されるようにしている
-                          // （flex flex-wrapのため、高さを揃えておけば自然に横並びになり、
-                          // 収まらない分だけ折り返される）。
-                          className="h-[28rem] w-auto max-w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                          className="h-auto w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
                         />
                       </PhotoLightboxThumbnail>
                     ))}
