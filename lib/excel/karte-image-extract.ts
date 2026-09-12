@@ -189,9 +189,9 @@ export async function extractFormAImages(buffer: Buffer): Promise<ExtractedImage
 }
 
 // 指定シートの固定範囲（FORM_A_RANGE/FORM_B_RANGE）を1枚のPNGとして取り込む。
-// 新規カルテ取込専用（lib/actions/import-actions.tsのisNewKarte分岐参照）。
-// Cloud Run変換サービスが未設定・応答失敗等の場合はnullを返し、呼び出し側で
-// 従来のextractSheetImages（個別写真抽出）にフォールバックする。
+// 新規・再取込を問わず毎回試行する（lib/actions/import-actions.tsのresolveFormAImages/
+// resolveFormBImages参照。会話ログ参照）。Cloud Run変換サービスが未設定・応答失敗等の
+// 場合はnullを返し、呼び出し側で従来のextractSheetImages（個別写真抽出）にフォールバックする。
 export async function extractFormRangeImage(
   buffer: Buffer,
   sheetName: string,
@@ -212,9 +212,10 @@ export async function extractFormRangeImage(
 // 後ろに続ける。写真張り付け欄はほとんどの場合、図形・注記テキストが重ねて
 // 配置されていないことを実データで確認済みのため、まとめて画像化する必要が無く、
 // 個別抽出のままの方が（画像が分かれている分）見やすい。
-// 新規カルテ取込専用（lib/actions/import-actions.tsのisNewKarte分岐参照）。
-// 合成画像の取得に失敗した場合（Cloud Run変換サービス未設定・応答失敗等）はnullを
-// 返し、呼び出し側で従来のextractSheetImages（全画像の個別抽出）にフォールバックする。
+// 新規・再取込を問わず毎回試行する（lib/actions/import-actions.tsのresolveFormBImages
+// 参照。会話ログ参照）。合成画像の取得に失敗した場合（Cloud Run変換サービス未設定・
+// 応答失敗等）はnullを返し、呼び出し側で従来のextractSheetImages（全画像の個別抽出）に
+// フォールバックする。
 export async function extractFormBImages(buffer: Buffer, sheetName: string): Promise<ExtractedImage[] | null> {
   const sketchImage = await extractFormRangeImage(buffer, sheetName, FORM_B_RANGE);
   if (!sketchImage) return null;
