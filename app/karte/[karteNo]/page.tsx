@@ -49,11 +49,15 @@ export default async function KarteDetailPage({
       rockfallDetail: true,
       photos: {
         where: { targetId: null, eventId: null, disasterEventId: null },
-        orderBy: { takenAt: "asc" },
+        orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }],
       },
       targets: {
         orderBy: { displayOrder: "asc" },
-        include: { photos: { orderBy: { takenAt: "asc" } } },
+        // Excel取込写真はtakenAtを設定しない（全てnull）ため、takenAtだけでは
+        // 順序が不定になる（PostgreSQLはnull同士の順序を保証しない）。詳細スケッチ欄の
+        // 合成画像を必ず先頭にするため（app/karte/[karteNo]/page.tsxの表示ロジック参照）、
+        // createdAtを第2キーにして挿入順を保証する。
+        include: { photos: { orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }] } },
       },
       events: {
         orderBy: { inspectionDate: "asc" },
@@ -62,7 +66,7 @@ export default async function KarteDetailPage({
       disasterEvents: {
         orderBy: { occurredDate: "desc" },
         include: {
-          photos: { orderBy: { takenAt: "asc" } },
+          photos: { orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }] },
           // 様式Ｄの「点検対象箇所」欄（実データで確認済み）に相当。どの変状で
           // 発生した災害かを示す。
           target: { select: { name: true, sequenceNo: true } },
@@ -362,7 +366,12 @@ export default async function KarteDetailPage({
       ) : (
         <SheetTabs
           tabs={karte.targets.map((t) => {
-            const [sketchPhoto1, sketchPhoto2, pastePhoto] = t.photos;
+            // 新方式（extractFormBImages）では、詳細スケッチ欄は常に1枚の合成画像
+            // （先頭）、写真張付欄はそれ以外の個別抽出写真（0枚以上）という構成になる
+            // （旧来のCloud Run失敗時フォールバックでは、個別抽出した写真がそのまま
+            // 複数枚並ぶこともある。その場合は先頭を詳細スケッチ欄、残りを写真張付欄に
+            // 割り当てる）。
+            const [sketchPhoto, ...pastePhotos] = t.photos;
             const targetCode = `${karte.facilityNo}-T${String(t.sequenceNo).padStart(2, "0")}`;
             return {
               id: t.id,
@@ -390,22 +399,25 @@ export default async function KarteDetailPage({
                     </tbody>
                   </table>
                   <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
-                    {/* 左: <詳細スケッチ欄>（実データでは写真2枚が縦に並ぶ） */}
+                    {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
                       {/* 「様式Ｂの写真が大きすぎる」という指摘を受け、既定サイズ（列幅いっぱい）の
                           2/3程度に縮小している（w-2/3。aspect-videoで縦横比は保ったまま）。 */}
-                      <div className="mx-auto w-2/3 space-y-3">
-                        <PhotoSlot photo={sketchPhoto1} />
-                        <PhotoSlot photo={sketchPhoto2} />
+                      <div className="mx-auto w-2/3">
+                        <PhotoSlot photo={sketchPhoto} />
                       </div>
                     </div>
-                    {/* 右: <写真張付欄>（実データでは大きめの写真1枚）＋着目すべき点／チェック項目 */}
+                    {/* 右: <写真張付欄>（個別抽出した写真。0枚以上）＋着目すべき点／チェック項目 */}
                     <div className="space-y-3 p-3 text-sm">
                       <div>
                         <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h3>
-                        <div className="mx-auto w-2/3">
-                          <PhotoSlot photo={pastePhoto} />
+                        <div className="mx-auto w-2/3 space-y-3">
+                          {pastePhotos.length > 0 ? (
+                            pastePhotos.map((p) => <PhotoSlot key={p.id} photo={p} />)
+                          ) : (
+                            <PhotoSlot photo={null} />
+                          )}
                         </div>
                       </div>
                       <div>

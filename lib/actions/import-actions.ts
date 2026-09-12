@@ -28,7 +28,7 @@ import {
   extractFormBTarget,
   circledNumberToSeq,
 } from "@/lib/excel/karte-import";
-import { extractSheetImages, extractFormRangeImage, extractFormBImages, FORM_A_RANGE } from "@/lib/excel/karte-image-extract";
+import { extractSheetImages, extractFormAImages, extractFormBImages } from "@/lib/excel/karte-image-extract";
 import type { ExtractedImage } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
@@ -118,10 +118,12 @@ async function deleteAttachmentsWithBlobs(where: Prisma.AttachmentDocumentWhereI
 }
 
 // ── 様式Ａ・様式Ｂの画像取込方式の切り替え ───────────────────────────
-// シートの固定範囲（FORM_A_RANGE。lib/excel/emf-convert.ts参照）をまるごと1枚の
-// PNGに変換する方式を優先する（重なって配置された注記テキスト・図形・矢印を
-// 含めて欠落なく取り込むため。会話ログ参照）。Cloud Run変換サービスが未設定・
-// 変換に失敗した場合のみ、従来どおりシート内の画像を個別に抜き出す方式に
+// 様式Ａは「点検地点位置図」欄（FORM_A_RANGE。EMF/WMFスケッチに注記テキスト・
+// 図形が重なることが多い）だけを合成画像にし、「現況写真」欄（点検地点位置図欄
+// より右側。ベクターではない普通の写真が貼られるだけで、図形・注記が重なる
+// ことは無い）の写真は従来どおり個別抽出のまま組み合わせる
+// （karte-image-extract.tsのextractFormAImages参照）。Cloud Run変換サービスが
+// 未設定・変換に失敗した場合のみ、全画像を個別に抜き出す従来方式に完全に
 // フォールバックする。
 //
 // 【isNewKarte（既存カルテかどうか）で絞り込んでいないことについて】
@@ -133,8 +135,8 @@ async function deleteAttachmentsWithBlobs(where: Prisma.AttachmentDocumentWhereI
 // アップロードをスキップする（差分評価）方針に変更する予定（会話ログ参照）。
 // isNewKarte自体はその判定に使う想定でImportPhase1Result等に残してある。
 async function resolveFormAImages(sourceBuffer: Buffer): Promise<ExtractedImage[]> {
-  const rangeImage = await extractFormRangeImage(sourceBuffer, "様式Ａ", FORM_A_RANGE);
-  if (rangeImage) return [rangeImage];
+  const combined = await extractFormAImages(sourceBuffer);
+  if (combined) return combined;
   return extractSheetImages(sourceBuffer, "様式Ａ");
 }
 

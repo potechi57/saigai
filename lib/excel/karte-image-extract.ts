@@ -4,6 +4,7 @@ import {
   convertSheetRangeToPng,
   hasEmfConverterCredentials,
   FORM_A_RANGE,
+  FORM_A_SKETCH_RANGE_END_COL_0INDEXED,
   FORM_B_RANGE,
   FORM_B_SKETCH_RANGE_END_COL_0INDEXED,
 } from "@/lib/excel/emf-convert";
@@ -183,11 +184,6 @@ export async function extractSheetImages(buffer: Buffer, sheetName: string): Pro
   }
 }
 
-// 様式Ａ用の薄いラッパー（呼び出し側の互換性のため）。
-export async function extractFormAImages(buffer: Buffer): Promise<ExtractedImage[]> {
-  return extractSheetImages(buffer, "様式Ａ");
-}
-
 // 指定シートの固定範囲（FORM_A_RANGE/FORM_B_RANGE）を1枚のPNGとして取り込む。
 // 新規・再取込を問わず毎回試行する（lib/actions/import-actions.tsのresolveFormAImages/
 // resolveFormBImages参照。会話ログ参照）。Cloud Run変換サービスが未設定・応答失敗等の
@@ -225,6 +221,23 @@ export async function extractFormBImages(buffer: Buffer, sheetName: string): Pro
 
   // extractSheetImagesの並び順（列→行）を踏襲するため、合成画像（fromCol=0）は
   // 常に先頭になる。
+  return [sketchImage, ...photoAreaImages];
+}
+
+// 様式Ａ専用: 「点検地点位置図」欄（FORM_A_RANGE）だけをまとめて1枚のPNGに変換し、
+// 「現況写真」欄（点検地点位置図欄より右側。ベクターではない普通の写真が貼られる
+// だけで、図形・注記が重なることは無い）の写真は従来どおり個別に抜き出して後ろに
+// 続ける。extractFormBImagesと同じ考え方（会話ログ参照）。
+// 合成画像の取得に失敗した場合（Cloud Run変換サービス未設定・応答失敗等）はnullを
+// 返し、呼び出し側で従来のextractSheetImages（全画像の個別抽出）にフォールバックする。
+export async function extractFormAImages(buffer: Buffer): Promise<ExtractedImage[] | null> {
+  const sheetName = "様式Ａ";
+  const sketchImage = await extractFormRangeImage(buffer, sheetName, FORM_A_RANGE);
+  if (!sketchImage) return null;
+
+  const allImages = await extractSheetImages(buffer, sheetName);
+  const photoAreaImages = allImages.filter((img) => img.fromCol > FORM_A_SKETCH_RANGE_END_COL_0INDEXED);
+
   return [sketchImage, ...photoAreaImages];
 }
 

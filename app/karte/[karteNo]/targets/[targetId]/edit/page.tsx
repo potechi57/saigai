@@ -7,7 +7,6 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import SubmitButton from "@/components/SubmitButton";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
-import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import { KARTE_TYPE_LABEL, WEATHER_LABEL } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -17,11 +16,11 @@ function toDateInputValue(d: Date | null): string | undefined {
 }
 
 // 点検対象の編集画面。防災カルテ様式Ｂ（変状ごとの詳細記録）に相当する見た目・項目にしている。
-// 実際の様式Ｂのレイアウト（実データ複数件でdrawingのアンカー位置を確認済み）は、
-// 左側に<詳細スケッチ欄>として写真2枚を縦に並べ、右側に<写真張付欄>として
-// 大きめの写真1枚、その下に「着目すべき点」「チェック項目」を続ける、という
-// 左右2列構成。実データでは<詳細スケッチ欄>にも（手描きスケッチではなく）実際の
-// 写真が貼られていたため、Web版でも3枚とも写真として扱う。
+// 実際の様式Ｂのレイアウトは、左側に<詳細スケッチ欄>（EMF/WMFスケッチに注記
+// テキスト・図形が重なることが多く、1枚の合成画像として取り込む。
+// lib/excel/karte-image-extract.tsのextractFormBImages参照）、右側に<写真張付欄>
+// （それ以外の個別抽出写真。0枚以上）、その下に「着目すべき点」「チェック項目」を
+// 続ける、という左右2列構成。
 // 削除は物理削除ではなく isActive=false への論理削除とする（誤操作防止、指示書12章の方針）。
 export default async function EditInspectionTargetPage({
   params,
@@ -33,7 +32,10 @@ export default async function EditInspectionTargetPage({
     where: { id: targetId },
     include: {
       karte: { select: { facilityNo: true, routeName: true, karteType: true } },
-      photos: { orderBy: { takenAt: "asc" } },
+      // Excel取込写真はtakenAtを設定しない（全てnull）ため、takenAtだけでは順序が
+      // 不定になる（PostgreSQLはnull同士の順序を保証しない）。詳細スケッチ欄の合成
+      // 画像を必ず先頭にするため、createdAtを第2キーにして挿入順を保証する。
+      photos: { orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }] },
     },
   });
 
@@ -44,11 +46,11 @@ export default async function EditInspectionTargetPage({
   const reactivateAction = setInspectionTargetActive.bind(null, target.id, karteNo, true);
   const targetCode = `${karteNo}-T${String(target.sequenceNo).padStart(2, "0")}`;
 
-  // 様式Ｂの実データでは<詳細スケッチ欄>に2枚・<写真張付欄>に1枚（合計3枚）という
-  // 配置だったため、先頭3枚をその配置に当てはめる。4枚目以降は末尾にまとめて表示する
-  // （複数枚アップロードできるというWeb版の柔軟性は残す）。
-  const [sketchPhoto1, sketchPhoto2, pastePhoto] = target.photos;
-  const overflowPhotos = target.photos.slice(3);
+  // 新方式（extractFormBImages）では、詳細スケッチ欄は常に1枚の合成画像（先頭）、
+  // 写真張付欄はそれ以外の個別抽出写真（0枚以上）という構成になる（旧来のCloud Run
+  // 失敗時フォールバックでは、個別抽出した写真がそのまま複数枚並ぶこともある。その
+  // 場合は先頭を詳細スケッチ欄、残りを写真張付欄に割り当てる）。
+  const [sketchPhoto, ...pastePhotos] = target.photos;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
@@ -76,24 +78,27 @@ export default async function EditInspectionTargetPage({
         </table>
 
         <div className="grid grid-cols-1 divide-y divide-gray-400 dark:divide-gray-600 border-t border-gray-400 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
-          {/* 左: <詳細スケッチ欄>（実データでは写真2枚が縦に並ぶ） */}
+          {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
             {/* 「様式Ｂの写真が大きすぎる」という指摘を受け、既定サイズ（列幅いっぱい）の
                 2/3程度に縮小している（w-2/3。aspect-videoで縦横比は保ったまま）。 */}
-            <div className="mx-auto w-2/3 space-y-3">
-              <PhotoSlot photo={sketchPhoto1} />
-              <PhotoSlot photo={sketchPhoto2} />
+            <div className="mx-auto w-2/3">
+              <PhotoSlot photo={sketchPhoto} />
             </div>
           </div>
 
-          {/* 右: <写真張付欄>（実データでは大きめの写真1枚）＋着目すべき点／チェック項目 */}
+          {/* 右: <写真張付欄>（個別抽出した写真。0枚以上）＋着目すべき点／チェック項目 */}
           <div className="p-3">
             <form action={updateAction} className="space-y-3 text-sm">
               <div>
                 <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h2>
-                <div className="mx-auto w-2/3">
-                  <PhotoSlot photo={pastePhoto} />
+                <div className="mx-auto w-2/3 space-y-3">
+                  {pastePhotos.length > 0 ? (
+                    pastePhotos.map((p) => <PhotoSlot key={p.id} photo={p} />)
+                  ) : (
+                    <PhotoSlot photo={null} />
+                  )}
                 </div>
               </div>
               <TextAreaField name="keyPoints" label="着目すべき点" defaultValue={target.keyPoints} />
@@ -124,26 +129,9 @@ export default async function EditInspectionTargetPage({
 
         <div className="border-t border-gray-400 p-3 dark:border-gray-600">
           <p className="mb-2 text-xs text-gray-400 dark:text-gray-500">
-            写真を追加（上の3枠に順番に反映されます。4枚目以降は下にまとめて表示されます）
+            写真を追加（先頭が&lt;詳細スケッチ欄&gt;、2枚目以降が&lt;写真張付欄&gt;に反映されます）
           </p>
           <PhotoUploadForm targetId={target.id} karteId={target.karteId} karteFacilityNo={karteNo} compact />
-          {overflowPhotos.length > 0 && (
-            <PhotoLightboxGroup photos={overflowPhotos}>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {overflowPhotos.map((p, i) => (
-                  <PhotoLightboxThumbnail key={p.id} index={i} className="block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.url}
-                      alt={p.caption ?? "写真"}
-                      title={p.caption ?? undefined}
-                      className="h-28 w-28 cursor-zoom-in rounded border border-gray-300 object-cover dark:border-gray-700"
-                    />
-                  </PhotoLightboxThumbnail>
-                ))}
-              </div>
-            </PhotoLightboxGroup>
-          )}
         </div>
       </section>
 
