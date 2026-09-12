@@ -182,7 +182,11 @@ export type ExtractedKarte = {
 };
 
 export function extractKarte(wb: WorkBook): ExtractedKarte | null {
-  const ws = wb.Sheets[FORM_A_SHEET_NAME];
+  // 様式Ｂ・現状記録写真のシート名で確認済みの「前後に余分な空白が付く」実データが
+  // 様式Ａにも起きうるため、完全一致（wb.Sheets[FORM_A_SHEET_NAME]）ではなく
+  // trimして比較したシート名で探す。
+  const sheetName = wb.SheetNames.find((name) => name.trim() === FORM_A_SHEET_NAME);
+  const ws = sheetName ? wb.Sheets[sheetName] : undefined;
   if (!ws) return null;
 
   // 所在地：（都道府県）（市郡名）（市郡の種別）（町村名）（町村の種別）（大字等）の6セル。
@@ -288,9 +292,15 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
 }
 
 // 様式Ｂのシート名は変状（点検対象）が1件だけの場合は"様式Ｂ"、複数ある場合は
-// "様式Ｂ (1)"「様式Ｂ(2)"のように連番が付く（実データで確認済み。括弧の前の
-// 半角スペース有無が統一されていないため、両方にマッチする正規表現にしている）。
-const FORM_B_SHEET_PATTERN = /^様式Ｂ(?:\s*\(\d+\))?$/;
+// ファイルによって表記が揺れる（実データで確認済み）：
+//   - "様式Ｂ (1)"「様式Ｂ(2)"のように半角括弧＋連番（括弧の前の半角スペース
+//     有無も統一されていない）
+//   - "様式Ｂ①"「様式Ｂ②"のように丸数字を直接付ける形式（B3274A090で確認済み。
+//     この形式は括弧が無いため、旧来の正規表現では1件もマッチせず様式Ｂが
+//     一切取り込まれない不具合になっていた）
+// の両方にマッチするようにしている。丸数字はcircledNumberToSeq/seqToCircledNumber
+// と同じ範囲（①〜⑳。実データでは⑥までしか確認していないが余裕を持たせている）。
+const FORM_B_SHEET_PATTERN = /^様式Ｂ(?:\s*\(\d+\)|[①-⑳])?$/;
 
 export function findFormBSheetNames(wb: WorkBook): string[] {
   // シート名の前後に余分な空白が付いている実データ（後述のRECORD_PHOTO_SHEET_PATTERN
@@ -439,7 +449,11 @@ function toUtcDate(y: unknown, m: unknown, d: unknown): Date | null {
 }
 
 export function extractInspectionEvents(wb: WorkBook): ExtractedInspectionEvent[] {
-  const ws = wb.Sheets[FORM_C_SHEET_NAME];
+  // 様式Ｂ・現状記録写真のシート名で確認済みの「前後に余分な空白が付く」実データが
+  // 様式Ｃにも起きうるため、完全一致（wb.Sheets[FORM_C_SHEET_NAME]）ではなく
+  // trimして比較したシート名で探す。
+  const sheetName = wb.SheetNames.find((name) => name.trim() === FORM_C_SHEET_NAME);
+  const ws = sheetName ? wb.Sheets[sheetName] : undefined;
   if (!ws) return [];
 
   const events: ExtractedInspectionEvent[] = [];
