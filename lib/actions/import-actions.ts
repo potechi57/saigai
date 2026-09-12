@@ -28,7 +28,7 @@ import {
   extractFormBTarget,
   circledNumberToSeq,
 } from "@/lib/excel/karte-import";
-import { extractFormAImages, extractSheetImages } from "@/lib/excel/karte-image-extract";
+import { extractSheetImages, extractFormRangeImage, extractFormBImages, FORM_A_RANGE } from "@/lib/excel/karte-image-extract";
 import type { ExtractedImage } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
@@ -115,6 +115,41 @@ async function deleteAttachmentsWithBlobs(where: Prisma.AttachmentDocumentWhereI
   if (old.length > 0) {
     await del(old.map((a) => a.url)).catch(() => {});
   }
+}
+
+// ── 様式Ａ・様式Ｂの画像取込方式の切り替え ───────────────────────────
+// 新規カルテ取込時のみ、シートの固定範囲（FORM_A_RANGE。lib/excel/emf-convert.ts
+// 参照）をまるごと1枚のPNGに変換する方式を優先する（重なって配置された注記
+// テキスト・図形・矢印を含めて欠落なく取り込むため。会話ログ参照）。Cloud Run
+// 変換サービスが未設定・変換に失敗した場合や、既存カルテの再取込
+// （isNewKarte=false）の場合は、従来どおりシート内の画像を個別に抜き出す方式に
+// フォールバックする。
+//
+// 既存カルテを常に個別抽出のみに留めているのは、再取込のたびにVercel Blobの
+// Advanced Operations（put/list等の操作回数）を消費するため、まずは新規取込
+// だけに範囲を限定し、様子を見てから既存カルテへの適用を検討する方針のため。
+async function resolveFormAImages(sourceBuffer: Buffer, isNewKarte: boolean): Promise<ExtractedImage[]> {
+  if (isNewKarte) {
+    const rangeImage = await extractFormRangeImage(sourceBuffer, "様式Ａ", FORM_A_RANGE);
+    if (rangeImage) return [rangeImage];
+  }
+  return extractSheetImages(sourceBuffer, "様式Ａ");
+}
+
+// 様式Ｂは「詳細スケッチ欄」だけを合成画像にし、「写真張り付け欄」
+// （ほとんどの場合、図形・注記テキストが重ねられていないことを実データで確認済み）
+// は従来どおり個別抽出のまま組み合わせる（karte-image-extract.tsのextractFormBImages
+// 参照）。それ以外の新規/既存判定・フォールバック方針はresolveFormAImagesと同じ。
+async function resolveFormBImages(
+  sourceBuffer: Buffer,
+  sheetName: string,
+  isNewKarte: boolean
+): Promise<ExtractedImage[]> {
+  if (isNewKarte) {
+    const combined = await extractFormBImages(sourceBuffer, sheetName);
+    if (combined) return combined;
+  }
+  return extractSheetImages(sourceBuffer, sheetName);
 }
 
 // ── Excel取込履歴 ───────────────────────────────────────────
@@ -276,7 +311,14 @@ async function loadWorkbookFromBlob(blobUrl: string): Promise<{ wb: XLSX.WorkBoo
 // 各フェーズが完了するたびに呼び出し元（ExcelImportForm.tsx）が進捗表示を更新するため、
 // 「今何件目の点検対象を処理しているか」等が実際の処理と一致した状態で分かる。
 export type ImportPhase1Result =
-  | { ok: true; karteId: string; facilityNo: string; formBSheetNames: string[]; historyId: string }
+  | {
+      ok: true;
+      karteId: string;
+      facilityNo: string;
+      formBSheetNames: string[];
+      historyId: string;
+      isNewKarte: boolean;
+    }
   | { ok: false; error: string };
 
 // フェーズ1の入り口。取込履歴（ImportHistory）をIN_PROGRESSで作成し、実際の処理
@@ -374,6 +416,11 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
       : null,
   };
 
+  // 画像取込方式の切り替え（resolveFormAImages/resolveFormBImages参照）に使うため、upsertで
+  // 実際に作成/更新される前に「このfacilityNoのカルテが既に存在するか」を控えておく。
+  const existingKarte = await prisma.karte.findUnique({ where: { facilityNo }, select: { id: true } });
+  const isNewKarte = !existingKarte;
+
   const karte = await prisma.karte.upsert({
     where: { facilityNo },
     create: { facilityNo, ...commonData },
@@ -401,7 +448,7 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
   // 対象は様式ＡシートのJPEG/PNG等のラスター画像、およびEMF/WMF（自前のCloud Run変換
   // サービス経由でPNGに変換できた場合のみ。環境変数未設定時は従来どおり無視される）。
   if (hasBlobCredentials()) {
-    const formAImages = await extractFormAImages(sourceBuffer);
+    const formAImages = await resolveFormAImages(sourceBuffer, isNewKarte);
     if (formAImages.length > 0) {
       try {
         // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の様式Ａ写真
@@ -448,7 +495,14 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
     // 原本保存はベストエフォート。失敗してもインポート結果には影響させない。
   }
 
-  return { ok: true, karteId: karte.id, facilityNo, formBSheetNames: findFormBSheetNames(wb), historyId };
+  return {
+    ok: true,
+    karteId: karte.id,
+    facilityNo,
+    formBSheetNames: findFormBSheetNames(wb),
+    historyId,
+    isNewKarte,
+  };
 }
 
 // ── フェーズ2: 様式Ｂ1シート分（変状/点検対象1件） ────────────────────────
@@ -461,10 +515,11 @@ export async function importPhase2FormBTarget(
   karteId: string,
   blobUrl: string,
   sheetName: string,
-  historyId: string
+  historyId: string,
+  isNewKarte: boolean
 ): Promise<ImportPhase2Result> {
   try {
-    const result = await runImportPhase2(karteId, blobUrl, sheetName);
+    const result = await runImportPhase2(karteId, blobUrl, sheetName, isNewKarte);
     if (!result.ok) {
       await finishImportHistoryFailure(historyId, result.error);
     }
@@ -476,7 +531,12 @@ export async function importPhase2FormBTarget(
   }
 }
 
-async function runImportPhase2(karteId: string, blobUrl: string, sheetName: string): Promise<ImportPhase2Result> {
+async function runImportPhase2(
+  karteId: string,
+  blobUrl: string,
+  sheetName: string,
+  isNewKarte: boolean
+): Promise<ImportPhase2Result> {
   const loaded = await loadWorkbookFromBlob(blobUrl);
   if ("error" in loaded) return { ok: false, error: loaded.error };
   const { wb, sourceBuffer } = loaded;
@@ -512,7 +572,7 @@ async function runImportPhase2(karteId: string, blobUrl: string, sheetName: stri
   // 様式Ｂの写真（<詳細スケッチ欄>2枚＋<写真張付欄>1枚、計3枚という配置を実データで
   // 確認済み。karte-image-extract.tsのアンカー座標ソートで自然にこの順になる）。
   if (hasBlobCredentials()) {
-    const formBImages = await extractSheetImages(sourceBuffer, sheetName);
+    const formBImages = await resolveFormBImages(sourceBuffer, sheetName, isNewKarte);
     if (formBImages.length > 0) {
       try {
         await deletePhotosWithBlobs({ targetId: target.id, sourceForm: PhotoSourceForm.FORM_B });
@@ -784,6 +844,10 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
       : null,
   };
 
+  // resolveFormAImages/resolveFormBImages参照。upsertで実際に作成/更新される前に控えておく必要がある。
+  const existingKarte = await prisma.karte.findUnique({ where: { facilityNo }, select: { id: true } });
+  const isNewKarte = !existingKarte;
+
   const karte = await prisma.karte.upsert({
     where: { facilityNo },
     create: { facilityNo, ...commonData },
@@ -806,7 +870,7 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
   }
 
   if (hasBlobCredentials()) {
-    const formAImages = await extractFormAImages(sourceBuffer);
+    const formAImages = await resolveFormAImages(sourceBuffer, isNewKarte);
     if (formAImages.length > 0) {
       try {
         await deletePhotosWithBlobs({
@@ -861,7 +925,7 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
     targetsBySeq.set(seq, target);
 
     if (hasBlobCredentials()) {
-      const formBImages = await extractSheetImages(sourceBuffer, sheetName);
+      const formBImages = await resolveFormBImages(sourceBuffer, sheetName, isNewKarte);
       if (formBImages.length > 0) {
         try {
           await deletePhotosWithBlobs({ targetId: target.id, sourceForm: PhotoSourceForm.FORM_B });
