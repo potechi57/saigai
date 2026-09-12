@@ -193,7 +193,13 @@ export default async function KarteDetailPage({
                           src={p.url}
                           alt={p.caption ?? "点検地点位置図"}
                           title={p.caption ?? undefined}
-                          className="h-[28rem] w-[28rem] cursor-zoom-in rounded border border-gray-300 object-cover dark:border-gray-700"
+                          // 以前は固定の正方形枠（h-[28rem] w-[28rem]）+ object-coverだったため、
+                          // 新方式の合成画像（点検地点位置図欄は横長の長方形になる。
+                          // lib/excel/karte-image-extract.tsのextractFormAImages参照）が
+                          // 正方形にセンタークロップされ、左右が見た目上切れて見えてしまって
+                          // いた。高さだけ固定し、幅は元画像の縦横比のまま（object-contain）
+                          // にすることで、実際に切り出した範囲がそのまま見えるようにした。
+                          className="h-[28rem] w-auto max-w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
                         />
                       </PhotoLightboxThumbnail>
                     ))}

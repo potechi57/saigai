@@ -90,7 +90,7 @@ export async function convertEmfToPng(data: Buffer, sourceExt: "emf" | "wmf"): P
 // なる）。当初はこの2つの欄をまとめて1つの広い範囲（B6:CL30）として合成して
 // いたが、現況写真欄の写真まで合成画像に含まれてしまい、意図した範囲より
 // 縦横とも広く切り抜かれてしまう不具合になっていたため分離した。
-export const FORM_A_RANGE = "B8:BJ26";
+export const FORM_A_RANGE = "B6:BJ24";
 // 個別抽出した画像のうち、上記FORM_A_RANGEの右端列（BJ）より右にアンカーされて
 // いるものだけを「現況写真欄の写真」とみなし、合成画像と組み合わせる
 // （extractFormAImages参照）。範囲を変更した場合はこちらも合わせて調整すること。
