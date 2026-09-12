@@ -80,9 +80,9 @@ export async function convertEmfToPng(data: Buffer, sourceExt: "emf" | "wmf"): P
 // 画像サイズ・内容の位置がファイルごとにばらついてしまう。全ファイルに
 // 同じ固定範囲を使うことで、この見た目のばらつきを無くしている。
 //
-// 【範囲がB8:BJ26である理由（様式Ｂと同じ「スケッチ欄＋写真欄」の分割）】
-// 様式Ａも様式Ｂ同様、「点検地点位置図」欄（B8:BJ26。EMF/WMFスケッチに注記
-// テキスト・図形が重なることが多い）と、その右側の「現況写真」欄（BK14:CJ26。
+// 【範囲がC8:BI26である理由（様式Ｂと同じ「スケッチ欄＋写真欄」の分割）】
+// 様式Ａも様式Ｂ同様、「点検地点位置図」欄（C8:BI26。EMF/WMFスケッチに注記
+// テキスト・図形が重なることが多い）と、その右側の「現況写真」欄（BJ14:CJ26。
 // ベクターではない普通の写真が貼られるだけで、図形・注記が重なることは無い）に
 // 分かれている。合成画像化が必要なのは前者だけで、後者は従来どおり個別に
 // 写真として抜き出す（karte-image-extract.tsのextractFormAImages参照。
@@ -90,11 +90,11 @@ export async function convertEmfToPng(data: Buffer, sourceExt: "emf" | "wmf"): P
 // なる）。当初はこの2つの欄をまとめて1つの広い範囲（B6:CL30）として合成して
 // いたが、現況写真欄の写真まで合成画像に含まれてしまい、意図した範囲より
 // 縦横とも広く切り抜かれてしまう不具合になっていたため分離した。
-export const FORM_A_RANGE = "B6:BJ24";
-// 個別抽出した画像のうち、上記FORM_A_RANGEの右端列（BJ）より右にアンカーされて
+export const FORM_A_RANGE = "C8:BI26";
+// 個別抽出した画像のうち、上記FORM_A_RANGEの右端列（BI）より右にアンカーされて
 // いるものだけを「現況写真欄の写真」とみなし、合成画像と組み合わせる
 // （extractFormAImages参照）。範囲を変更した場合はこちらも合わせて調整すること。
-export const FORM_A_SKETCH_RANGE_END_COL_0INDEXED = 61; // BJ列（1始まり62列目）の0始まり値
+export const FORM_A_SKETCH_RANGE_END_COL_0INDEXED = 60; // BI列（1始まり61列目）の0始まり値
 
 // 様式Ｂは「詳細スケッチ欄」（EMF/WMFスケッチに注記テキスト・図形が重なることが
 // 多い）だけを対象にする。「写真張り付け欄」（詳細スケッチ欄より右側、実データで
@@ -102,11 +102,11 @@ export const FORM_A_SKETCH_RANGE_END_COL_0INDEXED = 61; // BJ列（1始まり62�
 // 画像化する必要が無いため対象外とし、従来どおり個別の写真抽出に任せる
 // （karte-image-extract.tsのextractFormBImages参照。「詳細スケッチ欄を1枚の
 // 合成画像＋写真張り付け欄の個別写真」という組み合わせになる）。
-export const FORM_B_RANGE = "B7:AS42";
-// 個別抽出した画像のうち、上記FORM_B_RANGEの右端列（AS）より右にアンカーされて
+export const FORM_B_RANGE = "C7:AR42";
+// 個別抽出した画像のうち、上記FORM_B_RANGEの右端列（AR）より右にアンカーされて
 // いるものだけを「写真張り付け欄の写真」とみなし、合成画像と組み合わせる
 // （extractFormBImages参照）。範囲を変更した場合はこちらも合わせて調整すること。
-export const FORM_B_SKETCH_RANGE_END_COL_0INDEXED = 44; // AS列（1始まり45列目）の0始まり値
+export const FORM_B_SKETCH_RANGE_END_COL_0INDEXED = 43; // AR列（1始まり44列目）の0始まり値
 
 // xlsxバイト列（ファイル全体）の指定シート・指定範囲を1枚のPNGに変換する。
 // convertEmfToPng同様、環境変数未設定・通信失敗時はnullを返すベストエフォート。
