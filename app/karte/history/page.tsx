@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { formatJstDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function AuditHistoryPage() {
                   )}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                  {log.entityType} ・ {log.createdAt.toLocaleString("ja-JP")}
+                  {log.entityType} ・ {formatJstDateTime(log.createdAt)}
                 </p>
               </div>
             </li>
