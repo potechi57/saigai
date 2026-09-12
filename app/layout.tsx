@@ -43,7 +43,7 @@ export default function RootLayout({
             z-indexだけ上げても地図側のz-[1000]には勝てないため、ヘッダー自体に
             地図より大きいz-indexを与える必要がある）。 */}
         <header className="relative z-[2000] flex h-14 shrink-0 items-center justify-between border-b border-gray-300 bg-white px-6 dark:border-gray-700 dark:bg-gray-900">
-          <a href="/karte" className="text-lg font-bold text-gray-800 dark:text-gray-100">
+          <a href="/karte" className="truncate text-base font-bold text-gray-800 dark:text-gray-100 sm:text-lg">
             道路施設管理 Web GIS{" "}
             <span className="text-sm font-normal text-gray-500 dark:text-gray-400">MVP</span>
           </a>
@@ -53,7 +53,11 @@ export default function RootLayout({
               複数存在するようになったため、それぞれを個別にヘッダーへ並べるのではなく
               「資料読み込み」1つのボタンにまとめ、遷移先（/import）で各手法を
               説明付きで案内する構成にしている。 */}
-          <nav className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
+          {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
+              ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
+              /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
+              （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。 */}
+          <nav className="hidden items-center gap-4 text-sm text-gray-600 dark:text-gray-300 sm:flex">
             <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
               ★ お気に入り
             </a>

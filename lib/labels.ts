@@ -15,10 +15,12 @@ export const KARTE_TYPE_LABEL: Record<string, string> = {
   OTHER: "その他",
 };
 
-// トンネル台帳等、カルテとは別枠の台帳の種別ラベル
-// （prisma/schema.prismaのFacilityLedgerCategory参照。現状はトンネルのみ）。
+// トンネル台帳等、カルテとは別枠の台帳（画像のみ）の種別ラベル
+// （prisma/schema.prismaのFacilityLedgerCategory参照）。
 export const FACILITY_LEDGER_CATEGORY_LABEL: Record<string, string> = {
   TUNNEL: "トンネル台帳",
+  BRIDGE: "橋梁台帳",
+  ROAD_LEDGER: "道路台帳",
 };
 
 // 施設一覧（FacilityListItem）の施設種別表示。原本の「施設種別」列は、门型標識等の
