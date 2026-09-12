@@ -28,7 +28,7 @@ import {
   extractFormBTarget,
   circledNumberToSeq,
 } from "@/lib/excel/karte-import";
-import { extractSheetImages, extractFormRangeImage, extractFormBImages, FORM_A_RANGE } from "@/lib/excel/karte-image-extract";
+import { extractSheetImages, extractFormAImages, extractFormBImages } from "@/lib/excel/karte-image-extract";
 import type { ExtractedImage } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
@@ -118,37 +118,35 @@ async function deleteAttachmentsWithBlobs(where: Prisma.AttachmentDocumentWhereI
 }
 
 // ── 様式Ａ・様式Ｂの画像取込方式の切り替え ───────────────────────────
-// 新規カルテ取込時のみ、シートの固定範囲（FORM_A_RANGE。lib/excel/emf-convert.ts
-// 参照）をまるごと1枚のPNGに変換する方式を優先する（重なって配置された注記
-// テキスト・図形・矢印を含めて欠落なく取り込むため。会話ログ参照）。Cloud Run
-// 変換サービスが未設定・変換に失敗した場合や、既存カルテの再取込
-// （isNewKarte=false）の場合は、従来どおりシート内の画像を個別に抜き出す方式に
+// 様式Ａは「点検地点位置図」欄（FORM_A_RANGE。EMF/WMFスケッチに注記テキスト・
+// 図形が重なることが多い）だけを合成画像にし、「現況写真」欄（点検地点位置図欄
+// より右側。ベクターではない普通の写真が貼られるだけで、図形・注記が重なる
+// ことは無い）の写真は従来どおり個別抽出のまま組み合わせる
+// （karte-image-extract.tsのextractFormAImages参照）。Cloud Run変換サービスが
+// 未設定・変換に失敗した場合のみ、全画像を個別に抜き出す従来方式に完全に
 // フォールバックする。
 //
-// 既存カルテを常に個別抽出のみに留めているのは、再取込のたびにVercel Blobの
-// Advanced Operations（put/list等の操作回数）を消費するため、まずは新規取込
-// だけに範囲を限定し、様子を見てから既存カルテへの適用を検討する方針のため。
-async function resolveFormAImages(sourceBuffer: Buffer, isNewKarte: boolean): Promise<ExtractedImage[]> {
-  if (isNewKarte) {
-    const rangeImage = await extractFormRangeImage(sourceBuffer, "様式Ａ", FORM_A_RANGE);
-    if (rangeImage) return [rangeImage];
-  }
+// 【isNewKarte（既存カルテかどうか）で絞り込んでいないことについて】
+// 当初は「新規カルテ取込時のみ」に限定していた（再取込のたびにVercel Blobの
+// Advanced Operations消費が積み上がるのを避けるため）。しかし、既存カルテの
+// 再取込でも新方式を使いたいという要望により、現状は新規・再取込を問わず
+// 常にこの方式を試すようにしている。将来的には、既に新方式で取り込み済みの
+// カルテを再取込する場合、Excel側の内容に実質的な差分が無ければ変換・
+// アップロードをスキップする（差分評価）方針に変更する予定（会話ログ参照）。
+// isNewKarte自体はその判定に使う想定でImportPhase1Result等に残してある。
+async function resolveFormAImages(sourceBuffer: Buffer): Promise<ExtractedImage[]> {
+  const combined = await extractFormAImages(sourceBuffer);
+  if (combined) return combined;
   return extractSheetImages(sourceBuffer, "様式Ａ");
 }
 
 // 様式Ｂは「詳細スケッチ欄」だけを合成画像にし、「写真張り付け欄」
 // （ほとんどの場合、図形・注記テキストが重ねられていないことを実データで確認済み）
 // は従来どおり個別抽出のまま組み合わせる（karte-image-extract.tsのextractFormBImages
-// 参照）。それ以外の新規/既存判定・フォールバック方針はresolveFormAImagesと同じ。
-async function resolveFormBImages(
-  sourceBuffer: Buffer,
-  sheetName: string,
-  isNewKarte: boolean
-): Promise<ExtractedImage[]> {
-  if (isNewKarte) {
-    const combined = await extractFormBImages(sourceBuffer, sheetName);
-    if (combined) return combined;
-  }
+// 参照）。フォールバック方針はresolveFormAImagesと同じ。
+async function resolveFormBImages(sourceBuffer: Buffer, sheetName: string): Promise<ExtractedImage[]> {
+  const combined = await extractFormBImages(sourceBuffer, sheetName);
+  if (combined) return combined;
   return extractSheetImages(sourceBuffer, sheetName);
 }
 
@@ -448,7 +446,7 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
   // 対象は様式ＡシートのJPEG/PNG等のラスター画像、およびEMF/WMF（自前のCloud Run変換
   // サービス経由でPNGに変換できた場合のみ。環境変数未設定時は従来どおり無視される）。
   if (hasBlobCredentials()) {
-    const formAImages = await resolveFormAImages(sourceBuffer, isNewKarte);
+    const formAImages = await resolveFormAImages(sourceBuffer);
     if (formAImages.length > 0) {
       try {
         // 再取込のたびに写真が重複して増えないよう、前回のExcel由来の様式Ａ写真
@@ -572,7 +570,7 @@ async function runImportPhase2(
   // 様式Ｂの写真（<詳細スケッチ欄>2枚＋<写真張付欄>1枚、計3枚という配置を実データで
   // 確認済み。karte-image-extract.tsのアンカー座標ソートで自然にこの順になる）。
   if (hasBlobCredentials()) {
-    const formBImages = await resolveFormBImages(sourceBuffer, sheetName, isNewKarte);
+    const formBImages = await resolveFormBImages(sourceBuffer, sheetName);
     if (formBImages.length > 0) {
       try {
         await deletePhotosWithBlobs({ targetId: target.id, sourceForm: PhotoSourceForm.FORM_B });
@@ -870,7 +868,7 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
   }
 
   if (hasBlobCredentials()) {
-    const formAImages = await resolveFormAImages(sourceBuffer, isNewKarte);
+    const formAImages = await resolveFormAImages(sourceBuffer);
     if (formAImages.length > 0) {
       try {
         await deletePhotosWithBlobs({
@@ -925,7 +923,7 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
     targetsBySeq.set(seq, target);
 
     if (hasBlobCredentials()) {
-      const formBImages = await resolveFormBImages(sourceBuffer, sheetName, isNewKarte);
+      const formBImages = await resolveFormBImages(sourceBuffer, sheetName);
       if (formBImages.length > 0) {
         try {
           await deletePhotosWithBlobs({ targetId: target.id, sourceForm: PhotoSourceForm.FORM_B });

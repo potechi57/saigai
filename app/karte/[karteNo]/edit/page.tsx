@@ -24,7 +24,9 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
       // 様式Ａの「点検地点位置図」「現況写真」に相当
       photos: {
         where: { targetId: null, eventId: null, disasterEventId: null },
-        orderBy: { takenAt: "asc" },
+        // Excel取込写真はtakenAtを設定しない（全てnull）ため、createdAtを第2キーに
+        // して挿入順（合成画像が先頭）を保証する。
+        orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }],
       },
       _count: { select: { targets: true, events: true, disasterEvents: true, photos: true, attachments: true } },
     },
