@@ -81,9 +81,11 @@ export default async function EditInspectionTargetPage({
           {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
-            {/* 「様式Ｂの写真が大きすぎる」という指摘を受け、既定サイズ（列幅いっぱい）の
-                2/3程度に縮小している（w-2/3。aspect-videoで縦横比は保ったまま）。 */}
-            <div className="mx-auto w-2/3">
+            {/* 個別写真だった頃は「様式Ｂの写真が大きすぎる」という指摘を受けw-2/3に
+                縮小していたが、新方式では元々2枚だった写真を1枚の合成画像にまとめている
+                分、内容が詰まって見づらくなるため、列幅いっぱい（w-full）に戻して
+                大きく表示する。 */}
+            <div className="mx-auto w-full">
               <PhotoSlot photo={sketchPhoto} />
             </div>
           </div>

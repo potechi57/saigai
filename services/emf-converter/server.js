@@ -203,67 +203,77 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     }
 
     const pdfPath = path.join(workDir, "input.pdf");
+    const fullPagePath = path.join(workDir, "fullpage.png");
     const pngPath = path.join(workDir, "result.png");
     const pdfPage = `${pdfPath}[${cropInfo.pdfPageIndex}]`;
 
-    // 対象ページの用紙サイズ（pt）を取得する（ラスタライズせずMediaBoxを読むだけなので軽い）。
-    let pageWidthPt;
-    let pageHeightPt;
+    // まずページ全体（トリミングなし）をラスタライズする。
     try {
-      const { stdout } = await execFileAsync("identify", ["-format", "%w %h", pdfPage], {
-        timeout: CONVERT_RANGE_TIMEOUT_MS,
-      });
-      const [w, h] = stdout.trim().split(/\s+/).map(Number);
-      if (!w || !h) throw new Error(`unexpected identify output: "${stdout}"`);
-      pageWidthPt = w;
-      pageHeightPt = h;
-    } catch (e) {
-      const detail = e && e.stderr ? e.stderr : e instanceof Error ? e.message : String(e);
-      throw new HttpError(502, `PDFページサイズの取得に失敗しました: ${detail}`);
+      await execFileAsync(
+        "convert",
+        ["-density", String(RANGE_RENDER_DPI), pdfPage, "-background", "white", "-flatten", fullPagePath],
+        { timeout: CONVERT_RANGE_TIMEOUT_MS }
+      );
+    } catch ({ error, stderr }) {
+      throw new HttpError(502, `PDF→PNG変換に失敗しました: ${stderr || error.message}`);
     }
 
-    const pageWidthPx = (pageWidthPt * RANGE_RENDER_DPI) / 72;
-    const pageHeightPx = (pageHeightPt * RANGE_RENDER_DPI) / 72;
-
-    // SinglePageSheetsで1ページに収めた場合でも、シートのページ余白（pageMargins。
-    // printArea.js参照）はそのまま保持される（実機検証で確認済み）。行・列の比率は
-    // 「余白を除いた内容領域」に対する割合なので、切り出し位置の計算では
-    // まずページ余白の分を差し引いた内容領域のサイズを求め、そこに比率を掛ける。
-    // pageMarginsの単位はインチなので、DPIを掛けるだけでpx換算できる。
-    const marginLeftPx = cropInfo.marginsIn.left * RANGE_RENDER_DPI;
-    const marginRightPx = cropInfo.marginsIn.right * RANGE_RENDER_DPI;
-    const marginTopPx = cropInfo.marginsIn.top * RANGE_RENDER_DPI;
-    const marginBottomPx = cropInfo.marginsIn.bottom * RANGE_RENDER_DPI;
-    const contentWidthPx = Math.max(1, pageWidthPx - marginLeftPx - marginRightPx);
-    const contentHeightPx = Math.max(1, pageHeightPx - marginTopPx - marginBottomPx);
+    // 【なぜページ全体を実際にラスタライズして内容領域を検出するか】
+    // 当初はPDFページのサイズ（pt）とシートのページ余白（pageMargins）から
+    // 内容領域を計算していたが、実機検証の結果、SinglePageSheetsは宣言された
+    // pageMargins以外に、独自の「1ページに収める」フィット処理で非対称な余白
+    // （例: あるファイルでは右側にだけ約6%の余白）を追加することがあり、
+    // これは計算では予測できないことが分かった。そこで、ページ全体を実際に
+        // ラスタライズしたうえでImageMagickの内容領域検出（-format "%@"）を使い、
+    // 実際に描画された内容の範囲を直接測定する方式にした。列・行の比率
+    // （printArea.js参照）は、この「実際の内容領域」に対する割合として適用する。
+    let contentOffsetXPx;
+    let contentOffsetYPx;
+    let contentWidthPx;
+    let contentHeightPx;
+    try {
+      const { stdout } = await execFileAsync("convert", [fullPagePath, "-format", "%@", "info:"], {
+        timeout: CONVERT_RANGE_TIMEOUT_MS,
+      });
+      const bboxMatch = stdout.trim().match(/^(\d+)x(\d+)\+(\d+)\+(\d+)$/);
+      if (!bboxMatch) throw new Error(`unexpected bounding box output: "${stdout}"`);
+      contentWidthPx = Number(bboxMatch[1]);
+      contentHeightPx = Number(bboxMatch[2]);
+      contentOffsetXPx = Number(bboxMatch[3]);
+      contentOffsetYPx = Number(bboxMatch[4]);
+    } catch (e) {
+      const detail = e && e.stderr ? e.stderr : e instanceof Error ? e.message : String(e);
+      throw new HttpError(502, `内容領域の検出に失敗しました: ${detail}`);
+    }
 
     // 列幅・行高が印刷範囲内で一様な（防災カルテのExcelで確認済み）場合、
     // printArea.jsの比率計算は理論上ぴったり一致するはずだが、浮動小数点の
-    // 丸め等に備えてごく僅かな安全マージンだけ残す（以前は0.03だったが、
-    // Print_Areaを基準にしたことで系統誤差自体が無くなったため大幅に縮小した）。
+    // 丸め等に備えてごく僅かな安全マージンだけ残す。
     const MARGIN_FRACTION = 0.003;
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const pageWidthPx = contentOffsetXPx + contentWidthPx;
+    const pageHeightPx = contentOffsetYPx + contentHeightPx;
 
     const cropX = clamp(
-      Math.round(marginLeftPx + (cropInfo.offsetXFraction - MARGIN_FRACTION) * contentWidthPx),
+      Math.round(contentOffsetXPx + (cropInfo.offsetXFraction - MARGIN_FRACTION) * contentWidthPx),
       0,
       pageWidthPx
     );
     const cropY = clamp(
-      Math.round(marginTopPx + (cropInfo.offsetYFraction - MARGIN_FRACTION) * contentHeightPx),
+      Math.round(contentOffsetYPx + (cropInfo.offsetYFraction - MARGIN_FRACTION) * contentHeightPx),
       0,
       pageHeightPx
     );
     const cropRight = clamp(
       Math.round(
-        marginLeftPx + (cropInfo.offsetXFraction + cropInfo.widthFraction + MARGIN_FRACTION) * contentWidthPx
+        contentOffsetXPx + (cropInfo.offsetXFraction + cropInfo.widthFraction + MARGIN_FRACTION) * contentWidthPx
       ),
       0,
       pageWidthPx
     );
     const cropBottom = clamp(
       Math.round(
-        marginTopPx + (cropInfo.offsetYFraction + cropInfo.heightFraction + MARGIN_FRACTION) * contentHeightPx
+        contentOffsetYPx + (cropInfo.offsetYFraction + cropInfo.heightFraction + MARGIN_FRACTION) * contentHeightPx
       ),
       0,
       pageHeightPx
@@ -271,27 +281,18 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     const cropWidth = Math.max(1, cropRight - cropX);
     const cropHeight = Math.max(1, cropBottom - cropY);
 
+    // 全ファイル共通の固定範囲で見た目のサイズ・位置を揃えるという方針
+    // （lib/excel/emf-convert.ts参照）のため、この切り出し後にファイルごとの
+    // 内容量で変わってしまう追加のトリミングは行わない（+repageで仮想
+    // キャンバスをリセットするのみ）。
     try {
       await execFileAsync(
         "convert",
-        [
-          "-density",
-          String(RANGE_RENDER_DPI),
-          pdfPage,
-          "-background",
-          "white",
-          "-flatten",
-          "-crop",
-          `${cropWidth}x${cropHeight}+${cropX}+${cropY}`,
-          "+repage",
-          "-trim",
-          "+repage",
-          pngPath,
-        ],
+        [fullPagePath, "-crop", `${cropWidth}x${cropHeight}+${cropX}+${cropY}`, "+repage", pngPath],
         { timeout: CONVERT_RANGE_TIMEOUT_MS }
       );
     } catch ({ error, stderr }) {
-      throw new HttpError(502, `PDF→PNG変換に失敗しました: ${stderr || error.message}`);
+      throw new HttpError(502, `画像の切り出しに失敗しました: ${stderr || error.message}`);
     }
 
     return await fs.readFile(pngPath);

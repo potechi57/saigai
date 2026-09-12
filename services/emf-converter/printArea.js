@@ -224,26 +224,23 @@ function computeRangeFractions(sheetXml, range, printAreaRange) {
   return { offsetXFraction, offsetYFraction, widthFraction, heightFraction };
 }
 
-// シートのページ余白（<pageMargins>。単位はインチ）を取得する。実機検証で、
-// SinglePageSheets指定で1ページに収めた場合でも、この余白（特に上余白）は
-// そのまま保持されることを確認した。行・列の比率だけで切り出し位置を計算すると、
-// この余白の分だけ実際の内容より上（左）にずれてしまうため、切り出し位置の
-// 計算にはこの余白を別途加味する必要がある（server.js参照）。
-function getPageMarginsInches(sheetXml) {
-  const tag = sheetXml.match(/<pageMargins\b[^>]*\/>/);
-  const num = (name) => (tag ? Number((tag[0].match(new RegExp(`${name}="([\\d.]+)"`)) || [])[1]) || 0 : 0);
-  return { left: num("left"), right: num("right"), top: num("top"), bottom: num("bottom") };
-}
-
 // 与えられたxlsxバイト列（読み取りのみ、変更しない）から、対象シート・対象範囲を
-// 切り出すために必要な情報（PDF出力後のページ番号・切り出し位置の比率・ページ余白）を返す。
+// 切り出すために必要な情報（PDF出力後のページ番号・切り出し位置の比率）を返す。
+//
+// 【ページ余白（pageMargins）を別途は加味していないことについて】
+// 以前はシートの宣言された<pageMargins>（インチ単位）を切り出し位置の計算に
+// 加味していたが、実機検証の結果、SinglePageSheetsは宣言されたpageMargins
+// 以外に「1ページに収める」フィット処理由来の非対称な余白（例: 右側にだけ
+// 数%）を追加することがあり、宣言値だけでは実際の余白を正しく予測できない
+// ことが分かった。そのため、ページ余白は個別に扱わず、server.js側で実際に
+// レンダリングした画像から内容領域を直接検出する方式にした（そちらで
+// pageMargins分も含めて一括して吸収される）。
 async function computeRangeCropInfo(xlsxBuffer, sheetName, range) {
   const zip = await JSZip.loadAsync(xlsxBuffer);
   const { sheetPath, pdfPageIndex, printAreaRange } = await resolveSheet(zip, sheetName);
   const sheetXml = await zip.file(sheetPath).async("string");
   const fractions = computeRangeFractions(sheetXml, range, printAreaRange);
-  const marginsIn = getPageMarginsInches(sheetXml);
-  return { pdfPageIndex, ...fractions, marginsIn };
+  return { pdfPageIndex, ...fractions };
 }
 
 module.exports = { computeRangeCropInfo };

@@ -199,7 +199,13 @@ export default async function KarteDetailPage({
                           // 正方形にセンタークロップされ、左右が見た目上切れて見えてしまって
                           // いた。高さだけ固定し、幅は元画像の縦横比のまま（object-contain）
                           // にすることで、実際に切り出した範囲がそのまま見えるようにした。
-                          className="h-[28rem] w-auto max-w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                          //
+                          // 先頭（合成画像。点検地点位置図欄）だけは大きめの高さ（h-[28rem]）に
+                          // し、それ以外（現況写真欄の個別写真。extractFormAImages参照）は
+                          // 一回り小さい高さ（h-56）にする。個別写真を合成画像と同じ高さで
+                          // 表示すると横幅を取りすぎて折り返され、縦に並んでしまっていたため、
+                          // 個別写真を小さくすることで合成画像の右側に横並びで収まるようにした。
+                          className={`${i === 0 ? "h-[28rem]" : "h-56"} w-auto max-w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800`}
                         />
                       </PhotoLightboxThumbnail>
                     ))}
@@ -408,9 +414,11 @@ export default async function KarteDetailPage({
                     {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
-                      {/* 「様式Ｂの写真が大きすぎる」という指摘を受け、既定サイズ（列幅いっぱい）の
-                          2/3程度に縮小している（w-2/3。aspect-videoで縦横比は保ったまま）。 */}
-                      <div className="mx-auto w-2/3">
+                      {/* 個別写真だった頃は「様式Ｂの写真が大きすぎる」という指摘を受け
+                          w-2/3に縮小していたが、新方式では元々2枚だった写真を1枚の合成
+                          画像にまとめている分、内容が詰まって見づらくなるため、列幅
+                          いっぱい（w-full）に戻して大きく表示する。 */}
+                      <div className="mx-auto w-full">
                         <PhotoSlot photo={sketchPhoto} />
                       </div>
                     </div>
