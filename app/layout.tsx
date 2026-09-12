@@ -53,26 +53,30 @@ export default function RootLayout({
               複数存在するようになったため、それぞれを個別にヘッダーへ並べるのではなく
               「資料読み込み」1つのボタンにまとめ、遷移先（/import）で各手法を
               説明付きで案内する構成にしている。 */}
-          {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
-              ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
-              /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
-              （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。 */}
-          <nav className="hidden items-center gap-4 text-sm text-gray-600 dark:text-gray-300 sm:flex">
-            <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-              ★ お気に入り
-            </a>
-            <a href="/karte/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-              編集履歴
-            </a>
-            <ViewHistoryButton />
-            <a
-              href="/import"
-              className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
-            >
-              ＋ 資料読み込み
-            </a>
+          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
+            {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
+                ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
+                /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
+                （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。
+                ThemeToggleだけは、スマホ側の/mでも屋外の明るさ等に応じて切り替え
+                られるよう、隠さず常に表示する。 */}
+            <nav className="hidden items-center gap-4 sm:flex">
+              <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                ★ お気に入り
+              </a>
+              <a href="/karte/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                編集履歴
+              </a>
+              <ViewHistoryButton />
+              <a
+                href="/import"
+                className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                ＋ 資料読み込み
+              </a>
+            </nav>
             <ThemeToggle />
-          </nav>
+          </div>
         </header>
         {/* 幅・余白の決め方はページごとに任せる（mainには一律のpaddingを付けない）。
             地図中心の検索画面はヘッダー直下を隙間なく使いたいため何も足さず、

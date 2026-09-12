@@ -24,8 +24,14 @@ export default async function MobilePhotoPage({
       routeName: true,
       locationDistrict: true,
       locationTown: true,
+      // 様式Ａ〜Ｄ・点検対象・点検記録・災害履歴のどれに紐づく写真かは区別せず、
+      // このカルテに関する写真を全部まとめて見せる（現場でさっと確認できれば
+      // よく、様式上の分類は不要なため）。撮影日時の新しい順にすることで、
+      // 直近の点検記録の写真から先に確認できるようにしている（PC側の詳細画面は
+      // 様式の記録としての時系列＝古い順で表示するが、現場確認では「最新の状態は
+      // どうだったか」を先に見たいことが多いため、意図的に順序を変えている）。
       photos: {
-        orderBy: [{ takenAt: "asc" }, { displayOrder: "asc" }],
+        orderBy: [{ takenAt: "desc" }, { displayOrder: "asc" }],
         select: { id: true, url: true, caption: true, takenAt: true },
       },
     },

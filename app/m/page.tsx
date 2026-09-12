@@ -16,9 +16,13 @@ export default async function MobileHomePage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q } = await searchParams;
-  const kartes = q
+  // スマホのソフトキーボード・自動補完で前後に空白が混じりやすいため、
+  // 検索前にトリムする（末尾の全角/半角スペースが残ると、実在する施設番号でも
+  // 「見つかりませんでした」になってしまうため）。
+  const trimmedQ = q?.trim();
+  const kartes = trimmedQ
     ? await prisma.karte.findMany({
-        where: { facilityNo: { contains: q, mode: "insensitive" } },
+        where: { facilityNo: { contains: trimmedQ, mode: "insensitive" } },
         orderBy: { facilityNo: "asc" },
         take: 30,
         select: { facilityNo: true, karteType: true, routeName: true, locationDistrict: true, locationTown: true },
@@ -47,7 +51,7 @@ export default async function MobileHomePage({
         </button>
       </Form>
 
-      {q && (
+      {trimmedQ && (
         <ul className="space-y-2">
           {kartes.map((k) => (
             <li key={k.facilityNo}>

@@ -372,7 +372,7 @@ export default function MapView({
            ${f.inspectionDateLabel ? `<div style="color:#374151;">点検実施日: ${escapeHtml(f.inspectionDateLabel)}</div>` : ""}
            ${f.mainFindings ? `<div style="margin-top:6px;color:#374151;white-space:pre-wrap;">主な所見: ${escapeHtml(f.mainFindings)}</div>` : ""}
            ${f.remarks ? `<div style="margin-top:4px;color:#6b7280;white-space:pre-wrap;">備考: ${escapeHtml(f.remarks)}</div>` : ""}
-           <div style="margin-top:6px;"><a href="/facility-list/${f.id}" style="color:#2563eb;">台帳・点検記録を見る →</a></div>
+           <div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(f.id)}" style="color:#2563eb;">台帳・点検記録を見る →</a></div>
          </div>`,
         { maxWidth: 360 }
       );

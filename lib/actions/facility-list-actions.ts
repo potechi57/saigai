@@ -57,49 +57,71 @@ export async function importFacilityListExcel(
   let created = 0;
   let updated = 0;
   for (const item of items) {
+    const {
+      inspectionType,
+      soundnessGrade,
+      inspectionDate,
+      inspector,
+      mainFindings,
+      repairDate,
+      repairRemarks,
+      ...assetFields
+    } = item;
+
     const existing = await prisma.facilityListItem.findUnique({
       where: { managementNo: item.managementNo },
-      select: { id: true },
+      select: { id: true, inspectionDate: true },
     });
-    const saved = await prisma.facilityListItem.upsert({
-      where: { managementNo: item.managementNo },
-      create: item,
-      update: item,
+
+    // 台帳本体（施設諸元）は常に最新の取込内容で上書きするが、「直近点検」の
+    // スナップショットは、今回の行の点検実施日が既存のスナップショットより
+    // 古い場合は上書きしない（例: 過去の古いエクスポートを後から誤って再取込
+    // した場合に、一覧・地図表示の「直近点検」が古い内容へ後退するのを防ぐ）。
+    // 点検記録の履歴（下記FacilityInspectionRecord）自体は、日付にかかわらず
+    // 常にそのまま記録する（過去の点検として履歴に残ればよいため）。
+    const shouldUpdateSnapshot =
+      !existing || !existing.inspectionDate || (inspectionDate != null && inspectionDate >= existing.inspectionDate);
+    const snapshotFields = shouldUpdateSnapshot
+      ? { inspectionType, soundnessGrade, inspectionDate, inspector, mainFindings, repairDate, repairRemarks }
+      : {};
+
+    // 台帳本体の更新と、点検記録の履歴への追加は、途中で失敗した場合に片方だけ
+    // 反映されて食い違うことがないよう、1つのトランザクションにまとめる
+    // （インタラクティブトランザクションを使うのは、新規行の場合、点検記録側の
+    // facilityListItemIdが台帳作成の結果を見るまで確定しないため。行ごとに
+    // 短いトランザクションにとどめ、大量データの取込でも1件のトランザクションが
+    // 長時間かかることがないようにしている）。
+    await prisma.$transaction(async (tx) => {
+      const saved = await tx.facilityListItem.upsert({
+        where: { managementNo: item.managementNo },
+        create: item,
+        update: { ...assetFields, ...snapshotFields },
+      });
+
+      // 点検実施日が入っている行だけ、点検記録の履歴にも積む（未点検の行は対象外）。
+      if (inspectionDate) {
+        await tx.facilityInspectionRecord.upsert({
+          where: {
+            facilityListItemId_inspectionDate: { facilityListItemId: saved.id, inspectionDate },
+          },
+          create: {
+            facilityListItemId: saved.id,
+            inspectionType,
+            soundnessGrade,
+            inspectionDate,
+            inspector,
+            mainFindings,
+            repairDate,
+            repairRemarks,
+          },
+          // 同じ施設×同じ点検日の記録が既にある場合（同じファイルの再取込等）は、
+          // 内容だけ最新化する（新しい行は増やさない）。
+          update: { inspectionType, soundnessGrade, inspector, mainFindings, repairDate, repairRemarks },
+        });
+      }
     });
     if (existing) updated++;
     else created++;
-
-    // 点検実施日が入っている行だけ、点検記録の履歴にも積む（未点検の行は対象外）。
-    if (item.inspectionDate) {
-      await prisma.facilityInspectionRecord.upsert({
-        where: {
-          facilityListItemId_inspectionDate: {
-            facilityListItemId: saved.id,
-            inspectionDate: item.inspectionDate,
-          },
-        },
-        create: {
-          facilityListItemId: saved.id,
-          inspectionType: item.inspectionType,
-          soundnessGrade: item.soundnessGrade,
-          inspectionDate: item.inspectionDate,
-          inspector: item.inspector,
-          mainFindings: item.mainFindings,
-          repairDate: item.repairDate,
-          repairRemarks: item.repairRemarks,
-        },
-        // 同じ施設×同じ点検日の記録が既にある場合（同じファイルの再取込等）は、
-        // 内容だけ最新化する（新しい行は増やさない）。
-        update: {
-          inspectionType: item.inspectionType,
-          soundnessGrade: item.soundnessGrade,
-          inspector: item.inspector,
-          mainFindings: item.mainFindings,
-          repairDate: item.repairDate,
-          repairRemarks: item.repairRemarks,
-        },
-      });
-    }
   }
 
   revalidatePath("/karte");

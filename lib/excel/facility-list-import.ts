@@ -108,15 +108,34 @@ function parseLatLng(text: string | null): { latitude: number | null; longitude:
 
 // "2016/04/01" 等の日付。cellDates:trueで読み込んだ場合はセルの値が既にDate型に
 // なっていることが多いのでそれを優先し、そうでなければ文字列からパースする。
+// どちらの経路でも、最終的にはUTC正午…ではなくUTC 0時（日付のみ、時刻情報は
+// 捨てる）に正規化する。これは、施設一覧の再取込時にFacilityInspectionRecordの
+// 一意キー（施設×点検日）として使うため（lib/actions/facility-list-actions.ts
+// 参照）で、経路によって時刻・タイムゾーンの解釈が異なると（xlsxのcellDates変換は
+// UTC基準、new Date(text)はロケールのローカル時刻基準）、同じ論理的な日付でも
+// 異なるDateインスタンスになり、再取込のたびに点検記録が重複作成されてしまう
+// おそれがあるため、日付部分だけを取り出して両経路で同じ正規化を行う。
 function parseDateCell(ws: WorkSheet, r: number, c: number): Date | null {
   const addr = utils.encode_cell({ r, c });
   const cell = ws[addr];
   if (!cell) return null;
-  if (cell.v instanceof Date) return cell.v;
+  if (cell.v instanceof Date) return toUtcDateOnly(cell.v);
   const text = cellText(ws, r, c);
   if (!text) return null;
+  // "2016/04/01"や"2016-04-01"等、区切り文字違いの表記はロケールに依存せず
+  // 自前でY/M/Dを取り出す（new Date(text)はスラッシュ区切りをローカル時刻として
+  // 解釈するため、タイムゾーンによっては日付がずれることがある）。
+  const m = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) {
+    const [, y, mo, da] = m;
+    return new Date(Date.UTC(Number(y), Number(mo) - 1, Number(da)));
+  }
   const d = new Date(text);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return Number.isNaN(d.getTime()) ? null : toUtcDateOnly(d);
+}
+
+function toUtcDateOnly(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
 // ワークブック内から「施設一覧」形式のシートを探す（シート名は問わず、
