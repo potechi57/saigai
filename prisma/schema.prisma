@@ -9,8 +9,22 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // アプリの通常のクエリ実行にはNeonのプール接続（PgBouncer経由。ホスト名に
+  // "-pooler"が付く方）を使う。
+  url       = env("DATABASE_URL")
+  // マイグレーション（`prisma migrate deploy`。package.jsonのbuildスクリプト
+  // 参照）は、Neonのプール接続（PgBouncerのトランザクションプーリングモード）
+  // だとセッション状態を維持できず、アドバイザリロック（SELECT
+  // pg_advisory_lock(...)。同時に複数のマイグレーションが走らないようPrisma
+  // が内部的に使う）の取得がタイムアウトすることがある（実際にVercelの本番
+  // ビルドで「Error: P1002 ... Timed out trying to acquire a postgres
+  // advisory lock」というエラーで発生済み）。directUrlに、プールを経由しない
+  // 直接接続（ホスト名に"-pooler"が付かない方。Neonダッシュボードで確認できる）
+  // を指定することで、migrate deploy実行時だけそちらを使うようにする
+  // （通常のクエリ実行は引き続きurl＝プール接続を使う。Prisma公式ドキュメント
+  // https://pris.ly/d/migrate-advisory-locking 参照）。
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ── enum（防災カルテ様式の"List"シートに存在する正式なコード表を採用） ──────────
