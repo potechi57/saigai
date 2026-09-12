@@ -108,13 +108,16 @@ export const FORM_B_RANGE = "B7:AS42";
 // （extractFormBImages参照）。範囲を変更した場合はこちらも合わせて調整すること。
 export const FORM_B_SKETCH_RANGE_END_COL_0INDEXED = 44; // AS列（1始まり45列目）の0始まり値
 
-// xlsxバイト列（ファイル全体）の指定シート・指定範囲を1枚のPNGに変換する。
+// xlsxバイト列（ファイル全体）の指定シート・指定範囲を1枚の画像に変換する。
+// 出力形式はPNG/JPEGのうちサイズが小さい方をCloud Run側（services/emf-converter/
+// server.js）が都度選ぶため、レスポンスの実際のContent-Typeから拡張子を判定して返す
+// （関数名はPNG固定だった時代の名残）。
 // convertEmfToPng同様、環境変数未設定・通信失敗時はnullを返すベストエフォート。
 export async function convertSheetRangeToPng(
   xlsxBuffer: Buffer,
   sheetName: string,
   range: string
-): Promise<Buffer | null> {
+): Promise<{ data: Buffer; ext: "png" | "jpeg" } | null> {
   const baseUrl = getConverterUrl();
   if (!baseUrl) return null;
 
@@ -130,8 +133,9 @@ export async function convertSheetRangeToPng(
       body: new Uint8Array(xlsxBuffer),
     });
     if (!res.ok) return null;
+    const ext = (res.headers.get("content-type") || "").includes("png") ? "png" : "jpeg";
     const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    return { data: Buffer.from(arrayBuffer), ext };
   } catch {
     return null;
   }
