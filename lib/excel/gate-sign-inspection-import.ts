@@ -79,6 +79,11 @@ function dmsFromMap(map: Map<string, string>, degKey: string, minKey: string, se
 }
 
 export type GateSignInspectionMemberData = {
+  // 元Excelの「状況写真（損傷状況）」シート（様式（その２）／様式（その２）2／
+  // 様式（その２）3…）のうち、何枚目のシート由来かを1始まりで表す
+  // （会話ログ「状況写真のタブを３つ作ってください」参照。詳細画面でシートごとの
+  // タブに分けて表示するために使う）。
+  pageNo: number;
   photoNo: number | null;
   memberName: string | null;
   memberDetail: string | null;
@@ -203,7 +208,7 @@ async function extractForm1OverviewPhotos(buffer: Buffer): Promise<GateSignInspe
 
 type RawCard = GateSignInspectionMemberData & { row: number; hasPhoto: boolean };
 
-function extractCardsFromSheet(ws: WorkSheet, maxRow = 200): RawCard[] {
+function extractCardsFromSheet(ws: WorkSheet, pageNo: number, maxRow = 200): RawCard[] {
   const cards: RawCard[] = [];
   for (let r = 0; r <= maxRow; r++) {
     for (const colStart of CARD_COL_STARTS) {
@@ -214,6 +219,7 @@ function extractCardsFromSheet(ws: WorkSheet, maxRow = 200): RawCard[] {
       const photoNo = photoNoText ? Number(photoNoText) : null;
       const card: RawCard = {
         row: r,
+        pageNo,
         photoNo: Number.isFinite(photoNo) ? photoNo : null,
         memberName: get(CARD_FIELD_ROW_OFFSET.memberName),
         memberDetail: get(CARD_FIELD_ROW_OFFSET.memberDetail),
@@ -236,8 +242,8 @@ function extractCardsFromSheet(ws: WorkSheet, maxRow = 200): RawCard[] {
   return cards;
 }
 
-async function extractMembersFromSheet(buffer: Buffer, sheetName: string, ws: WorkSheet): Promise<GateSignInspectionMemberData[]> {
-  const cards = extractCardsFromSheet(ws);
+async function extractMembersFromSheet(buffer: Buffer, sheetName: string, ws: WorkSheet, pageNo: number): Promise<GateSignInspectionMemberData[]> {
+  const cards = extractCardsFromSheet(ws, pageNo);
   const images = await extractSheetImages(buffer, sheetName);
   const sortedImages = [...images].sort((a, b) => a.fromRow - b.fromRow || a.fromCol - b.fromCol);
 
@@ -265,12 +271,17 @@ export async function parseGateSignInspectionExcel(buffer: Buffer, fileName: str
   const latitude = dmsFromMap(imsMap, "緯度(度)", "緯度(分)", "緯度(秒)");
   const longitude = dmsFromMap(imsMap, "経度(度)", "経度(分)", "経度(秒)");
 
+  // 「様式（その２）」「様式（その２）2」「様式（その２）3」…はExcel上、シート名の
+  // 末尾に何も付かないもの→連番、という順で複製される（重複シート名を許さない
+  // Excelの仕様のため）。SheetNamesの登場順がそのままページ順になる
+  // （実データで確認済み）。
   const form2SheetNames = wb.SheetNames.filter((name) => name.startsWith(FORM2_SHEET_PREFIX));
   const members: GateSignInspectionMemberData[] = [];
-  for (const sheetName of form2SheetNames) {
+  for (let i = 0; i < form2SheetNames.length; i++) {
+    const sheetName = form2SheetNames[i];
     const ws = wb.Sheets[sheetName];
     if (!ws) continue;
-    members.push(...(await extractMembersFromSheet(buffer, sheetName, ws)));
+    members.push(...(await extractMembersFromSheet(buffer, sheetName, ws, i + 1)));
   }
 
   return {

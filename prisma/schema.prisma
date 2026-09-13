@@ -796,6 +796,14 @@ model GateSignInspectionMember {
   inspectionId String
   inspection   GateSignInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 
+  // 元Excelの「状況写真（損傷状況）」シート（様式（その２）／様式（その２）2／
+  // 様式（その２）3…と、損傷箇所の数に応じて複製される）のうち、何枚目のシート
+  // 由来かを1始まりで表す。詳細画面でExcelのタブ構成に合わせて表示するため
+  // （会話ログ「状況写真のタブを３つ作ってください...タブが4つ5つあるものは、
+  // それに合わせて複数作成できる仕様に」参照。karte詳細画面の「現状記録写真」タブ
+  // （Photo.displayOrderで元シートごとにグループ化する仕組み）と同じ考え方）。
+  pageNo Int @default(1)
+
   photoNo      Int? // 写真番号
   memberName   String? // 部材名（大分類。例: 支柱）
   memberDetail String? // 部材名詳細（例: 支柱本体）
