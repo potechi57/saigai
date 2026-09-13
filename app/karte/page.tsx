@@ -5,7 +5,7 @@ import { type Prisma, type FacilityLedgerDocClass, KarteType, ResponseCategory }
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType, FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
-import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem } from "@/components/MapLoader";
+import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSignInspection } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
 import {
@@ -262,8 +262,14 @@ export default async function KarteListPage({
   const hasCondition = KARTE_PARAM_KEYS.some((k) => params[k]);
   // 「検索が実行されたかどうか」は、条件の値ではなくURLにそのキー自体が
   // 含まれているかで判定する（値が空でも、フォーム送信時はname付きの全フィールドが
-  // 送られるため`q=`のようにキーは残る）。
-  const hasSearched = KARTE_PARAM_KEYS.some((k) => k in params);
+  // 送られるため`q=`のようにキーは残る）。ただし、点検調書タブの共通フィールド
+  // （管理番号・路線名・所在地）は「災害」以外の分野（道路等）でも同じname（q/
+  // routeName/location）で送信されるため、分野を問わずKARTE_PARAM_KEYSのキーが
+  // 存在するだけでhasSearchedをtrueにすると、道路＞門型標識を検索しただけで
+  // 絞り込み無しのカルテ（災害）が全件表示されてしまう不具合になっていた
+  // （ユーザー指摘: 「選択していない災害(防災カルテ)のピンが表示されました」）。
+  // 「災害」分野を見ているときだけカルテを検索対象にする。
+  const hasSearched = inspectionBunya === "disaster" && KARTE_PARAM_KEYS.some((k) => k in params);
 
   // ---- 施設台帳側（FacilityListItem） ----
   // 分野・施設名称は、島根県の分類体系（FACILITY_LEDGER_ITEM_FIELDS/TYPES）の
@@ -371,6 +377,18 @@ export default async function KarteListPage({
         }
       : { id: "__no_data_yet__" };
 
+  // ---- 点検調書＞道路＞門型標識（GateSignInspection） ----
+  // 台帳（画像）・施設一覧と同じ「呼び出し元で絞り込んでから渡す」方針。
+  // 施設台帳（FacilityListItem）の道路標識行と管理番号で紐付いたデータのため、
+  // 施設台帳と同様「分類（分野・施設名称）が特定されるまでは表示しない」
+  // （会話ログ「点検調書タブの道路の門型標識を選択しても、施設台帳と連動した
+  // 点検調書が表示されません...点検調書でも表示してほしい」参照）。他の分野
+  // （橋梁・トンネル等）はまだ実データが無いため対象外。
+  const gateSignReady = cat === "inspection" && inspectionBunya === "road" && inspectionShisetsu === "門型標識";
+  const gateSignWhere: Prisma.GateSignInspectionWhereInput = gateSignReady
+    ? { latitude: { not: null }, longitude: { not: null } }
+    : { id: "__no_data_yet__" };
+
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
   // いる値から選ぶセレクトボックスにしている（フィルタ条件に関わらず全件から候補を
   // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計する。
@@ -379,34 +397,49 @@ export default async function KarteListPage({
   // 会話ログ「路線名を...としていますが、これが初期の検索画面で表示されていません」
   // 参照）。ledgerRouteNameRowsは現在の絞り込み（ledgerWhere）に関わらず全件から
   // 集計する（他の2系統と同じ方針）。
-  const [routeNameRows, settings, facilityLedgersRaw, facRouteNameRows, soundnessGradeRows, ledgerRouteNameRows] =
-    await Promise.all([
-      prisma.karte.findMany({
-        distinct: ["routeName"],
-        select: { routeName: true },
-        orderBy: { routeName: "asc" },
-      }),
-      prisma.appSettings.findUnique({ where: { id: "singleton" } }),
-      prisma.facilityLedger.findMany({
-        where: ledgerWhere,
-        include: { images: { orderBy: { sortOrder: "asc" } } },
-      }),
-      prisma.facilityListItem.findMany({
-        distinct: ["routeName"],
-        select: { routeName: true },
-        orderBy: { routeName: "asc" },
-      }),
-      prisma.facilityListItem.findMany({
-        distinct: ["soundnessGrade"],
-        select: { soundnessGrade: true },
-        orderBy: { soundnessGrade: "asc" },
-      }),
-      prisma.facilityLedger.findMany({
-        distinct: ["routeName"],
-        select: { routeName: true },
-        orderBy: { routeName: "asc" },
-      }),
-    ]);
+  const [
+    routeNameRows,
+    settings,
+    facilityLedgersRaw,
+    facRouteNameRows,
+    soundnessGradeRows,
+    ledgerRouteNameRows,
+    gateSignInspectionsRaw,
+  ] = await Promise.all([
+    prisma.karte.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true },
+      orderBy: { routeName: "asc" },
+    }),
+    prisma.appSettings.findUnique({ where: { id: "singleton" } }),
+    prisma.facilityLedger.findMany({
+      where: ledgerWhere,
+      include: { images: { orderBy: { sortOrder: "asc" } } },
+    }),
+    prisma.facilityListItem.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true },
+      orderBy: { routeName: "asc" },
+    }),
+    prisma.facilityListItem.findMany({
+      distinct: ["soundnessGrade"],
+      select: { soundnessGrade: true },
+      orderBy: { soundnessGrade: "asc" },
+    }),
+    prisma.facilityLedger.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true },
+      orderBy: { routeName: "asc" },
+    }),
+    prisma.gateSignInspection.findMany({
+      where: gateSignWhere,
+      orderBy: { createdAt: "desc" },
+      include: {
+        overviewPhotos: { orderBy: { sortOrder: "asc" }, take: 1 },
+        facilityListItem: { select: { id: true } },
+      },
+    }),
+  ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
   const facRouteNameOptions = facRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
   const ledgerRouteNameOptions = ledgerRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
@@ -432,6 +465,19 @@ export default async function KarteListPage({
     coverImageUrl: l.images[0]?.imageUrl ?? null,
     imageCount: l.images.length,
     note: l.note,
+  }));
+
+  const mapGateSignInspections: MapGateSignInspection[] = gateSignInspectionsRaw.map((g) => ({
+    id: g.id,
+    title: g.managementNo ?? g.sourceFileName ?? "（管理番号不明）",
+    routeName: g.routeName,
+    location: g.location,
+    judgment: g.overallJudgment,
+    inspectionDateLabel: g.inspectionDate ? new Date(g.inspectionDate).toLocaleDateString("ja-JP") : null,
+    latitude: Number(g.latitude),
+    longitude: Number(g.longitude),
+    coverPhotoUrl: g.overviewPhotos[0]?.url ?? null,
+    facilityListItemId: g.facilityListItem?.id ?? null,
   }));
 
   const home: HomeLocation =
@@ -868,7 +914,7 @@ export default async function KarteListPage({
                     </div>
                     {inspectionBunya === "road" && inspectionShisetsu === "門型標識" ? (
                       <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        門型標識の点検調書は
+                        門型標識の点検調書 {mapGateSignInspections.length}件を地図に表示中です。
                         <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
                           専用の一覧ページ
                         </Link>
@@ -876,7 +922,7 @@ export default async function KarteListPage({
                         <Link href="/inspections/gate-signs/import" className="text-blue-600 dark:text-blue-400 hover:underline">
                           Excel取込
                         </Link>
-                        ができます（施設台帳・地図の検索条件とは別枠の一覧です）。
+                        もできます（施設台帳・地図の共通の検索条件（管理番号・路線名・所在地等）とは連動しません）。
                       </p>
                     ) : (
                       <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
@@ -1121,6 +1167,7 @@ export default async function KarteListPage({
             allowSetHome
             ledgers={mapLedgers}
             facilityListItems={mapFacilityListItems}
+            gateSignInspections={mapGateSignInspections}
           />
         )}
       </main>

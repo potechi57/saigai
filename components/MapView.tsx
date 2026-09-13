@@ -80,6 +80,28 @@ export type MapFacilityListItem = {
   remarks?: string | null;
 };
 
+// 点検調書＞道路＞門型標識（prisma/schema.prismaのGateSignInspection参照）。
+// カルテ・台帳（画像）とはさらに別のデータで、Excel取込（別紙２　様式１様式２）
+// 由来の詳細点検報告書そのもの。施設台帳（FacilityListItem）の道路標識行と
+// 管理番号で紐付くことが多いが、紐付けはあくまで参考リンクであり、地図上の
+// 位置自体はこのレコード自身の緯度経度（IMS設定シート由来）を使う
+// （会話ログ「A01-AE-010474は、点検調書のデータも入れたので、点検調書でも
+// 表示してほしい」参照）。絞り込み（点検調書＞道路＞門型標識が選ばれている
+// ときだけ表示する）は呼び出し元のapp/karte/page.tsx側で行っている
+// （台帳（画像）・施設一覧と同じ、呼び出し元で絞り込んでから渡す方針）。
+export type MapGateSignInspection = {
+  id: string;
+  title: string; // 表示名（管理番号があればそれ、無ければファイル名等。呼び出し側で決定済み）
+  routeName?: string | null;
+  location?: string | null;
+  judgment?: string | null; // 判定区分（Ⅰ〜Ⅳ）。マーカー色・ポップアップの両方で使う
+  inspectionDateLabel?: string | null;
+  latitude: number;
+  longitude: number;
+  coverPhotoUrl?: string | null;
+  facilityListItemId?: string | null; // 施設台帳の該当行（紐付いていればリンクを出す）
+};
+
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
 
 // 地図APIはGoogle Maps等への差し替えを見据え、業務データ（MapKarte）とは疎結合にしている
@@ -96,12 +118,14 @@ export default function MapView({
   allowSetHome = false,
   ledgers = [],
   facilityListItems = [],
+  gateSignInspections = [],
 }: {
   kartes: MapKarte[];
   home?: HomeLocation;
   allowSetHome?: boolean;
   ledgers?: MapLedger[];
   facilityListItems?: MapFacilityListItem[];
+  gateSignInspections?: MapGateSignInspection[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -120,6 +144,9 @@ export default function MapView({
   const ledgerLayerRef = useRef<L.LayerGroup | null>(null);
   // 施設一覧Excelから取り込んだ施設のマーカー一式（同様に検索条件の影響を受けない）。
   const facilityListLayerRef = useRef<L.LayerGroup | null>(null);
+  // 点検調書（門型標識）のマーカー一式（台帳・施設一覧と同様、呼び出し元で
+  // 分類が絞り込まれた状態で渡されるため、ここではそのまま描画するだけ）。
+  const gateSignLayerRef = useRef<L.LayerGroup | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -163,6 +190,7 @@ export default function MapView({
     karteLayerRef.current = L.layerGroup().addTo(map);
     ledgerLayerRef.current = L.layerGroup().addTo(map);
     facilityListLayerRef.current = L.layerGroup().addTo(map);
+    gateSignLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
@@ -170,6 +198,7 @@ export default function MapView({
       karteLayerRef.current = null;
       ledgerLayerRef.current = null;
       facilityListLayerRef.current = null;
+      gateSignLayerRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -403,6 +432,46 @@ export default function MapView({
       );
     }
   }, [facilityListItems]);
+
+  // 点検調書（門型標識）のマーカーを構築する専用effect。台帳・施設一覧と同様、
+  // 呼び出し元（app/karte/page.tsx）で絞り込み済みの配列をそのまま描画する。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = gateSignLayerRef.current;
+    if (!map || !layer) return;
+
+    layer.clearLayers();
+
+    for (const g of gateSignInspections) {
+      const marker = L.marker([g.latitude, g.longitude], {
+        icon: buildGateSignMarkerIcon(g.judgment),
+      }).addTo(layer);
+      const detailHref = `/inspections/gate-signs/${g.id}`;
+      marker.bindPopup(
+        `<div style="font-size:13px;min-width:180px;">
+           <div style="font-weight:600;">${escapeHtml(g.title)}</div>
+           ${g.judgment ? `<div style="color:#666;">判定区分 ${escapeHtml(g.judgment)}</div>` : ""}
+           ${g.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(g.routeName)}</div>` : ""}
+           ${g.location ? `<div style="color:#374151;">所在地: ${escapeHtml(g.location)}</div>` : ""}
+           ${g.inspectionDateLabel ? `<div style="color:#374151;">点検実施日: ${escapeHtml(g.inspectionDateLabel)}</div>` : ""}
+           ${
+             g.coverPhotoUrl
+               ? `<a href="${escapeHtml(detailHref)}" style="display:block;margin-top:6px;">
+                    <img src="${escapeHtml(g.coverPhotoUrl)}" style="width:350px;max-width:350px;object-fit:contain;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+                  </a>`
+               : ""
+           }
+           ${
+             g.facilityListItemId
+               ? `<div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(g.facilityListItemId)}" style="color:#2563eb;">施設台帳を見る →</a></div>`
+               : ""
+           }
+           <div style="margin-top:2px;"><a href="${escapeHtml(detailHref)}" style="color:#2563eb;">点検調書の詳細を見る →</a></div>
+         </div>`,
+        { maxWidth: 400 }
+      );
+    }
+  }, [gateSignInspections]);
 
   // ホーム位置ピンは、地図本体を作り直さずに独立して追加・更新・削除する
   // （上の初期化effectとは別立てにする理由は直上のコメントの通り）。
@@ -725,6 +794,36 @@ function buildFacilityListMarkerIcon(facilityType: string | null | undefined, fa
     iconSize: [22, 22],
     iconAnchor: [11, 11],
     popupAnchor: [0, -11],
+  });
+}
+
+// 判定区分（Ⅰ〜Ⅳ）ごとの色。app/inspections/gate-signs内のJUDGMENT_BADGEと
+// 揃えている（Ⅰ＝健全・緑〜Ⅳ＝深刻・赤の対応区分RESPONSE_METAと同じ考え方）。
+const GATE_SIGN_JUDGMENT_COLOR: Record<string, string> = {
+  Ⅰ: "#16a34a",
+  Ⅱ: "#d97706",
+  Ⅲ: "#ea580c",
+  Ⅳ: "#dc2626",
+};
+
+// 点検調書（門型標識）のマーカーアイコン。台帳（画像。丸型・紫）・施設一覧
+// （正方形・オレンジ）とも見た目を変え、標識をそのまま連想できる🪧を使う。
+// 判定区分が分かる場合は背景色で重大度を示す（不明な場合はグレー）。
+function buildGateSignMarkerIcon(judgment: string | null | undefined): L.DivIcon {
+  const color = (judgment && GATE_SIGN_JUDGMENT_COLOR[judgment]) || "#6b7280";
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        background:${color};
+        width:26px;height:26px;border-radius:6px;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+        font-size:14px;
+      ">🪧</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
   });
 }
 
