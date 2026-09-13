@@ -956,7 +956,13 @@ export default async function KarteDetailPage({
     // ページごとに幅を決めている。app/layout.tsxのコメント参照）。
     <div className="mx-auto max-w-[1800px] space-y-6 p-6">
       {/* 閲覧履歴（ヘッダーの🕘閲覧履歴ボタン）に記録するだけの非表示コンポーネント */}
-      <RecordViewHistory facilityNo={karte.facilityNo} routeName={karte.routeName} />
+      <RecordViewHistory
+        kind="karte"
+        id={karte.facilityNo}
+        title={karte.routeName}
+        subtitle={karte.facilityNo}
+        href={`/karte/${karte.facilityNo}`}
+      />
       <div className="flex items-center justify-between">
         <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
           ← 検索・一覧に戻る

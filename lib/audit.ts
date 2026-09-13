@@ -11,9 +11,14 @@ import type { AuditAction } from "@prisma/client";
 // （ログが1件欠けるより、保存自体が失敗する方が業務上ずっと悪いため）。
 export async function logAudit(entry: {
   action: AuditAction;
-  entityType: string; // 例:「カルテ」「点検対象」「点検記録」「Excel取込」
+  entityType: string; // 例:「カルテ」「点検対象」「点検記録」「Excel取込」「施設台帳」「台帳（画像）」
   summary: string; // 例:「サンプル県道１号線（SAMPLE-0001）を更新」
   karteFacilityNo?: string | null;
+  // カルテ以外（施設台帳・台帳（画像）等）の詳細ページへのリンク。対象ごとに
+  // URLの形が違う（/facility-list/[id]、/ledgers/[id]等）ため、karteFacilityNoの
+  // ような単一の識別子ではなくパスそのものを渡す（lib/actions/facility-list-actions.ts・
+  // lib/actions/facility-ledger-actions.ts参照）。
+  linkHref?: string | null;
 }): Promise<void> {
   try {
     await prisma.auditLog.create({
@@ -22,6 +27,7 @@ export async function logAudit(entry: {
         entityType: entry.entityType,
         summary: entry.summary,
         karteFacilityNo: entry.karteFacilityNo ?? null,
+        linkHref: entry.linkHref ?? null,
       },
     });
   } catch (e) {

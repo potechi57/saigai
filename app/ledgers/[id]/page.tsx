@@ -6,6 +6,7 @@ import { deleteFacilityLedger } from "@/lib/actions/facility-ledger-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import FacilityLedgerImageManager from "@/components/FacilityLedgerImageManager";
 import FacilityLedgerEditForm from "@/components/FacilityLedgerEditForm";
+import RecordViewHistory from "@/components/RecordViewHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,13 @@ export default async function FacilityLedgerDetailPage({ params }: { params: Pro
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6">
+      <RecordViewHistory
+        kind="ledger"
+        id={ledger.id}
+        title={displayName}
+        subtitle={facilityTypeLabel ?? undefined}
+        href={`/ledgers/${ledger.id}`}
+      />
       <Link href="/ledgers" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← 台帳一覧に戻る
       </Link>

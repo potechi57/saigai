@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatFacilityType } from "@/lib/labels";
+import RecordViewHistory from "@/components/RecordViewHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,13 @@ export default async function FacilityListItemPage({ params }: { params: Promise
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6">
+      <RecordViewHistory
+        kind="facility"
+        id={item.id}
+        title={item.managementNo}
+        subtitle={facilityTypeLabel ?? undefined}
+        href={`/facility-list/${item.id}`}
+      />
       <Link href="/facility-list" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← 施設一覧に戻る
       </Link>

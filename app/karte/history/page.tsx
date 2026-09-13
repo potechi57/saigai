@@ -53,13 +53,21 @@ export default async function AuditHistoryPage() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-gray-800 dark:text-gray-100">
-                  {log.karteFacilityNo ? (
-                    <Link href={`/karte/${log.karteFacilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
-                      {log.summary}
-                    </Link>
-                  ) : (
-                    log.summary
-                  )}
+                  {(() => {
+                    // カルテ（点検調書＞災害）はkarteFacilityNoから、それ以外
+                    // （施設台帳・台帳（画像）等）はlinkHrefからリンク先を決める
+                    // （lib/audit.ts参照）。削除等で対象が既に無い場合はhref側は
+                    // 設定されない（各Server Action側でリンクを付けていない）ため、
+                    // 自然にプレーンテキスト表示にフォールバックする。
+                    const href = log.linkHref ?? (log.karteFacilityNo ? `/karte/${log.karteFacilityNo}` : null);
+                    return href ? (
+                      <Link href={href} className="text-blue-600 dark:text-blue-400 hover:underline">
+                        {log.summary}
+                      </Link>
+                    ) : (
+                      log.summary
+                    );
+                  })()}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
                   {log.entityType} ・ {formatJstDateTime(log.createdAt)}
