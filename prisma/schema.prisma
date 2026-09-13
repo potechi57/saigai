@@ -5,7 +5,16 @@
 // 全国地質調査業協会連合会 平成25年7月）の様式Ａ〜Ｄ・現状記録写真の構造に基づく。
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // relationJoins: 既定では、1対多・多対多のリレーションを含むinclude/selectは
+  // リレーション毎に別のSQL文（IN句によるバッチ取得）に分解して実行される
+  // （相手テーブルの行ごとにクエリが飛ぶ古典的なN+1ではないが、リレーションの数だけ
+  // DBへの往復＝ネットワークラウンドトリップが発生する）。性能監査で実測した結果、
+  // カルテ詳細ページの1回のfindUnique呼び出しが実際には8本のSQL文・約1.4秒に
+  // 分解されていることを確認した。relationLoadStrategy: "join"（下記の各クエリ
+  // 呼び出し側で指定）を使うとLATERAL JOINで1本のSQLにまとめられ、往復回数を
+  // 大幅に減らせる。
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -701,6 +710,12 @@ model FacilityListItem {
 
   @@index([officeName])
   @@index([facilityType])
+  // routeName・soundnessGradeはapp/karte/page.tsxの検索条件（等価一致）・
+  // ドロップダウン選択肢集計（distinct）の両方で使われるが、インデックスが無かった
+  // （性能監査で発覚）。現在の行数（数十件）では実行計画上の差は測定誤差レベルだが、
+  // データ量が増えた際に備えて追加しておく。
+  @@index([routeName])
+  @@index([soundnessGrade])
 }
 
 // 道路土工構造物点検要領・道路橋定期点検要領等が想定する「施設ごとに繰り返し行われる

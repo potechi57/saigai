@@ -150,6 +150,15 @@ export default function MapView({
   // 点検調書（門型標識）のマーカー一式（台帳・施設一覧と同様、呼び出し元で
   // 分類が絞り込まれた状態で渡されるため、ここではそのまま描画するだけ）。
   const gateSignLayerRef = useRef<L.LayerGroup | null>(null);
+  // ledgers/facilityListItems/gateSignInspectionsも、kartesと同じ理由
+  // （lastKarteIdsKeyRef参照）でID集合の差分チェックを行う。以前は「件数が少ない
+  // 想定なので毎回作り直す」という単純化をしていたが、お気に入りの☆/★切替や
+  // ホーム位置設定のたびに呼ばれるrouter.refresh()でもこれらのレイヤーを
+  // 毎回まるごと再構築してしまい、無駄な再描画（性能監査で指摘）になっていたため、
+  // kartesと統一する。
+  const lastLedgerIdsKeyRef = useRef<string | null>(null);
+  const lastFacilityListIdsKeyRef = useRef<string | null>(null);
+  const lastGateSignIdsKeyRef = useRef<string | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -351,7 +360,16 @@ export default function MapView({
             else favoriteIdsRef.current.delete(k.id);
             marker.setIcon(buildMarkerIcon(meta, next));
             renderFavSlot(slotId, k, marker, meta);
-            router.refresh(); // 一覧・お気に入り画面等、他の表示にも反映させる
+            // 以前はここでrouter.refresh()を呼び、ページ全体（このマップに渡す
+            // 全検索クエリを含む）を再取得していたが、性能監査で「☆/★を1件切り替える
+            // だけで無関係な全クエリが再実行される」不要な処理として指摘された。
+            // view=map/view=list（app/karte/page.tsx）は排他表示のため、このマップを
+            // 見ている間は一覧テーブルが同時に見えることは無く、上のfavoriteIdsRef＋
+            // marker.setIcon/renderFavSlotで「今見ている地図上の見た目」は既に
+            // 即座に反映できている。一覧表示や/karte/favoritesへ実際に移動した際は
+            // （force-dynamicのため）その時点で最新データを取り直すので、ここでの
+            // refreshは不要。components/FavoriteToggleButton.tsx（カルテ詳細画面の
+            // ☆/★ボタン）も同じ理由でrouter.refresh()を呼んでいない。
           });
         },
         { once: true }
@@ -366,13 +384,20 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kartes]);
 
-  // トンネル台帳等のマーカーを構築する専用effect。カルテの検索条件とは無関係に、
-  // ledgersが変わるたびにそのまま作り直す（件数が少ない想定のため、カルテのような
-  // 「同じ内容なら作り直さない」最適化はしていない。シンプルさ優先）。
+  // トンネル台帳等のマーカーを構築する専用effect。カルテの検索条件とは無関係に
+  // 常に表示するが、実際にID集合が変わったときだけ作り直す（lastLedgerIdsKeyRef
+  // 参照。理由はlastKarteIdsKeyRefのコメント参照）。
   useEffect(() => {
     const map = mapRef.current;
     const layer = ledgerLayerRef.current;
     if (!map || !layer) return;
+
+    const idsKey = ledgers
+      .map((l) => l.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastLedgerIdsKeyRef.current) return;
+    lastLedgerIdsKeyRef.current = idsKey;
 
     layer.clearLayers();
 
@@ -405,11 +430,19 @@ export default function MapView({
   }, [ledgers]);
 
   // 施設一覧Excelから取り込んだ施設のマーカーを構築する専用effect。トンネル台帳
-  // 同様、カルテの検索条件とは無関係に常に表示する。
+  // 同様、カルテの検索条件とは無関係に常に表示するが、ID集合が変わったときだけ
+  // 作り直す（lastFacilityListIdsKeyRef参照。理由はlastKarteIdsKeyRefのコメント参照）。
   useEffect(() => {
     const map = mapRef.current;
     const layer = facilityListLayerRef.current;
     if (!map || !layer) return;
+
+    const idsKey = facilityListItems
+      .map((f) => f.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastFacilityListIdsKeyRef.current) return;
+    lastFacilityListIdsKeyRef.current = idsKey;
 
     layer.clearLayers();
 
@@ -437,11 +470,20 @@ export default function MapView({
   }, [facilityListItems]);
 
   // 点検調書（門型標識）のマーカーを構築する専用effect。台帳・施設一覧と同様、
-  // 呼び出し元（app/karte/page.tsx）で絞り込み済みの配列をそのまま描画する。
+  // 呼び出し元（app/karte/page.tsx）で絞り込み済みの配列をそのまま描画するが、
+  // ID集合が変わったときだけ作り直す（lastGateSignIdsKeyRef参照。理由は
+  // lastKarteIdsKeyRefのコメント参照）。
   useEffect(() => {
     const map = mapRef.current;
     const layer = gateSignLayerRef.current;
     if (!map || !layer) return;
+
+    const idsKey = gateSignInspections
+      .map((g) => g.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastGateSignIdsKeyRef.current) return;
+    lastGateSignIdsKeyRef.current = idsKey;
 
     layer.clearLayers();
 

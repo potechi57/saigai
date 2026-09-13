@@ -9,6 +9,12 @@ import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSig
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
 import {
+  getKarteRouteNameOptions,
+  getFacilityListRouteNameOptions,
+  getFacilityListSoundnessGradeOptions,
+  getFacilityLedgerRouteNameOptions,
+} from "@/lib/reference-data";
+import {
   FACILITY_FIELDS,
   FACILITY_TYPES,
   FACILITY_LEDGER_ITEM_FIELDS,
@@ -397,40 +403,35 @@ export default async function KarteListPage({
   // 会話ログ「路線名を...としていますが、これが初期の検索画面で表示されていません」
   // 参照）。ledgerRouteNameRowsは現在の絞り込み（ledgerWhere）に関わらず全件から
   // 集計する（他の2系統と同じ方針）。
+  // パフォーマンス上の方針: このページで必要なクエリのうち、互いの結果に依存しない
+  // ものは全て1つのPromise.allにまとめて同時発行する（通信のラウンドトリップ回数を
+  // 減らすため）。kartesBeforeLocationFilter・facilityItemsは元々別々にawaitして
+  // いたが、下記の通りここに合流できる。唯一getStartEndRecordPhotosだけは
+  // kartesBeforeLocationFilterの結果（カルテのID一覧）が無いと発行できないため、
+  // 後段で別途awaitする（＝直列3段階だったものを直列2段階に削減）。
   const [
-    routeNameRows,
+    routeNameOptions,
     settings,
     facilityLedgersRaw,
-    facRouteNameRows,
-    soundnessGradeRows,
-    ledgerRouteNameRows,
+    facRouteNameOptions,
+    soundnessGradeOptions,
+    ledgerRouteNameOptions,
     gateSignInspectionsRaw,
+    kartesBeforeLocationFilter,
+    facilityItems,
   ] = await Promise.all([
-    prisma.karte.findMany({
-      distinct: ["routeName"],
-      select: { routeName: true },
-      orderBy: { routeName: "asc" },
-    }),
+    // 路線名・健全性区分の選択肢は検索するたびに変わるものではないため、
+    // lib/reference-data.tsで短時間（30秒）キャッシュしている
+    // （詳細は同ファイルのコメント参照。従来はここで毎回DISTINCT検索していた）。
+    getKarteRouteNameOptions(),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
     prisma.facilityLedger.findMany({
       where: ledgerWhere,
       include: { images: { orderBy: { sortOrder: "asc" } } },
     }),
-    prisma.facilityListItem.findMany({
-      distinct: ["routeName"],
-      select: { routeName: true },
-      orderBy: { routeName: "asc" },
-    }),
-    prisma.facilityListItem.findMany({
-      distinct: ["soundnessGrade"],
-      select: { soundnessGrade: true },
-      orderBy: { soundnessGrade: "asc" },
-    }),
-    prisma.facilityLedger.findMany({
-      distinct: ["routeName"],
-      select: { routeName: true },
-      orderBy: { routeName: "asc" },
-    }),
+    getFacilityListRouteNameOptions(),
+    getFacilityListSoundnessGradeOptions(),
+    getFacilityLedgerRouteNameOptions(),
     prisma.gateSignInspection.findMany({
       where: gateSignWhere,
       orderBy: { createdAt: "desc" },
@@ -442,11 +443,31 @@ export default async function KarteListPage({
         facilityListItem: { select: { id: true } },
       },
     }),
+    // 初期表示（まだ検索していない状態）では、検索クエリ自体を実行しない（データ件数が
+    // 増えた場合のDB負荷・通信量・地図描画負荷を抑えるため。単にDBから全件取得して画面側
+    // で非表示にするのではなく、クエリそのものをスキップする点がポイント）。
+    // 以前はこの2クエリを上のPromise.allとは別に直列awaitしていたが、where/facWhereは
+    // このPromise.all発行時点で既に確定しており、上記クエリ群の結果にも依存しないため、
+    // ここに合流させてラウンドトリップを1段階減らしている（詳細は関数冒頭のコメント参照）。
+    hasSearched
+      ? prisma.karte.findMany({
+          where,
+          orderBy: { updatedAt: "desc" },
+          include: {
+            targets: { select: { id: true } },
+            events: {
+              orderBy: { inspectionDate: "desc" },
+              take: 1,
+              select: { inspectionDate: true },
+            },
+            favorite: { select: { id: true } },
+          },
+        })
+      : Promise.resolve([]),
+    hasFacSearched
+      ? prisma.facilityListItem.findMany({ where: facWhere, orderBy: { managementNo: "asc" } })
+      : Promise.resolve([]),
   ]);
-  const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
-  const facRouteNameOptions = facRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
-  const ledgerRouteNameOptions = ledgerRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
-  const soundnessGradeOptions = soundnessGradeRows.map((r) => r.soundnessGrade).filter((v): v is string => !!v);
   // 路線名は共通フィールドとして1つの<select>にまとめるため、3系統の選択肢を
   // 合わせて（重複除去のうえ）1つのリストにする。
   const combinedRouteNameOptions = Array.from(
@@ -492,25 +513,6 @@ export default async function KarteListPage({
         }
       : null;
 
-  // 初期表示（まだ検索していない状態）では、検索クエリ自体を実行しない（データ件数が
-  // 増えた場合のDB負荷・通信量・地図描画負荷を抑えるため。単にDBから全件取得して画面側
-  // で非表示にするのではなく、クエリそのものをスキップする点がポイント）。
-  const kartesBeforeLocationFilter = hasSearched
-    ? await prisma.karte.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
-        include: {
-          targets: { select: { id: true } },
-          events: {
-            orderBy: { inspectionDate: "desc" },
-            take: 1,
-            select: { inspectionDate: true },
-          },
-          favorite: { select: { id: true } },
-        },
-      })
-    : [];
-
   // 所在地はlocationDistrict（郡・市〜町村種別まで）とlocationTown（大字等）の2カラムに
   // 分けて格納しているが、検索条件では{district}{town}を結合した1つの文字列として
   // 見せている。DBのwhereでは絞り込まず、他の条件で絞り込んだ結果に対して結合済み
@@ -521,10 +523,6 @@ export default async function KarteListPage({
         return combined.includes(params.location!.toLowerCase());
       })
     : kartesBeforeLocationFilter;
-
-  const facilityItems = hasFacSearched
-    ? await prisma.facilityListItem.findMany({ where: facWhere, orderBy: { managementNo: "asc" } })
-    : [];
 
   // 地図用データ。検索フォームと同じ絞り込み結果からそのまま作る
   // （地図だけ別条件になってしまっていた従来の問題を防ぐ）。
