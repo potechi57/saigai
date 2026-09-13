@@ -8,7 +8,13 @@ import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
-import { FACILITY_FIELDS, FACILITY_TYPES, type FieldKey } from "@/lib/facility-taxonomy";
+import {
+  FACILITY_FIELDS,
+  FACILITY_TYPES,
+  FACILITY_LEDGER_ITEM_FIELDS,
+  FACILITY_LEDGER_ITEM_TYPES,
+  type FieldKey,
+} from "@/lib/facility-taxonomy";
 import SearchSubmitButton from "@/components/SearchSubmitButton";
 import PendingLink from "@/components/PendingLink";
 
@@ -68,42 +74,11 @@ type FieldDef = { key: FieldKey; label: string };
 // 未検証のため、選択すると「準備中」表示になる。
 type FacilityTypeDef = { label: string; match?: string[] };
 
-// 施設台帳タブの分野は、現時点で実データ（FacilityListItem）がある道路分野を
-// 中心に、島根県の分類のうち施設台帳が実際に存在しうる分野に絞った
-// （ユーザー提示の一覧: 道路・河川海岸・空港・砂防）。
-const FACILITY_LEDGER_ITEM_FIELDS: FieldDef[] = [
-  { key: "road", label: "道路" },
-  { key: "river_coast", label: "河川・海岸" },
-  { key: "airport", label: "空港" },
-  { key: "sabo", label: "砂防" },
-];
-const FACILITY_LEDGER_ITEM_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
-  road: [
-    { label: "道路共通" },
-    { label: "橋梁", match: ["橋"] },
-    { label: "トンネル", match: ["トンネル"] },
-    { label: "道路法面構造物", match: ["法面"] },
-    { label: "舗装" },
-    { label: "道路標識", match: ["標識"] },
-    { label: "道路照明" },
-    { label: "シェッド・シェルター" },
-    { label: "大型カルバート" },
-    { label: "道路情報提供装置" },
-    { label: "電線共同溝" },
-    { label: "冠水対策施設" },
-    { label: "消融雪設備" },
-    { label: "道の駅" },
-  ],
-  river_coast: [
-    { label: "河川共通" },
-    { label: "河川管理施設" },
-    { label: "海岸共通" },
-    { label: "海岸保全施設" },
-    { label: "ダム施設" },
-  ],
-  airport: [{ label: "空港施設" }],
-  sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
-};
+// 施設台帳タブの分野・施設名称（FACILITY_LEDGER_ITEM_FIELDS/TYPES）は、
+// 台帳（画像）登録画面の「施設台帳から選んで自動入力」ピッカー
+// （app/ledgers/new/page.tsx）でも同じ絞り込みを使うため、lib/facility-taxonomy.ts
+// に切り出して共有している（会話ログ「施設台帳の道路の橋梁の路線名のように選択
+// できるようにしてほしい」参照）。
 // 点検調書タブの分野。「災害」が防災カルテ点検（Karte）に対応する唯一の
 // 実装済み分野で、それ以外は施設台帳と同じ施設分野に対応した点検調書
 // （FacilityInspectionRecordの横断検索）を将来置く想定の骨格のみ。
