@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatFacilityType } from "@/lib/labels";
+import { FACILITY_LEDGER_ITEM_FIELDS, FACILITY_LEDGER_ITEM_TYPES, type FieldKey } from "@/lib/facility-taxonomy";
 import FacilityLedgerForm from "@/components/FacilityLedgerForm";
+import PendingLink from "@/components/PendingLink";
 
 export const dynamic = "force-dynamic";
 
@@ -13,35 +15,63 @@ export const dynamic = "force-dynamic";
 // FacilityLedgerとFacilityListItemの間にDB上の関連は持たせていない
 // （現状はあくまで新規登録時の入力補助。将来的に紐付けが必要になった場合は
 // 別途検討する）。
+//
+// 施設台帳は件数が多く（数百件規模）、以前は単純に「直近200件を管理番号順で
+// 並べただけの1つの<select>」から選ばせていたが、目的の施設を探すのが困難だった
+// （会話ログ「施設台帳一覧からの名称を使用するなら...現状のスライド形式では
+// 探しにくいです」参照）。検索・地図画面の施設台帳タブと同じ「分野→施設名称」の
+// 絞り込み（FACILITY_LEDGER_ITEM_FIELDS/TYPES。lib/facility-taxonomy.ts）に、
+// 路線名の絞り込みを組み合わせ、最後に絞り込まれた候補だけを<select>で選ばせる
+// 3段階のピッカーに作り直した。
 export default async function NewFacilityLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ facilityId?: string; docClass?: string }>;
+  searchParams: Promise<{ facilityId?: string; docClass?: string; bunya?: string; shisetsu?: string; routeName?: string }>;
 }) {
-  const { facilityId, docClass } = await searchParams;
+  const { facilityId, docClass, bunya, shisetsu, routeName } = await searchParams;
   // 資料読み込みハブ（/import?method=image&cat=ledger|facility）から来た場合、
   // どちらの分類で画像登録しようとしていたかをフォームの初期選択に反映する
   // （app/import/page.tsx参照）。直接このURLを開いた場合は施設台帳を既定にする。
   const initialDocClass: "LEGAL" | "FACILITY" = docClass === "LEGAL" ? "LEGAL" : "FACILITY";
 
-  // 選択肢が多くなりすぎないよう、直近の一定件数のみ候補にする
-  // （検索欄は無く単純な<select>のため。件数が増えてきたら絞り込みUIを検討する）。
-  const facilityCandidates = await prisma.facilityListItem.findMany({
-    orderBy: { managementNo: "asc" },
-    take: 200,
-    select: {
-      id: true,
-      managementNo: true,
-      facilityType: true,
-      facilitySubType: true,
-      routeName: true,
-      location: true,
-      latitude: true,
-      longitude: true,
-    },
-  });
+  const shisetsuDef = bunya && shisetsu ? FACILITY_LEDGER_ITEM_TYPES[bunya]?.find((t) => t.label === shisetsu) : undefined;
 
-  const selected = facilityId ? facilityCandidates.find((f) => f.id === facilityId) : undefined;
+  // 分野・施設名称（細別）まで選び切り、かつ実データが紐付く場合だけ候補を取得する
+  // （検索・地図画面の施設台帳タブと同じ方針。細別未選択のまま全件を出すと、結局
+  // 従来の「探しにくい」状態に逆戻りしてしまうため）。
+  const matchedCandidates = shisetsuDef?.match
+    ? await prisma.facilityListItem.findMany({
+        where: {
+          OR: shisetsuDef.match.flatMap((kw) => [
+            { facilityType: { contains: kw } },
+            { facilitySubType: { contains: kw } },
+          ]),
+        },
+        orderBy: { managementNo: "asc" },
+        take: 500,
+        select: {
+          id: true,
+          managementNo: true,
+          facilityType: true,
+          facilitySubType: true,
+          routeName: true,
+          location: true,
+          latitude: true,
+          longitude: true,
+        },
+      })
+    : [];
+
+  // 絞り込んだ候補の中から、実際に使われている路線名だけを選択肢にする
+  // （施設台帳タブの路線名選択と同じ考え方。全件から集めるとここでも件数過多に
+  // なるため、分野・施設名称で絞った後の候補に限定する）。
+  const routeNameOptions = Array.from(
+    new Set(matchedCandidates.map((f) => f.routeName).filter((v): v is string => !!v))
+  ).sort((a, b) => a.localeCompare(b, "ja"));
+
+  const finalCandidates = routeName ? matchedCandidates.filter((f) => f.routeName === routeName) : matchedCandidates;
+
+  const selected = facilityId ? matchedCandidates.find((f) => f.id === facilityId) : undefined;
   const initial = selected
     ? {
         managementNo: selected.managementNo,
@@ -53,6 +83,28 @@ export default async function NewFacilityLedgerPage({
       }
     : undefined;
 
+  // ドリルダウンのリンク先。分野を切り替えたら施設名称・路線名・選択中の施設を
+  // クリアする（別の分野の絞り込みが残らないようにするため。検索画面の
+  // facilityFieldHref等と同じ考え方）。
+  const bunyaHref = (key: string) => {
+    const usp = new URLSearchParams();
+    if (docClass) usp.set("docClass", docClass);
+    usp.set("bunya", key);
+    return `/ledgers/new?${usp.toString()}`;
+  };
+  const shisetsuHref = (key: string, label: string) => {
+    const usp = new URLSearchParams();
+    if (docClass) usp.set("docClass", docClass);
+    usp.set("bunya", key);
+    usp.set("shisetsu", label);
+    return `/ledgers/new?${usp.toString()}`;
+  };
+  const clearDrilldownHref = (() => {
+    const usp = new URLSearchParams();
+    if (docClass) usp.set("docClass", docClass);
+    return `/ledgers/new?${usp.toString()}`;
+  })();
+
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
       <Link href="/ledgers" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
@@ -63,44 +115,118 @@ export default async function NewFacilityLedgerPage({
         Excelのような構造化データが無く、スキャン画像でしか残っていない台帳（トンネル台帳等）を登録します。緯度経度を入力すると、地図（検索・一覧画面）にもピンで表示されます。
       </p>
 
-      {facilityCandidates.length > 0 && (
-        <form
-          method="GET"
-          className="rounded border border-gray-300 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
-        >
-          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-            施設台帳から選んで自動入力（任意）
-          </label>
-          {docClass && <input type="hidden" name="docClass" value={docClass} />}
-          <div className="flex gap-2">
-            <select
-              name="facilityId"
-              defaultValue={facilityId ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      <div className="space-y-3 rounded border border-gray-300 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">施設台帳から選んで自動入力（任意）</span>
+          {(bunya || shisetsu) && (
+            <PendingLink href={clearDrilldownHref} className="text-xs text-gray-400 hover:underline dark:text-gray-500">
+              絞り込みをクリア
+            </PendingLink>
+          )}
+        </div>
+
+        {/* --- 1段階目: 分野 --- */}
+        <div className="flex flex-wrap gap-1.5">
+          {FACILITY_LEDGER_ITEM_FIELDS.map((f) => (
+            <PendingLink
+              key={f.key}
+              href={bunyaHref(f.key)}
+              className={`rounded-full border px-2.5 py-1 text-xs ${
+                bunya === f.key
+                  ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                  : "border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+              }`}
             >
-              <option value="">選択してください</option>
-              {facilityCandidates.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.managementNo}
-                  {formatFacilityType(f.facilityType, f.facilitySubType)
-                    ? `（${formatFacilityType(f.facilityType, f.facilitySubType)}）`
-                    : ""}
-                  {f.location ? ` - ${f.location}` : ""}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              className="shrink-0 rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
-            >
-              自動入力
-            </button>
+              {f.label}
+            </PendingLink>
+          ))}
+        </div>
+
+        {/* --- 2段階目: 施設名称（細別） --- */}
+        {bunya && (
+          <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-300 pl-2 dark:border-gray-600">
+            {(FACILITY_LEDGER_ITEM_TYPES[bunya as FieldKey] ?? []).map((t) => (
+              <PendingLink
+                key={t.label}
+                href={shisetsuHref(bunya, t.label)}
+                className={`rounded-full border px-2 py-0.5 text-xs ${
+                  shisetsu === t.label
+                    ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                    : t.match
+                      ? "border-gray-300 bg-white text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300"
+                      : "border-dashed border-gray-300 bg-white text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-600"
+                }`}
+              >
+                {t.label}
+                {!t.match && "（準備中）"}
+              </PendingLink>
+            ))}
           </div>
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            先に「一覧表」で施設台帳へ登録済みの施設を選ぶと、台帳名・路線名・所在地・緯度経度を自動入力します（画像は選べないため、下のフォームで画像だけ追加してください）。
+        )}
+
+        {/* --- 3段階目: 路線名（任意の絞り込み）＋具体的な施設の選択 --- */}
+        {bunya && shisetsu && !shisetsuDef?.match && (
+          <p className="rounded border border-dashed border-gray-300 bg-white p-2 text-xs text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
+            準備中です。この施設名称はまだ施設台帳の検索に対応していません。
           </p>
-        </form>
-      )}
+        )}
+        {shisetsuDef?.match && (
+          <form method="GET" className="space-y-2">
+            {docClass && <input type="hidden" name="docClass" value={docClass} />}
+            <input type="hidden" name="bunya" value={bunya} />
+            <input type="hidden" name="shisetsu" value={shisetsu} />
+            {routeNameOptions.length > 0 && (
+              <div className="flex gap-2">
+                <select
+                  name="routeName"
+                  defaultValue={routeName ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                >
+                  <option value="">路線名ですべて表示（{matchedCandidates.length}件）</option>
+                  {routeNameOptions.map((rn) => (
+                    <option key={rn} value={rn}>
+                      {rn}（
+                      {matchedCandidates.filter((f) => f.routeName === rn).length}件）
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="shrink-0 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  絞り込む
+                </button>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <select
+                name="facilityId"
+                defaultValue={facilityId ?? ""}
+                className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              >
+                <option value="">
+                  {finalCandidates.length === 0 ? "該当する施設がありません" : `選択してください（${finalCandidates.length}件）`}
+                </option>
+                {finalCandidates.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.managementNo}
+                    {f.location ? ` - ${f.location}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="shrink-0 rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                自動入力
+              </button>
+            </div>
+          </form>
+        )}
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          分野→施設名称（→路線名）の順に絞り込んでから選ぶと、台帳名・路線名・所在地・緯度経度を自動入力します（画像は選べないため、下のフォームで画像だけ追加してください）。
+        </p>
+      </div>
 
       <FacilityLedgerForm initialDocClass={initialDocClass} initial={initial} />
     </div>
