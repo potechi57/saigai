@@ -418,14 +418,17 @@ export default async function KarteDetailPage({
                       </tr>
                     </tbody>
                   </table>
-                  <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
+                  <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-[3fr_1fr] md:divide-x md:divide-y-0">
                     {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
                       {/* 個別写真だった頃は「様式Ｂの写真が大きすぎる」という指摘を受け
                           w-2/3に縮小していたが、新方式では元々2枚だった写真を1枚の合成
                           画像にまとめている分、内容が詰まって見づらくなるため、列幅
-                          いっぱい（w-full）に戻して大きく表示する。 */}
+                          いっぱい（w-full）に戻して大きく表示する。さらに、列自体の幅も
+                          左右等分（1fr:1fr）から3fr:1fr（左が現状の1.5倍）に広げ、
+                          写真自体をさらに大きく見せている。右列（写真張付欄・着目すべき点等の
+                          テキスト）が狭くなる分、文章は折り返しで対応する。 */}
                       <div className="mx-auto w-full">
                         <PhotoSlot photo={sketchPhoto} />
                       </div>
@@ -508,12 +511,6 @@ export default async function KarteDetailPage({
               ))}
             </tr>
             <tr>
-              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検者名</Th>
-              {karte.events.map((ev) => (
-                <Td key={ev.id}>{ev.inspectorName || "—"}</Td>
-              ))}
-            </tr>
-            <tr>
               <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">天候</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.weather ? WEATHER_LABEL[ev.weather] : "—"}</Td>
@@ -575,6 +572,25 @@ export default async function KarteDetailPage({
               </Fragment>
             ))}
 
+            {/* 以下、様式Ｃの実際のExcel上の並び順（点検時の特記事項→点検者名→点検後の対応→
+                専門技術者による点検年月日→専門技術者名→次回点検実施時期）に合わせている
+                （lib/excel/karte-import.tsのextractInspectionEvents参照。点検者名は
+                以前は上のsticky headerに置いていたが、Excel上ではこの並びの中（特記事項の
+                次）にあるため、こちらへ移した）。 */}
+            <tr>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検時の特記事項</Th>
+              {karte.events.map((ev) => (
+                <Td key={ev.id} className="whitespace-pre-wrap">
+                  {ev.specialTopics || "—"}
+                </Td>
+              ))}
+            </tr>
+            <tr>
+              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検者名</Th>
+              {karte.events.map((ev) => (
+                <Td key={ev.id}>{ev.inspectorName || "—"}</Td>
+              ))}
+            </tr>
             <tr>
               <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検後の対応（専門技術者の判定）</Th>
               {karte.events.map((ev) => (
@@ -601,14 +617,6 @@ export default async function KarteDetailPage({
               <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">次回点検実施時期</Th>
               {karte.events.map((ev) => (
                 <Td key={ev.id}>{ev.nextInspectionDueYear ? `${ev.nextInspectionDueYear}年度` : "—"}</Td>
-              ))}
-            </tr>
-            <tr>
-              <Th className="sticky left-0 w-40 whitespace-normal bg-gray-100 dark:bg-gray-700">点検時の特記事項</Th>
-              {karte.events.map((ev) => (
-                <Td key={ev.id} className="whitespace-pre-wrap">
-                  {ev.specialTopics || "—"}
-                </Td>
               ))}
             </tr>
           </tbody>
@@ -902,7 +910,7 @@ export default async function KarteDetailPage({
                         />
                       </PhotoLightboxThumbnail>
                       {p.caption && (
-                        <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
+                        <p className="mt-1 truncate text-right text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
                           {p.caption}
                         </p>
                       )}

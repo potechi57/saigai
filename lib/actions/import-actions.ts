@@ -22,6 +22,7 @@ import type { InspectionTarget } from "@prisma/client";
 import {
   extractKarte,
   extractInspectionEvents,
+  extractFormCTargetNames,
   findFormBSheetNames,
   findRecordPhotoSheetNames,
   extractRecordPhotoCaptions,
@@ -82,6 +83,28 @@ function sanitizeForUrl(name: string): string {
   const stem = name.replace(/\.[^.]+$/, "");
   const safe = stem.replace(/[^A-Za-z0-9-]+/g, "_").replace(/^_+|_+$/g, "");
   return safe || "FILE";
+}
+
+// ── 点検対象名の解決（様式Ｃの対象物名を使う） ────────────────────────
+// 様式Ｂには対象物名の記入欄が無いため、これまでは常に仮の名称
+// 「点検対象N（Excel取込・要確認）」にしていた。様式Ｃに対象物名（「転石」「滑落崖」等）が
+// 明記されていることが実データで確認できたため（karte-import.tsのextractFormCTargetNames
+// 参照）、取得できた場合はそちらを実際の名称として使う。
+const AUTO_TARGET_NAME_RE = /^点検対象\d+（Excel取込・要確認）$/;
+
+function resolveTargetName(seq: number, formCNames: Map<number, string>): string {
+  return formCNames.get(seq) ?? `点検対象${seq}（Excel取込・要確認）`;
+}
+
+// 既存の点検対象を再取込で更新する際、名称を上書きしてよいかを判定する。
+// 現在の名称が仮の名称パターンのままなら（＝編集画面で手動修正されていないなら）
+// 上書きしてよい。それ以外（手動修正済みと見なす）は触らない。
+async function canOverwriteTargetName(karteId: string, seq: number): Promise<boolean> {
+  const existing = await prisma.inspectionTarget.findUnique({
+    where: { karteId_sequenceNo: { karteId, sequenceNo: seq } },
+    select: { name: true },
+  });
+  return !existing || AUTO_TARGET_NAME_RE.test(existing.name);
 }
 
 function hasBlobCredentials(): boolean {
@@ -546,12 +569,16 @@ async function runImportPhase2(
   // 読み取れなかった場合のフォールバック番号は1にしておく（他のシートと衝突した場合は
   // upsertのwhereで同一レコードとして扱われるだけなので実害は無い）。
   const seq = circledNumberToSeq(fb.sequenceLabel) ?? 1;
+  // 様式Ｂには対象物名の記入欄が無いため、様式Ｃに明記されている対象物名
+  // （resolveTargetName参照）を使う。既存対象の名称上書き可否も同様にチェックする。
+  const formCNames = extractFormCTargetNames(wb);
+  const canOverwriteName = await canOverwriteTargetName(karteId, seq);
   const target = await prisma.inspectionTarget.upsert({
     where: { karteId_sequenceNo: { karteId, sequenceNo: seq } },
     create: {
       karteId,
       sequenceNo: seq,
-      name: `点検対象${seq}（Excel取込・要確認）`,
+      name: resolveTargetName(seq, formCNames),
       displayOrder: seq - 1,
       keyPoints: fb.keyPoints,
       checkItems: fb.checkItems,
@@ -559,7 +586,9 @@ async function runImportPhase2(
       createdOnSiteWeather: fb.createdOnSiteWeatherLabel ? WEATHER_BY_LABEL[fb.createdOnSiteWeatherLabel] ?? null : null,
     },
     update: {
-      // 名称はEdit画面で手動修正されている可能性があるため上書きしない。
+      // 名称は手動修正されている可能性があるため、仮の名称のままの場合のみ上書きする
+      // （canOverwriteTargetName参照）。
+      ...(canOverwriteName ? { name: resolveTargetName(seq, formCNames) } : {}),
       keyPoints: fb.keyPoints,
       checkItems: fb.checkItems,
       createdOnSiteDate: fb.createdOnSiteDate,
@@ -632,14 +661,16 @@ async function runImportPhase3(karteId: string, facilityNo: string, blobUrl: str
   // 現在は様式Ｂページ自体が削除されている等）の履歴が残っていることを実データで
   // 確認したため、フェーズ2で様式Ｂから作成済みの点検対象に無いsequenceNoが
   // 様式Ｃに出てきた場合も、履歴を取りこぼさないようプレースホルダを追加作成する。
+  const formCNames = extractFormCTargetNames(wb);
   const targetsBySeq = new Map<number, InspectionTarget>();
   async function getOrCreateTarget(seq: number): Promise<InspectionTarget> {
     const existing = targetsBySeq.get(seq);
     if (existing) return existing;
+    const canOverwriteName = await canOverwriteTargetName(karteId, seq);
     const target = await prisma.inspectionTarget.upsert({
       where: { karteId_sequenceNo: { karteId, sequenceNo: seq } },
-      create: { karteId, sequenceNo: seq, name: `点検対象${seq}（Excel取込・要確認）`, displayOrder: seq - 1 },
-      update: {},
+      create: { karteId, sequenceNo: seq, name: resolveTargetName(seq, formCNames), displayOrder: seq - 1 },
+      update: canOverwriteName ? { name: resolveTargetName(seq, formCNames) } : {},
     });
     targetsBySeq.set(seq, target);
     return target;
@@ -897,16 +928,18 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
 
   const targetsBySeq = new Map<number, InspectionTarget>();
   const formBSheetNames = findFormBSheetNames(wb);
+  const formCNames = extractFormCTargetNames(wb);
   for (const [i, sheetName] of formBSheetNames.entries()) {
     const fb = extractFormBTarget(wb, sheetName);
     if (!fb) continue;
     const seq = circledNumberToSeq(fb.sequenceLabel) ?? i + 1;
+    const canOverwriteName = await canOverwriteTargetName(karte.id, seq);
     const target = await prisma.inspectionTarget.upsert({
       where: { karteId_sequenceNo: { karteId: karte.id, sequenceNo: seq } },
       create: {
         karteId: karte.id,
         sequenceNo: seq,
-        name: `点検対象${seq}（Excel取込・要確認）`,
+        name: resolveTargetName(seq, formCNames),
         displayOrder: seq - 1,
         keyPoints: fb.keyPoints,
         checkItems: fb.checkItems,
@@ -914,6 +947,7 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
         createdOnSiteWeather: fb.createdOnSiteWeatherLabel ? WEATHER_BY_LABEL[fb.createdOnSiteWeatherLabel] ?? null : null,
       },
       update: {
+        ...(canOverwriteName ? { name: resolveTargetName(seq, formCNames) } : {}),
         keyPoints: fb.keyPoints,
         checkItems: fb.checkItems,
         createdOnSiteDate: fb.createdOnSiteDate,
@@ -946,10 +980,11 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
   async function getOrCreateTarget(seq: number): Promise<InspectionTarget> {
     const existing = targetsBySeq.get(seq);
     if (existing) return existing;
+    const canOverwriteName = await canOverwriteTargetName(karte.id, seq);
     const target = await prisma.inspectionTarget.upsert({
       where: { karteId_sequenceNo: { karteId: karte.id, sequenceNo: seq } },
-      create: { karteId: karte.id, sequenceNo: seq, name: `点検対象${seq}（Excel取込・要確認）`, displayOrder: seq - 1 },
-      update: {},
+      create: { karteId: karte.id, sequenceNo: seq, name: resolveTargetName(seq, formCNames), displayOrder: seq - 1 },
+      update: canOverwriteName ? { name: resolveTargetName(seq, formCNames) } : {},
     });
     targetsBySeq.set(seq, target);
     return target;
