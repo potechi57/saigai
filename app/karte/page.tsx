@@ -80,49 +80,45 @@ type FacilityTypeDef = { label: string; match?: string[] };
 // に切り出して共有している（会話ログ「施設台帳の道路の橋梁の路線名のように選択
 // できるようにしてほしい」参照）。
 // 点検調書タブの分野。「災害」が防災カルテ点検（Karte）に対応する唯一の
-// 実装済み分野で、それ以外は施設台帳と同じ施設分野に対応した点検調書
-// （FacilityInspectionRecordの横断検索）を将来置く想定の骨格のみ。
-// 「災害」だけは施設名称（橋梁・トンネル等）の概念が無く、代わりに専用の
-// 検索フォーム（従来の防災カルテ点検）を表示するという特別扱いにしている
-// （下記JSX参照）。それ以外の分野は施設台帳と同じく施設名称のドリルダウンを
-// 持つが、独立して用意したINSPECTION_TYPESを使う（施設台帳のFACILITY_LEDGER_
-// ITEM_TYPESとは別物。同じ「道路」「橋梁」という名前でも中身は別データという
-// 方針のため、定義を使い回さない）。
+// 実装済み分野で、それ以外はShimaneのページの【点検調書一覧】表をそのまま
+// 転記したもの（「災害」はこの表に無いアプリ独自の拡張のため、ここにだけ
+// 追加している）。それ以外の分野は施設台帳と同じく施設名称のドリルダウンを
+// 持つが、独立して用意したINSPECTION_TYPESを使う（法令台帳・施設台帳の
+// FACILITY_FIELDS/TYPES・FACILITY_LEDGER_ITEM_TYPESとは別物。3つの表で
+// 分野・施設名称の内訳が異なるため、同じ「道路」「河川・海岸」という名前でも
+// 中身は別データという方針で使い回さない。会話ログ「法令台帳と施設台帳が
+// ごっちゃになっていますね」参照）。
 const INSPECTION_FIELDS: FieldDef[] = [
   { key: "disaster", label: "災害" },
   { key: "road", label: "道路" },
   { key: "river_coast", label: "河川・海岸" },
+  { key: "port", label: "港湾" },
   { key: "airport", label: "空港" },
   { key: "sabo", label: "砂防" },
+  { key: "park", label: "公園" },
 ];
-// 点検調書側はFacilityInspectionRecordの横断検索がまだ無いため、「災害」以外は
-// 全ての施設名称が未実装（matchが無い＝準備中）。
+// 点検調書側はFacilityInspectionRecordの横断検索がまだ無いため、全ての
+// 施設名称が未実装（matchが無い＝準備中）。
 const INSPECTION_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
   road: [
-    { label: "道路共通" },
     { label: "橋梁" },
     { label: "トンネル" },
-    { label: "道路法面構造物" },
-    { label: "舗装" },
-    { label: "道路標識" },
-    { label: "道路照明" },
+    { label: "法面構造物" },
+    { label: "門型標識" },
     { label: "シェッド・シェルター" },
     { label: "大型カルバート" },
-    { label: "道路情報提供装置" },
-    { label: "電線共同溝" },
-    { label: "冠水対策施設" },
-    { label: "消融雪設備" },
-    { label: "道の駅" },
   ],
-  river_coast: [
-    { label: "河川共通" },
-    { label: "河川管理施設" },
-    { label: "海岸共通" },
-    { label: "海岸保全施設" },
-    { label: "ダム施設" },
-  ],
+  river_coast: [{ label: "河川管理施設" }, { label: "ダム施設" }],
+  port: [{ label: "港湾施設" }, { label: "海岸保全施設" }],
   airport: [{ label: "空港施設" }],
-  sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
+  sabo: [
+    { label: "砂防えん堤" },
+    { label: "渓流保全工" },
+    { label: "地すべり防止施設" },
+    { label: "急傾斜地崩壊防止施設" },
+    { label: "雪崩対策施設" },
+  ],
+  park: [{ label: "都市公園" }],
 };
 
 type SearchParams = {

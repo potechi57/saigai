@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { updateFacilityLedger, type UpdateFacilityLedgerResult } from "@/lib/actions/facility-ledger-actions";
 import { FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
-import { FACILITY_FIELDS, FACILITY_TYPES } from "@/lib/facility-taxonomy";
+import { FACILITY_FIELDS, FACILITY_TYPES, FACILITY_LEDGER_ITEM_FIELDS, FACILITY_LEDGER_ITEM_TYPES } from "@/lib/facility-taxonomy";
 import { ROUTE_PREFIX_OPTIONS, parseRouteName } from "@/lib/route-name";
 import LocationPickerMap from "@/components/LocationPickerLoader";
 
@@ -38,6 +38,11 @@ export default function FacilityLedgerEditForm({
   );
   const [docClass, setDocClass] = useState<"LEGAL" | "FACILITY">(initial.docClass);
   const [bunya, setBunya] = useState<string>(initial.facilityType);
+  // 分類（法令台帳／施設台帳）に応じて、種別選択で使う分野・施設名称の一覧を
+  // 切り替える（FacilityLedgerFormと同じ理由。会話ログ「法令台帳と施設台帳が
+  // ごっちゃになっていますね」参照）。
+  const fields = docClass === "LEGAL" ? FACILITY_FIELDS : FACILITY_LEDGER_ITEM_FIELDS;
+  const types = docClass === "LEGAL" ? FACILITY_TYPES : FACILITY_LEDGER_ITEM_TYPES;
   const initialRouteName = parseRouteName(initial.routeName);
 
   return (
@@ -53,7 +58,10 @@ export default function FacilityLedgerEditForm({
                   name="docClass"
                   value={value}
                   checked={docClass === value}
-                  onChange={() => setDocClass(value)}
+                  onChange={() => {
+                    setDocClass(value);
+                    setBunya("");
+                  }}
                 />
                 {label}
               </label>
@@ -72,7 +80,7 @@ export default function FacilityLedgerEditForm({
             className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">未選択</option>
-            {FACILITY_FIELDS.map((f) => (
+            {fields.map((f) => (
               <option key={f.key} value={f.label}>
                 {f.label}
               </option>
@@ -82,14 +90,14 @@ export default function FacilityLedgerEditForm({
         <div>
           <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">種別・施設名称（任意）</label>
           <select
-            key={bunya}
+            key={`${docClass}-${bunya}`}
             name="facilitySubType"
             disabled={!bunya}
             defaultValue={initial.facilitySubType}
             className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">未選択</option>
-            {(FACILITY_TYPES[FACILITY_FIELDS.find((f) => f.label === bunya)?.key ?? ""] ?? []).map((t) => (
+            {(types[fields.find((f) => f.label === bunya)?.key ?? ""] ?? []).map((t) => (
               <option key={t.label} value={t.label}>
                 {t.label}
               </option>
