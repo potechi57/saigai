@@ -457,20 +457,7 @@ export default function MapView({
            ${g.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(g.routeName)}</div>` : ""}
            ${g.location ? `<div style="color:#374151;">所在地: ${escapeHtml(g.location)}</div>` : ""}
            ${g.inspectionDateLabel ? `<div style="color:#374151;">点検実施日: ${escapeHtml(g.inspectionDateLabel)}</div>` : ""}
-           ${
-             g.overviewPhotos.length > 0
-               ? `<div style="display:flex;gap:6px;margin-top:6px;">
-                    ${g.overviewPhotos
-                      .map(
-                        (p) => `<a href="${escapeHtml(detailHref)}" style="display:block;flex:1 1 0;min-width:0;">
-                          <img src="${escapeHtml(p.url)}" style="width:100%;max-width:170px;aspect-ratio:4/3;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
-                          ${p.caption ? `<div style="margin-top:2px;text-align:center;color:#6b7280;font-size:11px;">${escapeHtml(p.caption)}</div>` : ""}
-                        </a>`
-                      )
-                      .join("")}
-                  </div>`
-               : ""
-           }
+           ${buildGateSignOverviewPhotosHtml(g, detailHref)}
            ${
              g.facilityListItemId
                ? `<div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(g.facilityListItemId)}" style="color:#2563eb;">施設台帳を見る →</a></div>`
@@ -478,7 +465,11 @@ export default function MapView({
            }
            <div style="margin-top:2px;"><a href="${escapeHtml(detailHref)}" style="color:#2563eb;">点検調書の詳細を見る →</a></div>
          </div>`,
-        { maxWidth: 400 }
+        // 起点・終点の写真（buildGateSignOverviewPhotosHtml、各450px）を2枚横に
+        // 並べるため、カルテの起点/終点サムネイル（buildStartEndPhotosHtml）と
+        // 同じ1000pxまでポップアップ幅を広げる（会話ログ「防災カルテ点検で表示する
+        // 起点終点写真と同じ大きさで表示してください」参照）。
+        { maxWidth: 1000 }
       );
     }
   }, [gateSignInspections]);
@@ -891,6 +882,25 @@ function buildStartEndPhotosHtml(k: MapKarte): string {
   return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
       ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
       ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
+    </div>`;
+}
+
+// 点検調書（門型標識）の全景写真（起点側・終点側）を、ポップアップ内の
+// サムネイルとして組み立てる。上のbuildStartEndPhotosHtml（防災カルテ点検の
+// 起点/終点写真）と同じ大きさ（450×253px・object-fit:cover）・同じ横並び方式に
+// 揃えている（会話ログ「mapに表示する起点・終点の写真の大きさが小さいです。
+// 防災カルテ点検で表示する起点終点写真と同じ大きさで表示してください」参照）。
+// クリック先は元画像ではなく点検調書の詳細ページ（クリックすると様式１タブで
+// 同じ写真をタブ名付きで確認できるため、詳細ページへ誘導する方が親切なため）。
+function buildGateSignOverviewPhotosHtml(g: MapGateSignInspection, detailHref: string): string {
+  if (g.overviewPhotos.length === 0) return "";
+  const thumb = (url: string, caption: string | null) => `
+    <a href="${escapeHtml(detailHref)}" style="text-align:center;text-decoration:none;flex-shrink:0;">
+      <img src="${escapeHtml(url)}" style="width:450px;max-width:450px;height:253px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      ${caption ? `<span style="font-size:12px;color:#6b7280;">${escapeHtml(caption)}</span>` : ""}
+    </a>`;
+  return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
+      ${g.overviewPhotos.map((p) => thumb(p.url, p.caption)).join("")}
     </div>`;
 }
 
