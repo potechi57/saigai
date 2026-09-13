@@ -29,15 +29,15 @@ datasource db {
 
 // ── enum（防災カルテ様式の"List"シートに存在する正式なコード表を採用） ──────────
 
-// 点検対象項目（カルテ種別）。全10種のうち、MVPでは落石・崩壊のみ
-// KarteRockfallDetail で詳細を持つ。他種別は Karte 本体の登録は可能だが、
+// 点検対象項目（カルテ種別）。防災カルテ様式（全国地質調査業協会連合会版）の
+// "List"シートには全10種のコード表があるが、島根県では防災カルテ点検を
+// 「落石・斜面」（落石・崩壊）でのみ運用しているとのことのため、岩盤崩壊・
+// 地すべり・雪崩・土石流の4種は本アプリでは扱わないことにした（会話ログ参照）。
+// 様式・DBの列挙値としては原本の全10種のうち6種が残っているが、KarteRockfallDetail
+// で詳細を持つのは引き続き落石・崩壊のみ。他種別は Karte 本体の登録は可能だが、
 // 種別固有の詳細テーブル（KarteBridgeScourDetail 等）は未実装。
 enum KarteType {
   ROCKFALL_COLLAPSE // 落石・崩壊
-  ROCK_MASS_COLLAPSE // 岩盤崩壊
-  LANDSLIDE // 地すべり
-  AVALANCHE // 雪崩
-  DEBRIS_FLOW // 土石流
   EMBANKMENT // 盛土
   RETAINING_WALL // 擁壁
   BRIDGE_FOUNDATION_SCOUR // 橋梁基礎の洗掘

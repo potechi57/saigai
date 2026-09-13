@@ -4,10 +4,6 @@
 
 export const KARTE_TYPE_LABEL: Record<string, string> = {
   ROCKFALL_COLLAPSE: "落石・崩壊",
-  ROCK_MASS_COLLAPSE: "岩盤崩壊",
-  LANDSLIDE: "地すべり",
-  AVALANCHE: "雪崩",
-  DEBRIS_FLOW: "土石流",
   EMBANKMENT: "盛土",
   RETAINING_WALL: "擁壁",
   BRIDGE_FOUNDATION_SCOUR: "橋梁基礎の洗掘",
