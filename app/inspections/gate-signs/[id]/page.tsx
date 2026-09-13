@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import type { GateSignInspection, GateSignInspectionMember } from "@prisma/client";
 import { deleteGateSignInspection } from "@/lib/actions/gate-sign-inspection-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
+import SheetTabs from "@/components/SheetTabs";
+import { seqToCircledNumber } from "@/lib/excel/karte-import";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +33,23 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   if (!insp) notFound();
 
   const title = insp.managementNo ?? insp.sourceFileName ?? "（管理番号不明）";
-  const memberPhotos = insp.members.filter((m) => m.photoUrl).map((m) => ({ id: m.id, url: m.photoUrl!, caption: m.memberDetail ?? m.memberName }));
   const overviewLightboxPhotos = insp.overviewPhotos.map((p) => ({ id: p.id, url: p.url, caption: p.caption }));
+
+  // 元Excelの「状況写真（損傷状況）」シート（様式（その２）／様式（その２）2／
+  // 様式（その２）3…）ごとにタブを分ける（会話ログ「エクセルに合わせて、状況写真の
+  // タブを３つ作ってください...タブが4つ5つあるものは、それに合わせて複数作成
+  // できる仕様に」参照）。karte詳細画面の「現状記録写真」タブと同じ、pageNoで
+  // グループ化する方式（lib/excel/gate-sign-inspection-import.ts参照）。
+  const pageGroups: { pageNo: number; members: GateSignInspectionMember[] }[] = [];
+  for (const m of insp.members) {
+    let group = pageGroups.find((g) => g.pageNo === m.pageNo);
+    if (!group) {
+      group = { pageNo: m.pageNo, members: [] };
+      pageGroups.push(group);
+    }
+    group.members.push(m);
+  }
+  pageGroups.sort((a, b) => a.pageNo - b.pageNo);
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6">
@@ -126,76 +144,24 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         )}
       </section>
 
-      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <section className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            損傷箇所ごとの詳細（様式２。{insp.members.length}件）
+            状況写真（損傷状況）（様式２。{insp.members.length}件）
           </h2>
         </div>
-        {insp.members.length === 0 ? (
+        {pageGroups.length === 0 ? (
           <p className="p-4 text-sm text-gray-400 dark:text-gray-500">
             部材単位の健全性の診断が全てⅠ（損傷なし）のため、詳細カードはありません。
           </p>
         ) : (
-          <PhotoLightboxGroup photos={memberPhotos}>
-            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-              {insp.members.map((m) => {
-                const photoIndex = memberPhotos.findIndex((p) => p.id === m.id);
-                return (
-                  <li key={m.id} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[200px_1fr]">
-                    {m.photoUrl && photoIndex >= 0 ? (
-                      <PhotoLightboxThumbnail index={photoIndex}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={m.photoUrl}
-                          alt={m.memberDetail ?? m.memberName ?? "損傷写真"}
-                          className="aspect-[4/3] w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
-                        />
-                      </PhotoLightboxThumbnail>
-                    ) : (
-                      <div className="flex aspect-[4/3] w-full items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                        写真なし
-                      </div>
-                    )}
-                    <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-2">
-                      <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5">
-                        {m.photoNo != null && (
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                            写真{m.photoNo}
-                          </span>
-                        )}
-                        <span className="font-semibold text-gray-800 dark:text-gray-100">
-                          {[m.memberName, m.memberDetail].filter(Boolean).join(" / ") || "（部材名不明）"}
-                        </span>
-                        {m.judgment && (
-                          <span
-                            className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[m.judgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
-                          >
-                            判定区分 {m.judgment}
-                          </span>
-                        )}
-                      </div>
-                      <Field label="変状の種類" value={m.damageType} />
-                      <Field label="応急措置後の判定区分" value={m.postActionJudgment} />
-                      <div className="sm:col-span-2">
-                        <Field label="所見" value={m.findings} />
-                      </div>
-                      {m.postActionContent && (
-                        <div className="sm:col-span-2">
-                          <Field label="応急処置内容" value={m.postActionContent} />
-                        </div>
-                      )}
-                      {m.remarks && (
-                        <div className="sm:col-span-2">
-                          <Field label="備考欄" value={m.remarks} />
-                        </div>
-                      )}
-                    </dl>
-                  </li>
-                );
-              })}
-            </ul>
-          </PhotoLightboxGroup>
+          <SheetTabs
+            tabs={pageGroups.map((g, i) => ({
+              id: `page-${g.pageNo}`,
+              label: seqToCircledNumber(i + 1),
+              content: <GateSignMemberPage key={g.pageNo} inspection={insp} members={g.members} />,
+            }))}
+          />
         )}
       </section>
 
@@ -217,6 +183,98 @@ function Field({ label, value }: { label: string; value?: string | null }) {
     <div>
       <dt className="text-xs text-gray-400 dark:text-gray-500">{label}</dt>
       <dd className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">{value ?? "—"}</dd>
+    </div>
+  );
+}
+
+// 状況写真（損傷状況）の1ページ分（＝元Excelの様式（その２）系シート1枚分）。
+// karte詳細画面の「現状記録写真」タブ（app/karte/[karteNo]/page.tsxの
+// formRecordPhotos）と同じ考え方: 上部に基礎情報の一部（元Excelの各ページに
+// 繰り返し出てくるヘッダー相当）を出し、その下に写真を2×2で並べる
+// （会話ログ「上に基礎情報の一部が表示され、2×2で写真が配置され、部材名、
+// 変状の種類、健全性の診断、応急処置、所見、備考欄を作ってください」参照）。
+function GateSignMemberPage({
+  inspection,
+  members,
+}: {
+  inspection: Pick<GateSignInspection, "facilityName" | "facilityForm" | "routeName" | "inspectorCompany" | "inspectionDate">;
+  members: GateSignInspectionMember[];
+}) {
+  const photos = members.filter((m) => m.photoUrl).map((m) => ({ id: m.id, url: m.photoUrl!, caption: m.memberDetail ?? m.memberName }));
+
+  return (
+    <div>
+      {/* 基礎情報の一部（元Excelの様式２各ページに繰り返し出てくるヘッダー相当）。
+          全項目の詳細は上の「基本情報（様式１）」に一元化してあるため、ここでは
+          そのページの写真がどの施設・いつの点検かがすぐ分かる程度の抜粋に絞る。 */}
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-b border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-700 dark:bg-gray-800 sm:grid-cols-4">
+        <Field
+          label="施設名（形式）"
+          value={
+            inspection.facilityForm
+              ? `${inspection.facilityName ?? ""}（${inspection.facilityForm}）`
+              : inspection.facilityName
+          }
+        />
+        <Field label="路線名" value={inspection.routeName} />
+        <Field label="定期点検者" value={inspection.inspectorCompany} />
+        <Field
+          label="点検年月日"
+          value={inspection.inspectionDate ? new Date(inspection.inspectionDate).toLocaleDateString("ja-JP") : null}
+        />
+      </dl>
+
+      {members.length === 0 ? (
+        <p className="p-4 text-sm text-gray-400 dark:text-gray-500">このページには損傷カードがありません。</p>
+      ) : (
+        <PhotoLightboxGroup photos={photos}>
+          <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
+            {members.map((m) => {
+              const photoIndex = photos.findIndex((p) => p.id === m.id);
+              const postAction = [m.postActionJudgment, m.postActionContent].filter(Boolean).join("：") || null;
+              return (
+                <div key={m.id} className="rounded border border-gray-200 dark:border-gray-700">
+                  {m.photoUrl && photoIndex >= 0 ? (
+                    <PhotoLightboxThumbnail index={photoIndex}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={m.photoUrl}
+                        alt={m.memberDetail ?? m.memberName ?? "損傷写真"}
+                        className="aspect-[4/3] w-full cursor-zoom-in rounded-t border-b border-gray-200 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                      />
+                    </PhotoLightboxThumbnail>
+                  ) : (
+                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-t border-b border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                      写真なし
+                    </div>
+                  )}
+                  <div className="space-y-1.5 p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {m.photoNo != null && (
+                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                          写真{m.photoNo}
+                        </span>
+                      )}
+                      {m.judgment && (
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[m.judgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+                        >
+                          健全性の診断 {m.judgment}
+                        </span>
+                      )}
+                    </div>
+                    <Field label="部材名" value={[m.memberName, m.memberDetail].filter(Boolean).join(" / ") || null} />
+                    <Field label="変状の種類" value={m.damageType} />
+                    <Field label="応急処置" value={postAction} />
+                    <Field label="所見" value={m.findings} />
+                    <Field label="備考欄" value={m.remarks} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </PhotoLightboxGroup>
+      )}
     </div>
   );
 }

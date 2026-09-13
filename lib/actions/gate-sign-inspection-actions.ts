@@ -129,6 +129,7 @@ export async function importGateSignInspectionExcel(
       },
       members: {
         create: data.members.map((m, i) => ({
+          pageNo: m.pageNo,
           photoNo: m.photoNo,
           memberName: m.memberName,
           memberDetail: m.memberDetail,
