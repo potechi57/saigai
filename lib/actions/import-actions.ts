@@ -33,12 +33,12 @@ import { extractSheetImages, extractFormAImages, extractFormBImages } from "@/li
 import type { ExtractedImage } from "@/lib/excel/karte-image-extract";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
+// 島根県では防災カルテ点検を「落石・斜面」（落石・崩壊）でのみ運用しているため、
+// 岩盤崩壊・地すべり・雪崩・土石流はKarteType自体から除いた（prisma/schema.prisma
+// 参照）。Excel側にこれらのラベルが記入されていた場合は、下のresolveの
+// `?? KarteType.OTHER`によって「その他」に分類される。
 const KARTE_TYPE_BY_LABEL: Record<string, KarteType> = {
   "落石・崩壊": KarteType.ROCKFALL_COLLAPSE,
-  "岩盤崩壊": KarteType.ROCK_MASS_COLLAPSE,
-  "地すべり": KarteType.LANDSLIDE,
-  "雪崩": KarteType.AVALANCHE,
-  "土石流": KarteType.DEBRIS_FLOW,
   "盛土": KarteType.EMBANKMENT,
   "擁壁": KarteType.RETAINING_WALL,
   "橋梁基礎の洗掘": KarteType.BRIDGE_FOUNDATION_SCOUR,

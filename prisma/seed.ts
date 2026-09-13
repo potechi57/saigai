@@ -224,7 +224,7 @@ async function main() {
   await prisma.karte.create({
     data: {
       facilityNo: "SAMPLE-0002",
-      karteType: KarteType.LANDSLIDE,
+      karteType: KarteType.EMBANKMENT,
       routeName: "サンプル国道２号線",
       routeNo: "2",
       locationDistrict: "サンプル市",
