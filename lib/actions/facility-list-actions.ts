@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { findFacilityListSheetName, parseFacilityListSheet } from "@/lib/excel/facility-list-import";
+import { logAudit } from "@/lib/audit";
 
 // 「施設一覧」形式のExcel（施設管理台帳の出力）を取り込む。カルテのExcel取込
 // （lib/actions/import-actions.ts）と違い、フラットな一覧表なのでBlobへの写真
@@ -127,11 +128,28 @@ export async function importFacilityListExcel(
   revalidatePath("/karte");
   revalidatePath("/facility-list");
 
+  // 編集履歴（/karte/history）には行ごとではなく取込1回につき1件だけ記録する
+  // （数百行に及ぶこともあるExcel取込で、行単位に記録すると履歴が埋め尽くされて
+  // しまうため。カルテのExcel取込＝lib/actions/import-actions.tsと同じ方針）。
+  // 取込結果は一覧画面へのリンクにする（複数施設にまたがるため特定の1件には
+  // 紐付けられない）。
+  await logAudit({
+    action: "UPDATE",
+    entityType: "施設台帳",
+    summary: `施設一覧Excel（${file.name}）を取込（新規${created}件・更新${updated}件）`,
+    linkHref: "/facility-list",
+  });
+
   return { ok: true, created, updated, total: items.length };
 }
 
 export async function deleteFacilityListItem(id: string): Promise<void> {
-  await prisma.facilityListItem.delete({ where: { id } });
+  const item = await prisma.facilityListItem.delete({ where: { id } });
+  await logAudit({
+    action: "DELETE",
+    entityType: "施設台帳",
+    summary: `${item.managementNo}を削除`,
+  });
   revalidatePath("/facility-list");
   revalidatePath("/karte");
 }

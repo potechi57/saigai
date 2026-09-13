@@ -21,8 +21,24 @@ export const dynamic = "force-dynamic";
 // app/import/page.tsx）。KARTE_PARAM_KEYS/FACILITY_PARAM_KEYSは、hasSearched判定
 // （キーの有無で判定）・条件クリア・もう片方の検索状態の保持（隠しinputでの引き継ぎ）
 // の3箇所で共通して使うため、配列としてまとめている。
-const KARTE_PARAM_KEYS = ["q", "routeName", "routeNo", "location", "karteType", "responseCategory"] as const;
-const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "facBunya", "facShisetsu", "soundnessGrade"] as const;
+const KARTE_PARAM_KEYS = [
+  "q",
+  "routeName",
+  "routeNo",
+  "location",
+  "karteType",
+  "responseCategory",
+  "landmark",
+] as const;
+const FACILITY_PARAM_KEYS = [
+  "fq",
+  "facRouteName",
+  "facLocation",
+  "facBunya",
+  "facShisetsu",
+  "soundnessGrade",
+  "facName",
+] as const;
 // 法令台帳タブの分野・施設名称は、検索クエリを一切持たない（DBに問い合わせない）
 // 表示専用の状態のため、上記2つの配列（hasSearched判定・条件クリア・タブ間引き継ぎに
 // 使う）には含めない。かつ、施設台帳側のfacBunya/facShisetsuとは別名のパラメータ
@@ -31,7 +47,7 @@ const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "facBunya", "f
 // 「bunyaキーがURLに存在する」判定が誤って真になり、施設台帳側が絞り込み無しの
 // 全件を検索・地図表示してしまう不具合が実際に発生した（ユーザー指摘により発覚）。
 // タブごとに完全に別のパラメータ名にすることで、この種の混線を構造的に防ぐ。
-const LEDGER_PARAM_KEYS = ["ledgerBunya", "ledgerShisetsu"] as const;
+const LEDGER_PARAM_KEYS = ["ledgerBunya", "ledgerShisetsu", "ledgerName"] as const;
 
 // ── 分類体系（島根県公共土木施設台帳の分類。会話ログ参照） ─────────────────
 // 最上位タブは「法令台帳」「施設台帳」「点検調書」の3つで、それぞれ完全に独立した
@@ -141,9 +157,17 @@ type SearchParams = {
   location?: string;
   karteType?: string; // 災害区分
   responseCategory?: string;
+  // 点検調書（災害）には施設台帳のような「施設名称」列が無いため、代わりに
+  // 位置目印（landmark）を名前検索の対象にする（会話ログ「いずれも名前による
+  // 検索ができません」参照。Karteに施設名称に相当する列が無いため、最も近い
+  // 概念として位置目印を採用した）。
+  landmark?: string;
   fq?: string; // 管理番号（施設台帳側）
   facRouteName?: string;
   facLocation?: string;
+  // 施設名称（FacilityListItem.facilityName／台帳（画像）のname・managementNo）
+  // による検索（会話ログ「施設台帳...について...名前による検索ができません」参照）。
+  facName?: string;
   // 分野・施設名称は、タブごとに完全に別のパラメータ名にしている（facBunya/
   // ledgerBunya/inspBunyaを共有すると、片方のタブで分野を選んだだけでもう片方の
   // hasSearched判定まで真になってしまう不具合が実際に発生したため。会話ログ参照）。
@@ -151,6 +175,9 @@ type SearchParams = {
   facShisetsu?: string; // 施設台帳タブの施設名称
   ledgerBunya?: string; // 法令台帳タブの分野
   ledgerShisetsu?: string; // 法令台帳タブの施設名称
+  // 法令台帳タブの名称検索（台帳（画像）のname・managementNo）。法令台帳タブは
+  // 他に検索クエリを持たないため単独のパラメータにしている。
+  ledgerName?: string;
   inspBunya?: string; // 点検調書タブの分野（既定は"disaster"＝災害）
   inspShisetsu?: string; // 点検調書タブの施設名称（分野が"disaster"以外のとき）
   soundnessGrade?: string;
@@ -249,6 +276,9 @@ export default async function KarteListPage({
   if (params.routeNo) {
     where.routeNo = { contains: params.routeNo, mode: "insensitive" };
   }
+  if (params.landmark) {
+    where.landmark = { contains: params.landmark, mode: "insensitive" };
+  }
   // <select>のoption値はKARTE_TYPE_LABEL/RESPONSE_METAのキー（＝enumのメンバー名そのもの）
   // からしか生成していないため、想定外の値が来ることはない前提でキャストする。
   if (params.karteType && params.karteType in KarteType) {
@@ -282,6 +312,14 @@ export default async function KarteListPage({
   if (params.soundnessGrade) {
     facAndConditions.push({ soundnessGrade: params.soundnessGrade });
   }
+  if (params.facName) {
+    // 施設名称（実データのfacilityName列。管理番号とは別物）による検索
+    // （会話ログ「施設台帳...について...名前による検索ができません」参照）。
+    // 管理番号（fq）と同様、分野・施設名称の絞り込みとは独立して機能する
+    // （下のガード条件が!params.facNameを条件に加えているのはこのため。
+    // 名称で見つけたい場合、細別を選び切っていなくても検索できるようにする）。
+    facAndConditions.push({ facilityName: { contains: params.facName, mode: "insensitive" } });
+  }
   const facilityShisetsuDef =
     facilityBunya && facilityShisetsu
       ? FACILITY_LEDGER_ITEM_TYPES[facilityBunya]?.find((t) => t.label === facilityShisetsu)
@@ -293,13 +331,15 @@ export default async function KarteListPage({
         { facilitySubType: { contains: kw } },
       ]),
     });
-  } else if (facilityShisetsu || facilityBunya) {
+  } else if ((facilityShisetsu || facilityBunya) && !params.facName) {
     // 施設名称（細別）がまだ選ばれていない場合（分野のみ選択、または準備中の
     // 施設名称が選ばれた場合）は、意図的に0件にする。以前は分野のみ選択時に
     // FACILITY_LEDGER_ITEM_FIELD_MATCHで分野全体を広く一致させていたが、細別を
     // 選ぶ前から該当しそうな施設が全て表示されてしまう不具合になっていたため、
     // 「施設名称まで特定されるまでは何も表示しない」方針に統一する
     // （ユーザー指摘: 「その細別を選択する前に道路に該当するすべてが表示されます」）。
+    // ただし名称検索（facName）が指定されている場合は、細別を問わず横断的に
+    // 探せることの方が有用なため、この0件化は行わない。
     facAndConditions.push({ id: "__no_data_yet__" });
   }
   const facWhere: Prisma.FacilityListItemWhereInput = facAndConditions.length > 0 ? { AND: facAndConditions } : {};
@@ -325,16 +365,38 @@ export default async function KarteListPage({
       : cat === "facility"
         ? facilityShisetsuDef
         : undefined;
+  // 台帳の名称（name）・管理番号（managementNo）による検索。タブごとに別パラメータ
+  // （法令台帳: ledgerName／施設台帳: facName）を使うが、対象はどちらもFacilityLedger
+  // （会話ログ「法令台帳...について...名前による検索ができません」参照）。分野・
+  // 施設名称の絞り込みキーワードとはORで組み合わせる（＝名称検索を指定すれば、
+  // 細別を選び切っていなくても、あるいは選んだ細別と異なる分類の施設でも、名前が
+  // 一致すれば横断的に見つけられる。一方、名称検索が空の場合は従来どおり細別が
+  // 特定されるまで何も表示しない）。
+  const ledgerNameQuery = cat === "ledger" ? params.ledgerName : cat === "facility" ? params.facName : undefined;
+  const ledgerOrConditions: Prisma.FacilityLedgerWhereInput[] = [];
+  if (ledgerShisetsuDef?.match) {
+    ledgerOrConditions.push({
+      OR: ledgerShisetsuDef.match.flatMap((kw) => [
+        { facilityType: { contains: kw } },
+        { facilitySubType: { contains: kw } },
+      ]),
+    });
+  }
+  if (ledgerNameQuery) {
+    ledgerOrConditions.push({
+      OR: [
+        { name: { contains: ledgerNameQuery, mode: "insensitive" } },
+        { managementNo: { contains: ledgerNameQuery, mode: "insensitive" } },
+      ],
+    });
+  }
   const ledgerWhere: Prisma.FacilityLedgerWhereInput =
-    ledgerDocClass && ledgerShisetsuDef?.match
+    ledgerDocClass && ledgerOrConditions.length > 0
       ? {
           docClass: ledgerDocClass,
           latitude: { not: null },
           longitude: { not: null },
-          OR: ledgerShisetsuDef.match.flatMap((kw) => [
-            { facilityType: { contains: kw } },
-            { facilitySubType: { contains: kw } },
-          ]),
+          OR: ledgerOrConditions,
         }
       : { id: "__no_data_yet__" };
 
@@ -497,6 +559,7 @@ export default async function KarteListPage({
   if (params.location) historyParams.set("location", params.location);
   if (params.karteType) historyParams.set("karteType", params.karteType);
   if (params.responseCategory) historyParams.set("responseCategory", params.responseCategory);
+  if (params.landmark) historyParams.set("landmark", params.landmark);
   const currentQueryString = historyParams.toString();
 
   const conditionLabels: string[] = [];
@@ -504,6 +567,7 @@ export default async function KarteListPage({
   if (params.routeName) conditionLabels.push(`路線:${params.routeName}`);
   if (params.routeNo) conditionLabels.push(`路線番号:${params.routeNo}`);
   if (params.location) conditionLabels.push(`所在地:${params.location}`);
+  if (params.landmark) conditionLabels.push(`位置目印:${params.landmark}`);
   if (params.karteType && params.karteType in KarteType) {
     conditionLabels.push(KARTE_TYPE_LABEL[params.karteType as KarteType] ?? params.karteType);
   }
@@ -587,34 +651,68 @@ export default async function KarteListPage({
         </div>
 
         {cat === "ledger" ? (
-          // 法令台帳タブ：検索フォームは持たず、分野→施設名称のドリルダウンのみ
-          // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
+          // 法令台帳タブ：分野→施設名称のドリルダウンに加え、台帳名称（name・
+          // managementNo）による検索フォームを持つ（会話ログ「法令台帳...について...
+          // 名前による検索ができません」参照。以前は検索フォーム自体が無かったが、
+          // ドリルダウンで細別を選ばなくても名前で横断的に探せるよう追加した）。
           // 台帳（画像。FacilityLedger）は分野・施設名称を問わず登録できるが
           // （/ledgers/new。会話ログ参照）、地図上での表示は施設台帳タブと同様、
-          // ここで分野・施設名称（細別）まで選び切ったときだけになる（上記ledgerWhere
-          // 参照）。ここでは分類ごとの案内と登録・一覧ページへの導線だけを示す。
-          <FieldDrilldown
-            fields={FACILITY_FIELDS}
-            types={FACILITY_TYPES}
-            selectedField={ledgerBunya}
-            selectedType={ledgerShisetsu}
-            fieldHref={ledgerFieldHref}
-            typeHref={ledgerShisetsuHref}
-            clearHref={`/karte?${buildQuery(params, { remove: LEDGER_PARAM_KEYS })}`}
-            renderSelection={() => (
-              <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                この分類の法令台帳（画像）は、
-                <Link href="/import?method=image&cat=ledger" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  資料読み込み
-                </Link>
-                から登録できます。登録済みの台帳は
-                <Link href="/ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  台帳一覧
-                </Link>
-                （緯度経度があれば地図にも）で確認できます。
+          // ここで分野・施設名称（細別）まで選ぶか、名称検索を使ったときだけになる
+          // （上記ledgerWhere参照）。
+          <>
+            <Form action="" className="mb-3 flex items-end gap-2">
+              {/* ドリルダウンの選択（分野・施設名称）は、フォーム送信で消えないよう
+                  隠しinputで引き継ぐ（施設台帳タブの隠しinputと同じ方針）。 */}
+              <input type="hidden" name="cat" defaultValue="ledger" />
+              {ledgerBunya && <input type="hidden" name="ledgerBunya" defaultValue={ledgerBunya} />}
+              {ledgerShisetsu && <input type="hidden" name="ledgerShisetsu" defaultValue={ledgerShisetsu} />}
+              <SearchField
+                key={`ledgerName-${params.ledgerName ?? ""}`}
+                name="ledgerName"
+                label="名称（台帳名・管理番号）"
+                defaultValue={params.ledgerName}
+              />
+              <SearchSubmitButton
+                type="submit"
+                targetView={view}
+                className="shrink-0 rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                検索
+              </SearchSubmitButton>
+            </Form>
+            {params.ledgerName && (
+              <p className="-mt-2 mb-3">
+                <PendingLink
+                  href={`/karte?${buildQuery(params, { remove: ["ledgerName"] })}`}
+                  className="text-xs text-gray-400 hover:underline dark:text-gray-500"
+                >
+                  名称検索をクリア
+                </PendingLink>
               </p>
             )}
-          />
+            <FieldDrilldown
+              fields={FACILITY_FIELDS}
+              types={FACILITY_TYPES}
+              selectedField={ledgerBunya}
+              selectedType={ledgerShisetsu}
+              fieldHref={ledgerFieldHref}
+              typeHref={ledgerShisetsuHref}
+              clearHref={`/karte?${buildQuery(params, { remove: LEDGER_PARAM_KEYS })}`}
+              renderSelection={() => (
+                <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  この分類の法令台帳（画像）は、
+                  <Link href="/import?method=image&cat=ledger" className="text-blue-600 dark:text-blue-400 hover:underline">
+                    資料読み込み
+                  </Link>
+                  から登録できます。登録済みの台帳は
+                  <Link href="/ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
+                    台帳一覧
+                  </Link>
+                  （緯度経度があれば地図にも）で確認できます。
+                </p>
+              )}
+            />
+          </>
         ) : (
           // next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
           // 従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
@@ -686,6 +784,17 @@ export default async function KarteListPage({
               label="所在地"
               defaultValue={cat === "inspection" ? params.location : params.facLocation}
             />
+            {cat === "facility" && (
+              // 施設名称（facilityName列。管理番号とは別物）による検索
+              // （会話ログ「施設台帳...について...名前による検索ができません」参照）。
+              // 点検調書側にはこの列に相当するものが無いため施設台帳タブのみに置く。
+              <SearchField
+                key={`facName-${params.facName ?? ""}`}
+                name="facName"
+                label="施設名称"
+                defaultValue={params.facName}
+              />
+            )}
 
             {cat === "inspection" ? (
               <>
@@ -712,6 +821,16 @@ export default async function KarteListPage({
                       name="routeNo"
                       label="路線番号"
                       defaultValue={params.routeNo}
+                    />
+                    {/* 点検調書（災害＝Karte）には施設台帳のような「施設名称」列が
+                        無いため、代わりに位置目印（landmark。現場の目印になる地名等）を
+                        名前検索の対象にする（会話ログ「いずれも名前による検索が
+                        できません」参照）。 */}
+                    <SearchField
+                      key={`landmark-${params.landmark ?? ""}`}
+                      name="landmark"
+                      label="位置目印"
+                      defaultValue={params.landmark}
                     />
                     <div>
                       <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>

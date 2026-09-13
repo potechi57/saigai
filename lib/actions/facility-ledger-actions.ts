@@ -6,6 +6,8 @@ import { put, del } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { FacilityLedgerDocClass } from "@prisma/client";
 import { composeRouteName } from "@/lib/route-name";
+import { logAudit } from "@/lib/audit";
+import { facilityLedgerDisplayName } from "@/lib/labels";
 
 // トンネル台帳等、Excelのような構造化データが無くスキャン画像でしか残っていない
 // 台帳を、「画像1枚以上＋最低限の基本情報」という単純な形で登録するための
@@ -83,7 +85,7 @@ export async function createFacilityLedger(
     return { ok: false, error: `画像のアップロードに失敗しました（詳細: ${detail}）` };
   }
 
-  await prisma.facilityLedger.create({
+  const created = await prisma.facilityLedger.create({
     data: {
       docClass,
       facilityType,
@@ -101,6 +103,13 @@ export async function createFacilityLedger(
         create: imageUrls.map((imageUrl, i) => ({ label: `画像${i + 1}`, imageUrl, sortOrder: i })),
       },
     },
+  });
+
+  await logAudit({
+    action: "CREATE",
+    entityType: "台帳（画像）",
+    summary: `${facilityLedgerDisplayName(created.managementNo, created.name)}を新規登録（画像${imageUrls.length}枚）`,
+    linkHref: `/ledgers/${created.id}`,
   });
 
   revalidatePath("/ledgers");
@@ -133,9 +142,16 @@ export async function updateFacilityLedger(
   const longitude = num(formData, "longitude");
   const name = str(formData, "name") ?? ([facilityType, facilitySubType].filter(Boolean).join(" ") || "台帳（画像）");
 
-  await prisma.facilityLedger.update({
+  const updated = await prisma.facilityLedger.update({
     where: { id },
     data: { docClass, facilityType, facilitySubType, managementNo, name, routeName, location, latitude, longitude, note },
+  });
+
+  await logAudit({
+    action: "UPDATE",
+    entityType: "台帳（画像）",
+    summary: `${facilityLedgerDisplayName(updated.managementNo, updated.name)}を更新`,
+    linkHref: `/ledgers/${id}`,
   });
 
   revalidatePath(`/ledgers/${id}`);
@@ -157,6 +173,11 @@ export async function deleteFacilityLedger(id: string): Promise<void> {
     include: { images: true },
   });
   await Promise.all(ledger.images.map((img) => del(img.imageUrl).catch(() => {})));
+  await logAudit({
+    action: "DELETE",
+    entityType: "台帳（画像）",
+    summary: `${facilityLedgerDisplayName(ledger.managementNo, ledger.name)}を削除`,
+  });
   revalidatePath("/ledgers");
   revalidatePath("/karte");
   redirect("/ledgers");
@@ -186,7 +207,12 @@ export async function addFacilityLedgerImage(
 
   const ledger = await prisma.facilityLedger.findUnique({
     where: { id: ledgerId },
-    select: { docClass: true, images: { select: { sortOrder: true }, orderBy: { sortOrder: "desc" }, take: 1 } },
+    select: {
+      docClass: true,
+      managementNo: true,
+      name: true,
+      images: { select: { sortOrder: true }, orderBy: { sortOrder: "desc" }, take: 1 },
+    },
   });
   if (!ledger) {
     return { ok: false, error: "台帳が見つかりません。" };
@@ -208,6 +234,13 @@ export async function addFacilityLedgerImage(
     data: { ledgerId, label, imageUrl, sortOrder: nextSortOrder },
   });
 
+  await logAudit({
+    action: "UPDATE",
+    entityType: "台帳（画像）",
+    summary: `${facilityLedgerDisplayName(ledger.managementNo, ledger.name)}に画像「${label}」を追加`,
+    linkHref: `/ledgers/${ledgerId}`,
+  });
+
   revalidatePath(`/ledgers/${ledgerId}`);
   revalidatePath("/karte");
   return { ok: true };
@@ -227,15 +260,34 @@ export async function renameFacilityLedgerImage(
   if (!label) {
     return { ok: false, error: "タブ名を入力してください。" };
   }
-  await prisma.facilityLedgerImage.update({ where: { id: imageId }, data: { label } });
+  const updated = await prisma.facilityLedgerImage.update({
+    where: { id: imageId },
+    data: { label },
+    include: { ledger: { select: { managementNo: true, name: true } } },
+  });
+  await logAudit({
+    action: "UPDATE",
+    entityType: "台帳（画像）",
+    summary: `${facilityLedgerDisplayName(updated.ledger.managementNo, updated.ledger.name)}の画像タブ名を「${label}」に変更`,
+    linkHref: `/ledgers/${ledgerId}`,
+  });
   revalidatePath(`/ledgers/${ledgerId}`);
   return { ok: true };
 }
 
 // 画像を1枚削除する（台帳本体は残す。全て削除して0枚になっても台帳自体は残る）。
 export async function deleteFacilityLedgerImage(imageId: string, ledgerId: string): Promise<void> {
-  const image = await prisma.facilityLedgerImage.delete({ where: { id: imageId } });
+  const image = await prisma.facilityLedgerImage.delete({
+    where: { id: imageId },
+    include: { ledger: { select: { managementNo: true, name: true } } },
+  });
   await del(image.imageUrl).catch(() => {});
+  await logAudit({
+    action: "UPDATE",
+    entityType: "台帳（画像）",
+    summary: `${facilityLedgerDisplayName(image.ledger.managementNo, image.ledger.name)}から画像「${image.label}」を削除`,
+    linkHref: `/ledgers/${ledgerId}`,
+  });
   revalidatePath(`/ledgers/${ledgerId}`);
   revalidatePath("/karte");
 }

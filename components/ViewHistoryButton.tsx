@@ -3,18 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-// 閲覧履歴（直近に開いたカルテ詳細画面）。編集履歴（/karte/history）とは異なり、
-// 「誰が何を見たか」は個人の端末内だけの関心事であり、事務所で共有する必要が無い
-// （むしろ共有すべきではない）と考え、サーバー側には一切保存せずlocalStorageのみで
-// 完結させている。記録自体はカルテ詳細画面に埋め込んだ components/RecordViewHistory.tsx
-// が行い、このボタンは保存された履歴を読んで表示するだけ。
-const STORAGE_KEY = "karteViewHistory";
+// 閲覧履歴（直近に開いたカルテ・施設台帳・台帳（画像）の詳細画面）。編集履歴
+// （/karte/history）とは異なり、「誰が何を見たか」は個人の端末内だけの関心事であり、
+// 事務所で共有する必要が無い（むしろ共有すべきではない）と考え、サーバー側には
+// 一切保存せずlocalStorageのみで完結させている。記録自体は各詳細画面に埋め込んだ
+// components/RecordViewHistory.tsx が行い、このボタンは保存された履歴を読んで
+// 表示するだけ。
+//
+// 以前はカルテ専用（facilityNo/routeNameの2項目）だったが、施設台帳・台帳（画像）の
+// 詳細ページ（/facility-list/[id]・/ledgers/[id]）でも同じ仕組みを使えるよう、
+// kind（種別）・id・title（見出し）・subtitle（補足）・href（リンク先）を持つ
+// 汎用的な形に一般化した（会話ログ「それ以外の登録や編集の内容を表示するように
+// してほしい」参照。閲覧履歴も同じ発想で対象を広げる）。同一エントリの重複判定は
+// facilityNoではなくkind+idの組で行う（3種別でidの体系が別物のため）。
+const STORAGE_KEY = "recordViewHistory";
 const MAX_ENTRIES = 10;
 
+export type ViewHistoryKind = "karte" | "facility" | "ledger";
+
 export type ViewHistoryEntry = {
-  facilityNo: string;
-  routeName: string;
+  kind: ViewHistoryKind;
+  id: string;
+  title: string; // 一覧に太字で表示する見出し（カルテ:路線名、施設台帳:管理番号、台帳（画像）:表示名）
+  subtitle?: string; // 見出しの補足（カルテ:施設管理番号等）
+  href: string;
   viewedAt: number;
+};
+
+const KIND_LABEL: Record<ViewHistoryKind, string> = {
+  karte: "点検調書",
+  facility: "施設台帳",
+  ledger: "台帳（画像）",
 };
 
 export function readViewHistory(): ViewHistoryEntry[] {
@@ -26,11 +45,12 @@ export function readViewHistory(): ViewHistoryEntry[] {
   }
 }
 
-// RecordViewHistoryから呼ばれる書き込み専用ヘルパー。同じカルテを見返した場合は
-// 先頭に移動するだけにし（重複エントリを作らない）、最大件数を超えたら古いものを捨てる。
-export function pushViewHistory(entry: { facilityNo: string; routeName: string }) {
+// RecordViewHistoryから呼ばれる書き込み専用ヘルパー。同じ対象（kind+id）を見返した
+// 場合は先頭に移動するだけにし（重複エントリを作らない）、最大件数を超えたら
+// 古いものを捨てる。
+export function pushViewHistory(entry: Omit<ViewHistoryEntry, "viewedAt">) {
   try {
-    const existing = readViewHistory().filter((h) => h.facilityNo !== entry.facilityNo);
+    const existing = readViewHistory().filter((h) => !(h.kind === entry.kind && h.id === entry.id));
     const next = [{ ...entry, viewedAt: Date.now() }, ...existing].slice(0, MAX_ENTRIES);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
@@ -69,7 +89,7 @@ export default function ViewHistoryButton() {
       {open && (
         <div className="absolute right-0 z-50 mt-2 w-72 rounded border border-gray-300 bg-white p-2 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800">
           <div className="mb-1 flex items-center justify-between px-1">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">最近見たカルテ</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">最近見た記録</span>
             {history.length > 0 && (
               <button
                 type="button"
@@ -90,14 +110,19 @@ export default function ViewHistoryButton() {
           ) : (
             <ul className="max-h-80 space-y-0.5 overflow-y-auto">
               {history.map((h) => (
-                <li key={h.facilityNo}>
+                <li key={`${h.kind}:${h.id}`}>
                   <Link
-                    href={`/karte/${h.facilityNo}`}
+                    href={h.href}
                     onClick={() => setOpen(false)}
                     className="block truncate rounded px-2 py-1.5 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
                   >
-                    <span className="font-medium">{h.routeName}</span>
-                    <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{h.facilityNo}</span>
+                    <span className="mr-1.5 inline-block rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                      {KIND_LABEL[h.kind]}
+                    </span>
+                    <span className="font-medium">{h.title}</span>
+                    {h.subtitle && (
+                      <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{h.subtitle}</span>
+                    )}
                   </Link>
                 </li>
               ))}
