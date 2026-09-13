@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { RESPONSE_META, responseMeta, formatFacilityType } from "@/lib/labels";
+import { facilityTaxonomyEmoji } from "@/lib/facility-taxonomy";
 import { haversineDistanceMeters, formatDistanceMeters } from "@/lib/geo";
 import { setHomeLocation, clearHomeLocation } from "@/lib/actions/settings-actions";
 import { setFavorite } from "@/lib/actions/favorite-actions";
@@ -35,8 +36,11 @@ export type MapKarte = {
 // カルテのような「検索するまで表示しない」制御はしていない）。
 export type MapLedger = {
   id: string;
-  categoryLabel: string;
-  name: string;
+  docClassLabel: string; // 「法令台帳」「施設台帳」（prisma/schema.prismaのFacilityLedgerDocClass参照）
+  facilityTypeLabel?: string | null; // 分野・施設名称（lib/labels.tsのformatFacilityTypeで組み立て済み）
+  facilityType?: string | null; // アイコン絵文字の判定用（facilityIconEmoji参照）
+  facilitySubType?: string | null;
+  name?: string | null;
   routeName?: string | null;
   location?: string | null;
   latitude: number;
@@ -331,11 +335,13 @@ export default function MapView({
     layer.clearLayers();
 
     for (const l of ledgers) {
-      const marker = L.marker([l.latitude, l.longitude], { icon: buildLedgerMarkerIcon() }).addTo(layer);
+      const marker = L.marker([l.latitude, l.longitude], {
+        icon: buildLedgerMarkerIcon(l.facilityType, l.facilitySubType),
+      }).addTo(layer);
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
-           <div style="font-weight:600;">${escapeHtml(l.name)}</div>
-           <div style="color:#666;">${escapeHtml(l.categoryLabel)}</div>
+           <div style="font-weight:600;">${escapeHtml(l.name ?? "（名称未設定）")}</div>
+           <div style="color:#666;">${escapeHtml(l.docClassLabel)}${l.facilityTypeLabel ? `・${escapeHtml(l.facilityTypeLabel)}` : ""}</div>
            ${l.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(l.routeName)}</div>` : ""}
            ${l.location ? `<div style="color:#374151;">所在地: ${escapeHtml(l.location)}</div>` : ""}
            <a href="${escapeHtml(l.imageUrl)}" target="_blank" rel="noreferrer" style="display:block;margin-top:6px;">
@@ -647,7 +653,12 @@ function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: bool
 
 // トンネル台帳等のマーカーアイコン。カルテのしずく型（涙滴形）マーカーとは
 // 見た目を変え、別種のピンだと一目で分かるようにしている（丸型・紫系の色）。
-function buildLedgerMarkerIcon(): L.DivIcon {
+// 台帳（画像。FacilityLedger）のマーカーアイコン。以前は常にトンネル固定
+// （🚇）だったが、法令台帳・施設台帳のどちらでも任意の分野・施設名称を
+// 選べるようになったため（会話ログ参照）、施設一覧と同じfacilityTaxonomyEmoji
+// で絵文字を出し分ける。丸型・紫系の色は変えず、カルテ（しずく型）・
+// 施設一覧（正方形・オレンジ）とは引き続き見た目で区別できるようにしている。
+function buildLedgerMarkerIcon(facilityType: string | null | undefined, facilitySubType: string | null | undefined): L.DivIcon {
   return L.divIcon({
     className: "",
     html: `<div style="
@@ -657,7 +668,7 @@ function buildLedgerMarkerIcon(): L.DivIcon {
         box-shadow:0 1px 3px rgba(0,0,0,0.4);
         display:flex;align-items:center;justify-content:center;
         font-size:14px;
-      ">🚇</div>`,
+      ">${facilityTaxonomyEmoji(facilityType, facilitySubType)}</div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
     popupAnchor: [0, -13],
@@ -667,7 +678,9 @@ function buildLedgerMarkerIcon(): L.DivIcon {
 // 施設種別（施設種別・施設細別の文字列。lib/labels.tsのformatFacilityType参照）から、
 // 見た目で区別しやすい絵文字を選ぶ。Font Awesome等の外部アイコンフォント／CDNを
 // 追加導入せず、既存のbuildLedgerMarkerIcon等と同じ「絵文字をそのままアイコンにする」
-// 方式を踏襲している（フォント埋め込み・追加の第三者依存が不要なため）。
+// 方式を踏襲している（フォント埋め込み・追加の第三者依存が不要なため）。ロジック自体は
+// lib/facility-taxonomy.tsのfacilityTaxonomyEmojiに集約し、台帳（画像）のマーカー
+// （buildLedgerMarkerIcon）とも共有している。
 // 実データで確認済みなのは「道路法面施設」（法面構造物）と「道路附属物」＋
 // 「道路標識（門型）」（道路標識）の2パターンのみ（scripts/audit等ではなく
 // 実際のFacilityListItemデータで確認）。橋梁・トンネルはこのアプリではまだ
@@ -675,14 +688,7 @@ function buildLedgerMarkerIcon(): L.DivIcon {
 // （prisma/schema.prismaのFacilityListItemコメント参照）であり、将来的に橋梁・
 // トンネルの施設一覧が取り込まれた場合に備えて分岐を用意しておく。実際の表記が
 // 想定と異なっていた場合は、取り込まれた実データを見て調整すること。
-function facilityIconEmoji(facilityType: string | null | undefined, facilitySubType: string | null | undefined): string {
-  const text = `${facilityType ?? ""} ${facilitySubType ?? ""}`;
-  if (text.includes("橋")) return "🌉"; // 橋梁
-  if (text.includes("トンネル")) return "🚇"; // トンネル（台帳ページのbuildLedgerMarkerIconと同じ絵文字）
-  if (text.includes("標識")) return "🪧"; // 道路標識（門型標識等）
-  if (text.includes("法面")) return "⛰️"; // 法面構造物
-  return "🛣️"; // 上記のいずれにも該当しない施設種別（擁壁等）は従来通りの汎用アイコン
-}
+const facilityIconEmoji = facilityTaxonomyEmoji;
 
 // 施設一覧Excelから取り込んだ施設のマーカーアイコン。カルテ（しずく型）・
 // トンネル台帳（丸型・紫）とも見た目を変え、正方形・オレンジ系の色にしている

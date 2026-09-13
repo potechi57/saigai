@@ -16,9 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function NewFacilityLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ facilityId?: string }>;
+  searchParams: Promise<{ facilityId?: string; docClass?: string }>;
 }) {
-  const { facilityId } = await searchParams;
+  const { facilityId, docClass } = await searchParams;
+  // 資料読み込みハブ（/import?method=image&cat=ledger|facility）から来た場合、
+  // どちらの分類で画像登録しようとしていたかをフォームの初期選択に反映する
+  // （app/import/page.tsx参照）。直接このURLを開いた場合は施設台帳を既定にする。
+  const initialDocClass: "LEGAL" | "FACILITY" = docClass === "LEGAL" ? "LEGAL" : "FACILITY";
 
   // 選択肢が多くなりすぎないよう、直近の一定件数のみ候補にする
   // （検索欄は無く単純な<select>のため。件数が増えてきたら絞り込みUIを検討する）。
@@ -68,6 +72,7 @@ export default async function NewFacilityLedgerPage({
           <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
             施設台帳から選んで自動入力（任意）
           </label>
+          {docClass && <input type="hidden" name="docClass" value={docClass} />}
           <div className="flex gap-2">
             <select
               name="facilityId"
@@ -98,7 +103,7 @@ export default async function NewFacilityLedgerPage({
         </form>
       )}
 
-      <FacilityLedgerForm initial={initial} />
+      <FacilityLedgerForm initialDocClass={initialDocClass} initial={initial} />
     </div>
   );
 }

@@ -543,17 +543,33 @@ model ImportHistory {
 // 参照できるようにするためのもの。まずはトンネル台帳のみに対応する
 // （将来、橋梁・法面等の台帳にも同じ仕組みを流用する想定でcategoryを
 // enumにしている）。
-enum FacilityLedgerCategory {
-  TUNNEL // トンネル台帳
-  BRIDGE // 橋梁台帳
-  ROAD_LEDGER // 道路台帳（路線そのものの台帳。区域・幅員・舗装等）
+// 「台帳（画像）」がどちらの最上位分類（検索・地図画面のタブと同じ）に属するかを
+// 表す。以前はFacilityLedger＝法令台帳と誤って対応付けていたが、実際には
+// 「トンネル台帳」は施設台帳（FACILITY）に属し、法令台帳（LEGAL）側は
+// 「トンネル調書」等の別物であるとの指摘を受けて訂正した（会話ログ参照）。
+// 画像による登録という方法自体は法令台帳・施設台帳のどちらでも必要になるため、
+// FacilityLedgerモデル自体は共有し、このdocClassで区別する。
+enum FacilityLedgerDocClass {
+  LEGAL // 法令台帳
+  FACILITY // 施設台帳
 }
 
 model FacilityLedger {
   id String @id @default(cuid())
 
-  category  FacilityLedgerCategory @default(TUNNEL)
-  name      String // 台帳名（例: 魚瀬トンネル）
+  docClass FacilityLedgerDocClass
+
+  // 分野・施設名称は、島根県公共土木施設台帳の分類（lib/facility-taxonomy.ts・
+  // 検索画面の法令台帳タブと同じ分類）から選ぶ、自由記述の文字列。
+  // FacilityListItem.facilityType/facilitySubTypeと同じ考え方（コード化された
+  // enumにはせず、分類の追加・変更にスキーマ変更を要さないようにしている）。
+  // 台帳名・路線名・所在地・緯度経度と合わせて、全て任意項目にしている
+  // （画像さえあれば登録でき、詳細は後から編集画面で補える運用を想定。
+  // 会話ログ「全てを入れなくてもよいように」参照）。
+  facilityType    String?
+  facilitySubType String?
+
+  name      String? // 台帳名（任意。例: 魚瀬トンネル）
   routeName String? // 路線名
   location  String? // 所在地（自由記述。例: 自 松江市秋鹿町 至 松江市魚瀬町）
 
@@ -568,7 +584,8 @@ model FacilityLedger {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([category])
+  @@index([docClass])
+  @@index([facilityType])
 }
 
 // ── 施設一覧（Access等から出力される施設管理台帳） ────────────────────

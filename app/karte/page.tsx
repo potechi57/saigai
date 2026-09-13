@@ -3,12 +3,12 @@ import Link from "next/link";
 import Form from "next/form";
 import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType } from "@/lib/labels";
+import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType, FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
-import { FACILITY_LEDGER_CATEGORY_LABEL } from "@/lib/labels";
+import { FACILITY_FIELDS, FACILITY_TYPES, type FieldKey } from "@/lib/facility-taxonomy";
 import SearchSubmitButton from "@/components/SearchSubmitButton";
 import PendingLink from "@/components/PendingLink";
 
@@ -42,56 +42,15 @@ const LEDGER_PARAM_KEYS = ["ledgerBunya", "ledgerShisetsu"] as const;
 // 道路標識）と、「法令台帳」タブの道路×トンネル（既存の/ledgers機能）のみ。
 // それ以外は分類の骨格だけを表示し、選択すると「準備中」と案内する
 // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
-type FieldKey = string;
+//
+// 法令台帳タブの分野・施設名称（FACILITY_FIELDS/TYPES）は、台帳（画像）登録
+// フォーム（components/FacilityLedgerForm.tsx）の種別選択でも同じものを使うため
+// lib/facility-taxonomy.tsに切り出した。
 type FieldDef = { key: FieldKey; label: string };
 // 施設名称のmatchは、実データのfacilityType/facilitySubType文字列に対する
 // 部分一致キーワード（いずれかを含めば該当）。matchが無いものは実データが無く
 // 未検証のため、選択すると「準備中」表示になる。
 type FacilityTypeDef = { label: string; match?: string[] };
-
-const FACILITY_LEDGER_FIELDS: FieldDef[] = [
-  { key: "road", label: "道路" },
-  { key: "river_coast", label: "河川・海岸" },
-  { key: "port", label: "港湾" },
-  { key: "sabo", label: "砂防" },
-  { key: "landslide_prevention", label: "地すべり防止区域" },
-  { key: "park", label: "公園" },
-  { key: "airport", label: "空港" },
-  { key: "avalanche_prevention", label: "雪崩対策施設" },
-  { key: "sediment_disaster_warning", label: "土砂災害予警報システム" },
-];
-const FACILITY_LEDGER_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
-  road: [
-    { label: "道路共通" },
-    { label: "橋梁" },
-    { label: "トンネル", match: ["トンネル"] }, // 唯一/ledgersに実データがある
-    { label: "道路法面構造物" },
-    { label: "舗装" },
-    { label: "道路標識" },
-    { label: "道路照明" },
-    { label: "シェッド・シェルター" },
-    { label: "大型カルバート" },
-    { label: "道路情報提供装置" },
-    { label: "電線共同溝" },
-    { label: "冠水対策施設" },
-    { label: "消融雪設備" },
-    { label: "道の駅" },
-  ],
-  river_coast: [
-    { label: "河川共通" },
-    { label: "河川管理施設" },
-    { label: "海岸共通" },
-    { label: "海岸保全施設" },
-    { label: "ダム施設" },
-  ],
-  port: [{ label: "港湾共通" }, { label: "港湾施設" }],
-  sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
-  landslide_prevention: [{ label: "地すべり防止施設" }],
-  park: [{ label: "都市公園" }],
-  airport: [{ label: "空港施設" }],
-  avalanche_prevention: [{ label: "雪崩対策施設" }],
-  sediment_disaster_warning: [{ label: "土砂災害予警報システム" }],
-};
 
 // 施設台帳タブの分野は、現時点で実データ（FacilityListItem）がある道路分野を
 // 中心に、島根県の分類のうち施設台帳が実際に存在しうる分野に絞った
@@ -233,7 +192,9 @@ function buildQuery(
 // 「点検調書」タブの中の「災害」という分野に位置づけを変えた）。
 // 3タブはそれぞれ完全に独立した「分野→施設名称」の階層を持ち、同じ名前の
 // 分野（例: どのタブにも「道路」がある）が出てきても中身は別物として扱う
-// （FACILITY_LEDGER_FIELDS等、タブごとに別々の定数にしているのはそのため）。
+// （FACILITY_LEDGER_ITEM_FIELDS等、タブごとに別々の定数にしているのはそのため。
+// 法令台帳タブのFACILITY_FIELDS/TYPESはlib/facility-taxonomy.tsで定義し、台帳
+// （画像）登録フォームcomponents/FacilityLedgerForm.tsxと共有している）。
 //
 // 現時点で実データ・実機能があるのは「施設台帳」タブの道路分野（法面構造物・
 // 道路標識。FacilityListItem）、「点検調書」タブの災害分野（Karte）、
@@ -388,7 +349,10 @@ export default async function KarteListPage({
 
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
     id: l.id,
-    categoryLabel: FACILITY_LEDGER_CATEGORY_LABEL[l.category] ?? l.category,
+    docClassLabel: FACILITY_LEDGER_DOC_CLASS_LABEL[l.docClass] ?? l.docClass,
+    facilityTypeLabel: formatFacilityType(l.facilityType, l.facilitySubType),
+    facilityType: l.facilityType,
+    facilitySubType: l.facilitySubType,
     name: l.name,
     routeName: l.routeName,
     location: l.location,
@@ -586,30 +550,31 @@ export default async function KarteListPage({
         {cat === "ledger" ? (
           // 法令台帳タブ：検索フォームは持たず、分野→施設名称のドリルダウンのみ
           // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
-          // 実データがあるのは道路×トンネル（既存の/ledgers）のみ。
+          // 台帳（画像。FacilityLedger）は分野・施設名称を問わず登録できるが
+          // （/ledgers/new。会話ログ参照）、実際に登録済みの台帳（緯度経度があるもの）は
+          // 地図上に法令台帳・施設台帳を問わず常時表示される（下記mapLedgers参照）ため、
+          // ここでは分類ごとの案内と登録・一覧ページへの導線だけを示す。
           <FieldDrilldown
-            fields={FACILITY_LEDGER_FIELDS}
-            types={FACILITY_LEDGER_TYPES}
+            fields={FACILITY_FIELDS}
+            types={FACILITY_TYPES}
             selectedField={ledgerBunya}
             selectedType={ledgerShisetsu}
             fieldHref={ledgerFieldHref}
             typeHref={ledgerShisetsuHref}
             clearHref={`/karte?${buildQuery(params, { remove: LEDGER_PARAM_KEYS })}`}
-            renderSelection={(fieldKey, typeLabel) =>
-              fieldKey === "road" && typeLabel === "トンネル" ? (
-                <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                  トンネルの法令台帳（画像）は、既存の台帳一覧ページからご覧いただけます。
-                  <br />
-                  <Link href="/ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
-                    台帳一覧を見る →
-                  </Link>
-                </p>
-              ) : (
-                <p className="mt-3 rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                  準備中です。この分類の法令台帳はまだ登録されていません。
-                </p>
-              )
-            }
+            renderSelection={() => (
+              <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                この分類の法令台帳（画像）は、
+                <Link href="/import?method=image&cat=ledger" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  資料読み込み
+                </Link>
+                から登録できます。登録済みの台帳は
+                <Link href="/ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  台帳一覧
+                </Link>
+                （緯度経度があれば地図にも）で確認できます。
+              </p>
+            )}
           />
         ) : (
           // next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
