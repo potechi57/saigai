@@ -499,3 +499,29 @@ export function extractInspectionEvents(wb: WorkBook): ExtractedInspectionEvent[
   }
   return events;
 }
+
+// 様式Ｂには対象物名（点検対象そのものの名称）の記入欄が無いため、Excel取込直後の
+// 点検対象名は仮の名称（「点検対象N（Excel取込・要確認）」）になっていた。しかし
+// 様式Ｃには、各変状ブロックの変状No.マーカー（①等。列2）と同じ行の列5に、
+// 対象物名（実データでは「転石」「滑落崖」等、変状の種類・呼称）が明記されていることを
+// 実データ（267_B3274A080）で確認できたため、こちらから読み取って実際の名称として使う
+// （lib/actions/import-actions.tsのresolveTargetName参照。手動で名称を修正済みの対象は
+// 上書きしない）。
+// 変状No.は点検日（列グループ）に関わらず同じ行に1箇所だけ書かれているため、
+// extractInspectionEventsのように点検日ごとに繰り返す必要は無く、独立して1回だけ走査する。
+export function extractFormCTargetNames(wb: WorkBook): Map<number, string> {
+  const names = new Map<number, string>();
+  const sheetName = wb.SheetNames.find((name) => name.trim() === FORM_C_SHEET_NAME);
+  const ws = sheetName ? wb.Sheets[sheetName] : undefined;
+  if (!ws) return names;
+
+  for (let b = 0; b < FORM_C_MAX_TARGET_BLOCKS; b++) {
+    const labelRow = targetBlockLabelRow(b);
+    const marker = cellText(ws, labelRow, 1);
+    if (!marker) continue;
+    const seq = circledNumberToSeq(marker) ?? b + 1;
+    const name = cellText(ws, labelRow, 4);
+    if (name) names.set(seq, name);
+  }
+  return names;
+}

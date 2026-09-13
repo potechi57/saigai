@@ -6,7 +6,7 @@ import { formatFacilityType } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
-// 「施設一覧」形式のExcelから取り込んだ、道路施設全般（法面構造物、门型標識等の道路
+// 「施設一覧」形式のExcelから取り込んだ、道路施設全般（法面構造物、道路標識等の道路
 // 附属物、橋梁等）の台帳一覧画面。施設種別ごとに異なる点検制度（道路土工構造物点検要領・
 // 法定点検等）が存在するが、取込・一覧表示の窓口は1つにまとめている（施設種別・施設細別
 // はデータの中の列であり、取込方法を分ける理由にはならない。実データ「施設一覧(道路法面
@@ -35,7 +35,7 @@ export default async function FacilityListPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">施設一覧（{items.length}件）</h1>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            道路施設全般（法面構造物・门型標識等の道路附属物・橋梁等）の台帳
+            道路施設全般（法面構造物・道路標識等の道路附属物・橋梁等）の台帳
           </p>
         </div>
         <Link

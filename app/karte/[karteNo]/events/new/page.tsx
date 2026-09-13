@@ -53,13 +53,16 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
           <h2 className="mb-3 font-semibold text-gray-700 dark:text-gray-200">点検の概要</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <DateField name="inspectionDate" label="点検日" required />
-            <TextField name="inspectorName" label="点検者名" />
             <SelectField name="weather" label="天候" options={WEATHER_LABEL} />
-            <NumberField name="nextInspectionDueYear" label="次回点検実施時期（年度）" step="1" />
+            {/* 以下、様式Ｃの実際のExcel上の並び順に合わせている
+                （app/karte/[karteNo]/page.tsxの様式Ｃ表示・lib/excel/karte-import.tsの
+                extractInspectionEvents参照）。 */}
+            <TextAreaField name="specialTopics" label="点検時の特記事項（点検時の対応）" />
+            <TextField name="inspectorName" label="点検者名" />
+            <SelectField name="specialistJudgement" label="点検後の対応（専門技術者の判定）" options={JUDGEMENT_LABEL} />
             <DateField name="specialistInspectionDate" label="専門技術者による点検年月日" />
             <TextField name="specialistName" label="専門技術者名" />
-            <SelectField name="specialistJudgement" label="点検後の対応（専門技術者の判定）" options={JUDGEMENT_LABEL} />
-            <TextAreaField name="specialTopics" label="点検時の特記事項（点検時の対応）" />
+            <NumberField name="nextInspectionDueYear" label="次回点検実施時期（年度）" step="1" />
           </div>
         </section>
 
