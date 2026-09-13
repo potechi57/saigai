@@ -6,12 +6,18 @@ import { FACILITY_LEDGER_CATEGORY_LABEL } from "@/lib/labels";
 import LocationPickerMap from "@/components/LocationPickerLoader";
 
 // トンネル台帳等、画像1枚＋最低限の基本情報だけの台帳を登録するフォーム。
-// Excelのような自動抽出元が無いため、カルテの取込画面のような自動入力は無い
-// （指示書の「まずはトンネルだけ、シンプルな仕組みで」という方針に沿い、
-// 最小限の項目にとどめている）。緯度経度が分からないことが多いため、数値の
+// Excelのような自動抽出元が無いため、以前はカルテの取込画面のような自動入力が
+// 無かったが、「施設台帳（一覧表）に先に登録してから台帳画像を貼り付ける」という
+// 実務の順序に合わせ、施設台帳から選んだ内容をinitialとして受け取り、
+// 台帳名・路線名・所在地・緯度経度の初期値にできるようにした
+// （app/ledgers/new/page.tsx参照）。緯度経度が分からないことが多いため、数値の
 // 直接入力に加えて、地図クリック・地名検索でも選べるようにしている
 // （components/LocationPickerMap.tsx参照）。
-export default function FacilityLedgerForm() {
+export default function FacilityLedgerForm({
+  initial,
+}: {
+  initial?: { name: string; routeName: string; location: string; latitude: string; longitude: string };
+}) {
   const [state, formAction, isPending] = useActionState<CreateFacilityLedgerResult | null, FormData>(
     createFacilityLedger,
     null
@@ -40,6 +46,7 @@ export default function FacilityLedgerForm() {
           type="text"
           name="name"
           required
+          defaultValue={initial?.name}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
@@ -49,6 +56,7 @@ export default function FacilityLedgerForm() {
         <input
           type="text"
           name="routeName"
+          defaultValue={initial?.routeName}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
@@ -60,13 +68,19 @@ export default function FacilityLedgerForm() {
         <input
           type="text"
           name="location"
+          defaultValue={initial?.location}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
 
       <div>
         <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">緯度・経度（地図上にピンを立てたい場合）</span>
-        <LocationPickerMap latName="latitude" lngName="longitude" />
+        <LocationPickerMap
+          latName="latitude"
+          lngName="longitude"
+          initialLatitude={initial?.latitude ? Number(initial.latitude) : null}
+          initialLongitude={initial?.longitude ? Number(initial.longitude) : null}
+        />
       </div>
 
       <label className="block text-sm">

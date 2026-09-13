@@ -2,92 +2,119 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-// 「資料読み込み」ハブ画面。データの追加方法（Excel取込・台帳画像登録・手入力）が
+// 「資料読み込み」ハブ画面。データの追加方法（画像読み込み・一覧表・エクセル読み込み）が
 // 複数存在するため、ヘッダーに個別のリンクを並べるのではなく、まずこの画面へ
 // 集約し、それぞれの手法をどんな時に使うのか説明付きで案内する
 // （どの方法で取り込むべきか迷わないようにするため）。
 //
-// 分類は、検索・地図画面（app/karte/page.tsx）と同じ「法令台帳」「施設台帳」
-// 「点検調書」の3分類に揃えている（会話ログ参照。島根県公共土木施設台帳の分類:
-// https://www.pref.shimane.lg.jp/infra/kouji/kouji_info/rokyuka/manual.html）。
-// 3分類はそれぞれ独立しており、同じ「道路」等の名前が出てきても中身は別物として
-// 扱う（app/karte/page.tsxのコメント参照）。
-//   1. 法令台帳：現状、トンネルの画像台帳（FacilityLedger）のみ対応。Excelのような
-//      構造化データが無く、スキャン画像でしか残っていない台帳を登録する。
-//   2. 施設台帳：法面構造物、道路標識等の道路附属物、橋梁、トンネル等、道路施設
-//      全般の管理データ（FacilityListItem）。「施設一覧」形式のExcelは、法面・
-//      道路標識・橋梁等どの施設種別でも列構成が同じ1つのフォーマットであることを
-//      実データ（施設一覧(道路法面施設).xlsx・門型標識の施設一覧.xlsx）で確認済み
-//      のため、施設種別ごとに取込方法を分けていない（施設種別・施設細別はデータの
-//      中の列であり、取込窓口を分ける理由にはならない。なお道路土工構造物点検・
-//      法定点検等、施設種別ごとに異なる点検制度が存在する点はlib/labels.tsの
-//      formatFacilityType()コメント等を参照）。
-//   3. 点検調書：現状、「災害」分野（防災カルテ点検。落石・崩壊、盛土、擁壁、
-//      橋梁基礎の洗掘、地吹雪等が対象。岩盤崩壊・地すべり・雪崩・土石流は、
-//      島根県での運用実態に合わせKarteType自体から除いた。
-//      prisma/schema.prismaのKarteTypeコメント参照）のみ対応。
-type Method = {
-  title: string;
-  description: string;
-  example: string;
-  href: string;
-};
+// 【画面構成：方法→分類の2段階（＋エクセル読み込みのみ3段階）】
+// 当初、「法令台帳・施設台帳・点検調書」という分類を先に選ぶ構成にしたが、
+// 法令台帳・施設台帳・点検調書のいずれにも、画像読み込み・一覧表・エクセル読み込みの
+// 3つの取込方法が将来的に必要になるとの指摘を受け、方法を先に選び、その後で
+// どの分類の資料かを選ぶ構成に変更した（会話ログ参照）。
+//   1. 画像読み込み：Excelのような構造化データが無く、スキャン画像でしか残って
+//      いない資料を、画像1枚＋最低限の基本情報で登録する（現状は法令台帳＝
+//      トンネル台帳のみ実装）。
+//   2. 一覧表：1つのExcelに多数の資料が一覧で並ぶ形式を、まとめて取り込む
+//      （現状は施設台帳＝「施設一覧」形式のみ実装）。
+//   3. エクセル読み込み：1件の資料について、様式に沿った詳細な項目を持つ
+//      専用Excelを取り込む（現状は点検調書＞災害＝防災カルテ様式のみ実装）。
+//      エクセル読み込みは将来的に様式（分野）ごとに取込欄を分ける必要があるため
+//      （橋梁定期点検調書等）、分類を選んだ後にもう1段、様式（分野）を選ぶ
+//      構成にしている（現状「災害」以外は準備中）。
+// 実装が無い組み合わせ（例: 画像読み込み×施設台帳）は「準備中」と案内するのみ
+// （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」の
+// 方針を踏襲）。
+type MethodKey = "image" | "list" | "excel";
+type CatKey = "ledger" | "facility" | "inspection";
 
-const GROUPS: {
-  title: string;
-  scope: string;
-  methods: Method[];
-}[] = [
+const METHODS: { key: MethodKey; label: string; description: string }[] = [
   {
-    title: "法令台帳",
-    scope: "道路法施行規則に基づく法定点検の対象施設等の台帳です。現状はトンネルの画像台帳のみ対応しています。",
-    methods: [
-      {
-        title: "台帳（画像）の登録",
-        description:
-          "トンネル台帳等、Excelのような構造化データが無く、スキャン画像でしか残っていない台帳を、画像1枚と最低限の基本情報（台帳名・路線名・所在地・緯度経度）だけで登録します。現状はトンネルのみ対応しています。",
-        example: "紙の台帳をスキャンした画像（PDF・JPG等）しか手元に無く、Excelデータが存在しない場合。",
-        href: "/ledgers/new",
-      },
-    ],
+    key: "image",
+    label: "画像読み込み",
+    description:
+      "Excelのような構造化データが無く、スキャン画像（PDF・JPG等）でしか残っていない資料を、画像1枚と最低限の基本情報だけで登録します。",
   },
   {
-    title: "施設台帳",
-    scope:
-      "法面構造物、道路標識等の道路附属物、橋梁、トンネル等、道路施設全般の管理データです。施設ごとの点検制度（道路土工構造物点検要領・法定点検等）はデータの中の「施設種別」で区別され、取込方法（窓口）自体は施設種別を問いません。",
-    methods: [
-      {
-        title: "一覧読み込み",
-        description:
-          "管理番号・路線名・所在地・緯度経度・直近点検の健全度等が一覧で並ぶ「施設一覧」形式のExcelを取り込みます。法面構造物・道路標識・橋梁等、施設種別は問いません。管理番号ごとにDBへ登録し、地図にピンで表示します。",
-        example: "「施設一覧」「◯◯台帳」といった、多数の施設が一覧表になったExcelを受け取った場合（防災カルテ様式そのものではないもの）。",
-        href: "/facility-list/import",
-      },
-    ],
+    key: "list",
+    label: "一覧表",
+    description: "管理番号ごとに多数の資料が一覧で並ぶ「一覧表」形式のExcelを、まとめて取り込みます。",
   },
   {
-    title: "点検調書",
-    scope:
-      "自然災害・斜面災害のリスクを対象とする「災害」分野（防災カルテ点検）が現状唯一対応している分野です。落石・崩壊、盛土、擁壁、橋梁基礎の洗掘、地吹雪等が対象です。橋梁等その他分野の点検調書は今後追加予定です。",
-    methods: [
-      {
-        title: "防災カルテExcelの取込",
-        description:
-          "様式Ａ〜Ｄ（点検地点位置図・詳細スケッチ・点検履歴・災害履歴）を含む、防災カルテ様式のExcelファイル（全国地質調査業協会連合会版）を取り込みます。写真も自動で取り込まれます。",
-        example: "県土整備事務所から配布される、防災カルテ様式そのもののExcelファイルを受け取った場合。",
-        href: "/karte/import",
-      },
-      {
-        title: "手入力で新規登録",
-        description: "Excelも画像も無い場合に、フォームから直接カルテを1件ずつ新規登録します。",
-        example: "これから新しく防災カルテを作成する場合。",
-        href: "/karte/new",
-      },
-    ],
+    key: "excel",
+    label: "エクセル読み込み",
+    description: "1件の資料について、様式（分野）に沿った詳細な項目を持つ専用のExcelファイルを取り込みます。",
   },
 ];
 
-export default function ImportHubPage() {
+const CATS: { key: CatKey; label: string }[] = [
+  { key: "ledger", label: "法令台帳" },
+  { key: "facility", label: "施設台帳" },
+  { key: "inspection", label: "点検調書" },
+];
+
+// 点検調書＞エクセル読み込みだけ、様式（分野）ごとに取込欄を分ける
+// （検索・地図画面のINSPECTION_FIELDSと同じ分野名を使うが、あちらは検索条件、
+// こちらは取込窓口という別の用途のため、あえて定義は独立させている）。
+const EXCEL_INSPECTION_FORMS: { key: string; label: string }[] = [
+  { key: "disaster", label: "災害" },
+  { key: "road", label: "道路" },
+  { key: "river_coast", label: "河川・海岸" },
+  { key: "airport", label: "空港" },
+  { key: "sabo", label: "砂防" },
+];
+
+type ReadyContent = { kind: "ready"; title: string; description: string; example: string; href: string };
+type Combo = ReadyContent | { kind: "pending" } | { kind: "excel_inspection_forms" };
+
+const COMBOS: Record<MethodKey, Record<CatKey, Combo>> = {
+  image: {
+    ledger: {
+      kind: "ready",
+      title: "台帳（画像）の登録",
+      description:
+        "トンネル台帳等、Excelのような構造化データが無く、スキャン画像でしか残っていない台帳を、画像1枚と最低限の基本情報（台帳名・路線名・所在地・緯度経度）だけで登録します。現状はトンネルのみ対応しています。",
+      example: "紙の台帳をスキャンした画像（PDF・JPG等）しか手元に無く、Excelデータが存在しない場合。",
+      href: "/ledgers/new",
+    },
+    facility: { kind: "pending" },
+    inspection: { kind: "pending" },
+  },
+  list: {
+    ledger: { kind: "pending" },
+    facility: {
+      kind: "ready",
+      title: "一覧読み込み",
+      description:
+        "管理番号・路線名・所在地・緯度経度・直近点検の健全度等が一覧で並ぶ「施設一覧」形式のExcelを取り込みます。法面構造物・道路標識・橋梁等、施設種別は問いません。管理番号ごとにDBへ登録し、地図にピンで表示します。",
+      example: "「施設一覧」「◯◯台帳」といった、多数の施設が一覧表になったExcelを受け取った場合（防災カルテ様式そのものではないもの）。",
+      href: "/facility-list/import",
+    },
+    inspection: { kind: "pending" },
+  },
+  excel: {
+    ledger: { kind: "pending" },
+    facility: { kind: "pending" },
+    inspection: { kind: "excel_inspection_forms" },
+  },
+};
+
+export default async function ImportHubPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ method?: string; cat?: string; form?: string }>;
+}) {
+  const params = await searchParams;
+  const method = (["image", "list", "excel"] as const).includes(params.method as MethodKey)
+    ? (params.method as MethodKey)
+    : null;
+  const cat = (["ledger", "facility", "inspection"] as const).includes(params.cat as CatKey)
+    ? (params.cat as CatKey)
+    : null;
+  const form = params.form ?? "disaster";
+
+  const combo = method && cat ? COMBOS[method][cat] : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
@@ -96,40 +123,129 @@ export default function ImportHubPage() {
       <div className="space-y-1">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">資料読み込み</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          受け取った資料の種類に応じて、以下から取込方法を選んでください。検索・地図画面と同じ
-          「法令台帳」「施設台帳」「点検調書」の3分類に分かれます（島根県公共土木施設台帳の分類に
-          準拠）。迷った場合は資料の様式（防災カルテ様式か、施設一覧形式か、画像のみの台帳か等）を
-          目安に選んでください。
+          まず取込方法を選び、次にどの分類（法令台帳・施設台帳・点検調書）の資料かを選んでください。
+          分類は検索・地図画面と同じ3分類です（島根県公共土木施設台帳の分類に準拠）。
         </p>
       </div>
 
-      {GROUPS.map((group, groupIndex) => (
-        <div key={group.title} className="space-y-2">
-          <div className="border-b border-gray-300 pb-1.5 dark:border-gray-700">
-            <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">
-              {groupIndex + 1}. {group.title}
-            </h2>
-            <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{group.scope}</p>
+      {/* --- 1段階目: 取込方法 --- */}
+      <div className="space-y-2">
+        <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">1. 取込方法を選ぶ</h2>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {METHODS.map((m) => (
+            <Link
+              key={m.key}
+              href={`/import?method=${m.key}`}
+              className={`rounded border p-3 text-left ${
+                method === m.key
+                  ? "border-gray-800 bg-gray-50 dark:border-gray-200 dark:bg-gray-800"
+                  : "border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+              }`}
+            >
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{m.label}</h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{m.description}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* --- 2段階目: 分類 --- */}
+      {method && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">2. 分類を選ぶ</h2>
+          <div className="flex flex-wrap gap-1.5">
+            {CATS.map((c) => (
+              <Link
+                key={c.key}
+                href={`/import?method=${method}&cat=${c.key}`}
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  cat === c.key
+                    ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                    : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                }`}
+              >
+                {c.label}
+              </Link>
+            ))}
           </div>
-          <ul className="space-y-2">
-            {group.methods.map((m) => (
-              <li key={m.href} className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                <Link
-                  href={m.href}
-                  className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{m.title}</h3>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{m.description}</p>
+        </div>
+      )}
+
+      {/* --- 3段階目（該当する場合のみ）／結果表示 --- */}
+      {combo && combo.kind === "ready" && (
+        <Link
+          href={combo.href}
+          className="block rounded border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+        >
+          <div className="px-4 py-3">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{combo.title}</h3>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{combo.description}</p>
+            <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+              <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
+              {combo.example}
+            </p>
+          </div>
+        </Link>
+      )}
+      {combo && combo.kind === "pending" && (
+        <p className="rounded border border-dashed border-gray-300 p-4 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+          準備中です。この組み合わせ（{METHODS.find((m) => m.key === method)?.label} ×{" "}
+          {CATS.find((c) => c.key === cat)?.label}）はまだ対応していません。
+        </p>
+      )}
+      {combo && combo.kind === "excel_inspection_forms" && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">3. 様式（分野）を選ぶ</h2>
+          <div className="flex flex-wrap gap-1.5">
+            {EXCEL_INSPECTION_FORMS.map((f) => (
+              <Link
+                key={f.key}
+                href={`/import?method=excel&cat=inspection&form=${f.key}`}
+                className={`rounded-full border px-2.5 py-1 text-xs ${
+                  form === f.key
+                    ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                    : f.key === "disaster"
+                      ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                      : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+                }`}
+              >
+                {f.label}
+                {f.key !== "disaster" && "（準備中）"}
+              </Link>
+            ))}
+          </div>
+          {form === "disaster" ? (
+            <>
+              <Link
+                href="/karte/import"
+                className="block rounded border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+              >
+                <div className="px-4 py-3">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">防災カルテExcelの取込</h3>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    様式Ａ〜Ｄ（点検地点位置図・詳細スケッチ・点検履歴・災害履歴）を含む、防災カルテ様式のExcelファイル（全国地質調査業協会連合会版）を取り込みます。写真も自動で取り込まれます。
+                  </p>
                   <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
                     <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
-                    {m.example}
+                    県土整備事務所から配布される、防災カルテ様式そのもののExcelファイルを受け取った場合。
                   </p>
+                </div>
+              </Link>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Excelも画像も無い場合は、
+                <Link href="/karte/new" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  手入力で新規登録
                 </Link>
-              </li>
-            ))}
-          </ul>
+                することもできます。
+              </p>
+            </>
+          ) : (
+            <p className="rounded border border-dashed border-gray-300 p-4 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+              準備中です。この様式（分野）の点検調書Excel取込はまだ対応していません。
+            </p>
+          )}
         </div>
-      ))}
+      )}
 
       <div className="rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 text-sm">
         <p className="font-medium text-gray-700 dark:text-gray-200">既に取り込んだ資料の確認</p>
