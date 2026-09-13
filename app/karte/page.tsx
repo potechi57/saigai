@@ -840,26 +840,49 @@ export default async function KarteListPage({
                   <>
                     {/* 「災害」以外の分野は、施設台帳と同じ形式で施設名称のドリルダウンを
                         もう1段持たせる（例: 道路→橋梁・トンネル・道路法面構造物等）。
-                        FacilityInspectionRecordの横断検索がまだ無いため、選んでも
-                        「準備中」表示になる（INSPECTION_TYPES参照）。 */}
+                        FacilityInspectionRecordの横断検索（地図・共通フィールドでの絞り込み）
+                        はまだ無いため、選んでも一覧・地図には反映されないが、道路＞門型標識
+                        だけは実データがあるため、一覧ページへの案内を出す
+                        （lib/actions/gate-sign-inspection-actions.ts参照。会話ログ
+                        「門型標識のエクセルファイル...読み込んで表示できる仕様に」参照）。 */}
                     <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
-                      {INSPECTION_TYPES[inspectionBunya]?.map((t) => (
-                        <PendingLink
-                          key={t.label}
-                          href={inspectionShisetsuHref(inspectionBunya, t.label)}
-                          className={`rounded-full border px-2 py-0.5 text-xs ${
-                            inspectionShisetsu === t.label
-                              ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
-                              : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
-                          }`}
-                        >
-                          {t.label}（準備中）
-                        </PendingLink>
-                      ))}
+                      {INSPECTION_TYPES[inspectionBunya]?.map((t) => {
+                        const isReady = inspectionBunya === "road" && t.label === "門型標識";
+                        return (
+                          <PendingLink
+                            key={t.label}
+                            href={inspectionShisetsuHref(inspectionBunya, t.label)}
+                            className={`rounded-full border px-2 py-0.5 text-xs ${
+                              inspectionShisetsu === t.label
+                                ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                                : isReady
+                                  ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                                  : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+                            }`}
+                          >
+                            {t.label}
+                            {!isReady && "（準備中）"}
+                          </PendingLink>
+                        );
+                      })}
                     </div>
-                    <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                      準備中です。この分野の点検調書はまだ登録されていません。
-                    </p>
+                    {inspectionBunya === "road" && inspectionShisetsu === "門型標識" ? (
+                      <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        門型標識の点検調書は
+                        <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
+                          専用の一覧ページ
+                        </Link>
+                        で確認・
+                        <Link href="/inspections/gate-signs/import" className="text-blue-600 dark:text-blue-400 hover:underline">
+                          Excel取込
+                        </Link>
+                        ができます（施設台帳・地図の検索条件とは別枠の一覧です）。
+                      </p>
+                    ) : (
+                      <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                        準備中です。この分野の点検調書はまだ登録されていません。
+                      </p>
+                    )}
                   </>
                 )}
               </>

@@ -693,7 +693,8 @@ model FacilityListItem {
   repairDate     String? // 修繕年月日（最新）
   repairRemarks  String? // 修繕記録の備考（最新）
 
-  inspections FacilityInspectionRecord[]
+  inspections         FacilityInspectionRecord[]
+  gateSignInspections GateSignInspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -725,4 +726,104 @@ model FacilityInspectionRecord {
 
   @@unique([facilityListItemId, inspectionDate])
   @@index([facilityListItemId])
+}
+
+// ── 点検調書（道路＞門型標識） ─────────────────────────────────────
+// 点検調書タブ＞道路＞門型標識（会話ログ「別紙２　様式１様式２」のExcel参照）。
+// 島根県の「道路土工構造物等定期点検要領」系の様式で、1施設1ファイルの
+// 詳細な点検報告書（様式１＝基本情報・部材単位の総括、様式２＝損傷箇所ごとの
+// 写真付き詳細カード）。施設台帳（FacilityListItem）の道路標識（門型）行と
+// 管理番号で紐付く（会話ログ「施設台帳の道路標識に紐づけるデータになります」
+// 参照）。ただしExcel内には管理番号が空欄のことが多く、ファイル名
+// （例:「A01-AE-010474_01_松江島根線_松江市上乃木町_0.54_門型標識柱.xlsx」の
+// 先頭）から取得する（lib/excel/gate-sign-inspection-import.ts参照）。
+// facilityListItemIdは紐付けできた場合のみ設定し（見つからない場合はnullのまま
+// 保存し、後から手動で紐付けることも今のところできない簡易な仕様）、
+// カルテ削除等と同様に紐付け先が消えても記録自体は残す（onDelete: SetNull）。
+model GateSignInspection {
+  id String @id @default(cuid())
+
+  facilityListItemId String?
+  facilityListItem   FacilityListItem? @relation(fields: [facilityListItemId], references: [id], onDelete: SetNull)
+  managementNo       String? // ファイル名から取得（Excel内は空欄のことが多い）
+
+  facilityName String? // 施設名（例: 道路標識）
+  facilityForm String? // 形式（例: 門型式）
+  routeName    String?
+  location     String?
+
+  // IMS設定シート（緯度(度)(分)(秒)・経度(度)(分)(秒)）から10進度に変換して保持する
+  // （karte-import.ts等と同じ方針）。
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+
+  inspectionDate   DateTime? // 定期点検実施年月日
+  inspectorCompany String? // 定期点検者（会社名）
+  inspectorName    String? // 記録者名
+  managerOrgName   String? // 管理者名
+
+  hasAlternateRoute      String? // 代替路の有無（有/無）
+  emergencyTransportRoad String? // 緊急輸送道路（一次/二次/三次/その他）
+  roadCategory           String? // 自専道or一般道
+  occupyingObjects       String? // 占用物件（名称）
+
+  installedYear  Int? // 設置年（西暦）
+  installedMonth Int? // 設置月
+  roadWidthM     Decimal? @db.Decimal(6, 2) // 道路幅員(ｍ)
+  structureType  String? // 構造形式
+
+  overallJudgment String? // 門型標識等毎の健全性の診断（判定区分Ⅰ〜Ⅳ）
+  overallFindings String? // 同上の所見
+
+  sourceFileName String? // 取込元Excelファイル名（参考情報。再取込時の重複判定にも使う）
+
+  members        GateSignInspectionMember[]
+  overviewPhotos GateSignInspectionPhoto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([managementNo])
+  @@index([facilityListItemId])
+}
+
+// 様式２の「損傷箇所ごとの写真付き詳細カード」を1枚＝1レコードとして保持する
+// （様式１側の部材単位の総括表は、様式２のカードと内容が重なりより粗いため
+// 別テーブル化はせず取り込まない。会話ログ「読み込んで表示できる仕様に」に対する
+// 実装上の判断）。
+model GateSignInspectionMember {
+  id           String             @id @default(cuid())
+  inspectionId String
+  inspection   GateSignInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  photoNo      Int? // 写真番号
+  memberName   String? // 部材名（大分類。例: 支柱）
+  memberDetail String? // 部材名詳細（例: 支柱本体）
+  damageType   String? // 変状の種類
+  judgment     String? // 健全性の診断（定期点検時。判定区分Ⅰ〜Ⅳ）
+
+  postActionJudgment String? // 応急措置後の判定区分
+  postActionContent  String? // 応急処置内容
+
+  findings String? // 所見
+  remarks  String? // 備考欄
+
+  photoUrl String? // 損傷状況写真（Vercel Blob）
+
+  sortOrder Int @default(0)
+
+  @@index([inspectionId])
+}
+
+// 様式１の「全景写真」欄（起点側・終点側）等、個別損傷とは紐付かない全体写真。
+model GateSignInspectionPhoto {
+  id           String             @id @default(cuid())
+  inspectionId String
+  inspection   GateSignInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  url     String
+  caption String? // 例: 起点側、終点側
+  sortOrder Int    @default(0)
+
+  @@index([inspectionId])
 }
