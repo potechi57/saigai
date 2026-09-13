@@ -20,6 +20,15 @@ export const FACILITY_LEDGER_DOC_CLASS_LABEL: Record<string, string> = {
   FACILITY: "施設台帳",
 };
 
+// 台帳（画像。FacilityLedger）の表示名。Excelのような構造化データの裏付けが
+// 無いまま登録されることが多く、管理番号が分かっていない・そもそも採番されて
+// いない施設も存在するため、管理番号（managementNo）が無い場合は台帳名
+// （name。例:「魚瀬トンネル」）で代用する（会話ログ「管理番号がなくても、
+// 施設名で表示できるように」参照）。どちらも無い場合のみプレースホルダにする。
+export function facilityLedgerDisplayName(managementNo?: string | null, name?: string | null): string {
+  return managementNo || name || "（名称未設定）";
+}
+
 // 施設一覧（FacilityListItem）の施設種別表示。原本の「施設種別」列は、门型標識等の
 // 道路附属物では「道路付属物」のように大分類止まりで、具体的な種類（例:「道路標識
 // （门型）」）は「施設細別」列の方に入っている。施設種別だけでは何の施設か分からない

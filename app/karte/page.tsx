@@ -207,8 +207,10 @@ function buildQuery(
 //
 // 地図には、検索済みの系統のピンだけを表示する（未検索の系統は表示しない＝「防災カルテ
 // と同じように検索時に表示される」という要望に対応）。タブを切り替えても、もう一方の
-// 検索結果は消えない（互いの検索状態を隠しinputで引き継いでいるため）。台帳（画像、
-// 現状トンネルのみ）は件数が少なく複雑な検索条件が不要なため、従来どおり常時表示する。
+// 検索結果は消えない（互いの検索状態を隠しinputで引き継いでいるため）。台帳（画像。
+// FacilityLedger）も同様に、現在のタブ（docClass）・分野・施設名称（細別）が
+// 特定されるまでは表示しない（以前は分類を問わず常時表示していたが、他タブ・他分類の
+// 台帳が地図に残り続ける不具合になっていたため。上記ledgerWhere参照）。
 //   - 画面いっぱい（ヘッダー直下〜画面下端）を使い、左に検索条件パネル、
 //     中央（残り全体）に地図を常時表示する（PCでの基本レイアウト）。
 //   - 初期表示（条件無し）では地図だけを見せ、一覧テーブルは出さない。
@@ -339,33 +341,48 @@ export default async function KarteListPage({
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
   // いる値から選ぶセレクトボックスにしている（フィルタ条件に関わらず全件から候補を
   // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計する。
-  const [routeNameRows, settings, facilityLedgersRaw, facRouteNameRows, soundnessGradeRows] = await Promise.all([
-    prisma.karte.findMany({
-      distinct: ["routeName"],
-      select: { routeName: true },
-      orderBy: { routeName: "asc" },
-    }),
-    prisma.appSettings.findUnique({ where: { id: "singleton" } }),
-    prisma.facilityLedger.findMany({ where: ledgerWhere }),
-    prisma.facilityListItem.findMany({
-      distinct: ["routeName"],
-      select: { routeName: true },
-      orderBy: { routeName: "asc" },
-    }),
-    prisma.facilityListItem.findMany({
-      distinct: ["soundnessGrade"],
-      select: { soundnessGrade: true },
-      orderBy: { soundnessGrade: "asc" },
-    }),
-  ]);
+  // 台帳（画像。FacilityLedger）の路線名も同じ選択肢に加える（以前はここに含めて
+  // おらず、画像取込みで登録した路線名が選択肢に出てこない不具合になっていた。
+  // 会話ログ「路線名を...としていますが、これが初期の検索画面で表示されていません」
+  // 参照）。ledgerRouteNameRowsは現在の絞り込み（ledgerWhere）に関わらず全件から
+  // 集計する（他の2系統と同じ方針）。
+  const [routeNameRows, settings, facilityLedgersRaw, facRouteNameRows, soundnessGradeRows, ledgerRouteNameRows] =
+    await Promise.all([
+      prisma.karte.findMany({
+        distinct: ["routeName"],
+        select: { routeName: true },
+        orderBy: { routeName: "asc" },
+      }),
+      prisma.appSettings.findUnique({ where: { id: "singleton" } }),
+      prisma.facilityLedger.findMany({
+        where: ledgerWhere,
+        include: { images: { orderBy: { sortOrder: "asc" } } },
+      }),
+      prisma.facilityListItem.findMany({
+        distinct: ["routeName"],
+        select: { routeName: true },
+        orderBy: { routeName: "asc" },
+      }),
+      prisma.facilityListItem.findMany({
+        distinct: ["soundnessGrade"],
+        select: { soundnessGrade: true },
+        orderBy: { soundnessGrade: "asc" },
+      }),
+      prisma.facilityLedger.findMany({
+        distinct: ["routeName"],
+        select: { routeName: true },
+        orderBy: { routeName: "asc" },
+      }),
+    ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
   const facRouteNameOptions = facRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
+  const ledgerRouteNameOptions = ledgerRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
   const soundnessGradeOptions = soundnessGradeRows.map((r) => r.soundnessGrade).filter((v): v is string => !!v);
-  // 路線名は共通フィールドとして1つの<select>にまとめるため、両系統の選択肢を
+  // 路線名は共通フィールドとして1つの<select>にまとめるため、3系統の選択肢を
   // 合わせて（重複除去のうえ）1つのリストにする。
-  const combinedRouteNameOptions = Array.from(new Set([...routeNameOptions, ...facRouteNameOptions])).sort((a, b) =>
-    a.localeCompare(b, "ja")
-  );
+  const combinedRouteNameOptions = Array.from(
+    new Set([...routeNameOptions, ...facRouteNameOptions, ...ledgerRouteNameOptions])
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
     id: l.id,
@@ -373,12 +390,14 @@ export default async function KarteListPage({
     facilityTypeLabel: formatFacilityType(l.facilityType, l.facilitySubType),
     facilityType: l.facilityType,
     facilitySubType: l.facilitySubType,
+    managementNo: l.managementNo,
     name: l.name,
     routeName: l.routeName,
     location: l.location,
     latitude: Number(l.latitude),
     longitude: Number(l.longitude),
-    imageUrl: l.imageUrl,
+    coverImageUrl: l.images[0]?.imageUrl ?? null,
+    imageCount: l.images.length,
     note: l.note,
   }));
 
