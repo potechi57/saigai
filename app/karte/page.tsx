@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import Form from "next/form";
-import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
+import { type Prisma, type FacilityLedgerDocClass, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType, FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
@@ -88,14 +88,6 @@ const FACILITY_LEDGER_ITEM_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
   airport: [{ label: "空港施設" }],
   sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
 };
-// 分野そのものの判定キーワード（facilityType/facilitySubTypeへの部分一致）。
-const FACILITY_LEDGER_ITEM_FIELD_MATCH: Record<FieldKey, string[]> = {
-  road: ["道路"],
-  river_coast: ["河川", "海岸"],
-  airport: ["空港"],
-  sabo: ["砂防"],
-};
-
 // 点検調書タブの分野。「災害」が防災カルテ点検（Karte）に対応する唯一の
 // 実装済み分野で、それ以外は施設台帳と同じ施設分野に対応した点検調書
 // （FacilityInspectionRecordの横断検索）を将来置く想定の骨格のみ。
@@ -299,26 +291,54 @@ export default async function KarteListPage({
         { facilitySubType: { contains: kw } },
       ]),
     });
-  } else if (facilityShisetsu) {
-    // 実データが無くマッチングキーワード未設定の施設名称（＝準備中）が選ばれた場合は、
-    // 意図的に0件にする（「準備中」であることが検索結果からも分かるようにするため）。
-    facAndConditions.push({ id: "__no_data_yet__" });
-  } else if (facilityBunya && FACILITY_LEDGER_ITEM_FIELD_MATCH[facilityBunya]) {
-    facAndConditions.push({
-      OR: FACILITY_LEDGER_ITEM_FIELD_MATCH[facilityBunya].map((kw) => ({ facilityType: { contains: kw } })),
-    });
-  } else if (facilityBunya) {
+  } else if (facilityShisetsu || facilityBunya) {
+    // 施設名称（細別）がまだ選ばれていない場合（分野のみ選択、または準備中の
+    // 施設名称が選ばれた場合）は、意図的に0件にする。以前は分野のみ選択時に
+    // FACILITY_LEDGER_ITEM_FIELD_MATCHで分野全体を広く一致させていたが、細別を
+    // 選ぶ前から該当しそうな施設が全て表示されてしまう不具合になっていたため、
+    // 「施設名称まで特定されるまでは何も表示しない」方針に統一する
+    // （ユーザー指摘: 「その細別を選択する前に道路に該当するすべてが表示されます」）。
     facAndConditions.push({ id: "__no_data_yet__" });
   }
   const facWhere: Prisma.FacilityListItemWhereInput = facAndConditions.length > 0 ? { AND: facAndConditions } : {};
   const hasFacCondition = FACILITY_PARAM_KEYS.some((k) => params[k]);
   const hasFacSearched = FACILITY_PARAM_KEYS.some((k) => k in params);
 
+  // 台帳（画像。FacilityLedger）の地図表示も、施設台帳と同じ「施設名称（細別）まで
+  // 特定されるまでは何も表示しない」方針に統一する。以前はdocClass・分野・施設名称を
+  // 一切見ずに常時全件表示していたため、例えばトンネル台帳を登録すると、施設台帳＞
+  // 道路＞橋梁を見ているときにもトンネルの台帳が地図に残り続ける不具合になっていた
+  // （ユーザー指摘）。法令台帳タブと施設台帳タブでdocClassが異なる（前者はLEGAL、
+  // 後者はFACILITY）ため、現在表示中のタブに応じて対象docClassを切り替え、かつ
+  // 施設名称の絞り込みキーワード（match）は各タブの分類定義（法令台帳:
+  // FACILITY_TYPES／施設台帳: FACILITY_LEDGER_ITEM_TYPES）からそのまま流用する。
+  // 点検調書タブには台帳（画像）に対応する分類が無いため、台帳は表示しない。
+  const ledgerDocClass: FacilityLedgerDocClass | null =
+    cat === "ledger" ? "LEGAL" : cat === "facility" ? "FACILITY" : null;
+  const ledgerShisetsuDef =
+    cat === "ledger"
+      ? ledgerBunya && ledgerShisetsu
+        ? FACILITY_TYPES[ledgerBunya]?.find((t) => t.label === ledgerShisetsu)
+        : undefined
+      : cat === "facility"
+        ? facilityShisetsuDef
+        : undefined;
+  const ledgerWhere: Prisma.FacilityLedgerWhereInput =
+    ledgerDocClass && ledgerShisetsuDef?.match
+      ? {
+          docClass: ledgerDocClass,
+          latitude: { not: null },
+          longitude: { not: null },
+          OR: ledgerShisetsuDef.match.flatMap((kw) => [
+            { facilityType: { contains: kw } },
+            { facilitySubType: { contains: kw } },
+          ]),
+        }
+      : { id: "__no_data_yet__" };
+
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
   // いる値から選ぶセレクトボックスにしている（フィルタ条件に関わらず全件から候補を
-  // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計
-  // する。トンネル台帳等（FacilityLedger）は、件数が少ない想定のため検索条件を持たせず
-  // 常に取得する（lib/actions/facility-ledger-actions.ts参照）。
+  // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計する。
   const [routeNameRows, settings, facilityLedgersRaw, facRouteNameRows, soundnessGradeRows] = await Promise.all([
     prisma.karte.findMany({
       distinct: ["routeName"],
@@ -326,7 +346,7 @@ export default async function KarteListPage({
       orderBy: { routeName: "asc" },
     }),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
-    prisma.facilityLedger.findMany({ where: { latitude: { not: null }, longitude: { not: null } } }),
+    prisma.facilityLedger.findMany({ where: ledgerWhere }),
     prisma.facilityListItem.findMany({
       distinct: ["routeName"],
       select: { routeName: true },
@@ -551,9 +571,9 @@ export default async function KarteListPage({
           // 法令台帳タブ：検索フォームは持たず、分野→施設名称のドリルダウンのみ
           // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
           // 台帳（画像。FacilityLedger）は分野・施設名称を問わず登録できるが
-          // （/ledgers/new。会話ログ参照）、実際に登録済みの台帳（緯度経度があるもの）は
-          // 地図上に法令台帳・施設台帳を問わず常時表示される（下記mapLedgers参照）ため、
-          // ここでは分類ごとの案内と登録・一覧ページへの導線だけを示す。
+          // （/ledgers/new。会話ログ参照）、地図上での表示は施設台帳タブと同様、
+          // ここで分野・施設名称（細別）まで選び切ったときだけになる（上記ledgerWhere
+          // 参照）。ここでは分類ごとの案内と登録・一覧ページへの導線だけを示す。
           <FieldDrilldown
             fields={FACILITY_FIELDS}
             types={FACILITY_TYPES}
