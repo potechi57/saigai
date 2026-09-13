@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { createFacilityLedger, type CreateFacilityLedgerResult } from "@/lib/actions/facility-ledger-actions";
 import { FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
-import { FACILITY_FIELDS, FACILITY_TYPES } from "@/lib/facility-taxonomy";
+import { FACILITY_FIELDS, FACILITY_TYPES, FACILITY_LEDGER_ITEM_FIELDS, FACILITY_LEDGER_ITEM_TYPES } from "@/lib/facility-taxonomy";
 import { ROUTE_PREFIX_OPTIONS, parseRouteName } from "@/lib/route-name";
 import LocationPickerMap from "@/components/LocationPickerLoader";
 
@@ -11,8 +11,14 @@ import LocationPickerMap from "@/components/LocationPickerLoader";
 // 台帳（画像）は法令台帳・施設台帳のどちらにも必要になるため（会話ログ参照。
 // 以前はFacilityLedger＝法令台帳と誤って対応付けていた）、まず分類
 // （法令台帳／施設台帳）を選び、次に種別（分野→施設名称）を選ぶ2段階の
-// カスケード選択にしている。種別は検索・地図画面の法令台帳タブと同じ分類
-// （lib/facility-taxonomy.ts。島根県公共土木施設台帳の分類）をそのまま使う。
+// カスケード選択にしている。種別はShimaneのページの【法令台帳一覧】
+// 【施設台帳一覧】の表そのままの分類（lib/facility-taxonomy.ts）を使い、分類の
+// 選択（LEGAL/FACILITY）に応じてどちらの表を使うか切り替える（以前は分類に
+// 関わらず常に法令台帳側の表を使っていたため、施設台帳として登録する場合に
+// 施設台帳側にしか無い項目（空港等）が選べず、逆に法令台帳側にしか無い項目
+// （港湾の海岸共通等）も、法令台帳の表自体が施設台帳の項目と混ざっていて選べない、
+// という不具合になっていた。会話ログ「法令台帳と施設台帳がごっちゃになって
+// いますね」参照）。
 //
 // 画像さえあれば登録できるよう、種別・管理番号・台帳名・路線名・所在地・
 // 緯度経度は全て任意にしている（台帳名は未入力なら種別から自動生成される。
@@ -50,6 +56,10 @@ export default function FacilityLedgerForm({
   );
   const [docClass, setDocClass] = useState<"LEGAL" | "FACILITY">(initialDocClass ?? "FACILITY");
   const [bunya, setBunya] = useState<string>("");
+  // 分類（法令台帳／施設台帳）に応じて、種別選択で使う分野・施設名称の一覧を
+  // 切り替える（上のコメント参照）。
+  const fields = docClass === "LEGAL" ? FACILITY_FIELDS : FACILITY_LEDGER_ITEM_FIELDS;
+  const types = docClass === "LEGAL" ? FACILITY_TYPES : FACILITY_LEDGER_ITEM_TYPES;
   // 路線名先頭の「(国)」等の前置きは、全角/半角の表記ゆれを防ぐため自由入力にせず
   // 固定の選択肢から選ばせる（lib/route-name.ts参照。会話ログ「()が全角か半角かなどで
   // 別々に登録される恐れがあります」参照）。initialの路線名（自動入力時）に前置きが
@@ -69,7 +79,13 @@ export default function FacilityLedgerForm({
                   name="docClass"
                   value={value}
                   checked={docClass === value}
-                  onChange={() => setDocClass(value)}
+                  onChange={() => {
+                    setDocClass(value);
+                    // 分類を切り替えると使う分野・施設名称の一覧自体が変わるため、
+                    // 前の分類で選んでいた分野をクリアする（別分類の分野が残っていても
+                    // 意味を持たないため）。
+                    setBunya("");
+                  }}
                 />
                 {label}
               </label>
@@ -88,7 +104,7 @@ export default function FacilityLedgerForm({
             className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">未選択</option>
-            {FACILITY_FIELDS.map((f) => (
+            {fields.map((f) => (
               <option key={f.key} value={f.label}>
                 {f.label}
               </option>
@@ -98,14 +114,14 @@ export default function FacilityLedgerForm({
         <div>
           <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">種別・施設名称（任意）</label>
           <select
-            key={bunya}
+            key={`${docClass}-${bunya}`}
             name="facilitySubType"
             disabled={!bunya}
             defaultValue=""
             className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">未選択</option>
-            {(FACILITY_TYPES[FACILITY_FIELDS.find((f) => f.label === bunya)?.key ?? ""] ?? []).map((t) => (
+            {(types[fields.find((f) => f.label === bunya)?.key ?? ""] ?? []).map((t) => (
               <option key={t.label} value={t.label}>
                 {t.label}
               </option>
