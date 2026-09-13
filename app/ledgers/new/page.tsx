@@ -44,9 +44,8 @@ export default async function NewFacilityLedgerPage({
   const selected = facilityId ? facilityCandidates.find((f) => f.id === facilityId) : undefined;
   const initial = selected
     ? {
-        name: [selected.managementNo, formatFacilityType(selected.facilityType, selected.facilitySubType)]
-          .filter(Boolean)
-          .join(" "),
+        managementNo: selected.managementNo,
+        name: formatFacilityType(selected.facilityType, selected.facilitySubType) ?? "",
         routeName: selected.routeName ?? "",
         location: selected.location ?? "",
         latitude: selected.latitude != null ? String(selected.latitude) : "",

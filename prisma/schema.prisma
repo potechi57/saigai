@@ -569,6 +569,14 @@ model FacilityLedger {
   facilityType    String?
   facilitySubType String?
 
+  // 管理番号（施設一覧・FacilityListItem.managementNoに相当する概念）。画像台帳は
+  // Excelのような構造化データの裏付けが無いまま登録されることが多く、管理番号が
+  // 分かっていない・そもそも採番されていない施設も存在するため、任意項目にしている。
+  // 表示時は管理番号があればそれを、無ければname（例:「魚瀬トンネル」）を使う
+  // （lib/labels.tsのfacilityLedgerDisplayName参照。会話ログ「管理番号がなくても、
+  // 施設名で表示できるように」参照）。
+  managementNo String?
+
   name      String? // 台帳名（任意。例: 魚瀬トンネル）
   routeName String? // 路線名
   location  String? // 所在地（自由記述。例: 自 松江市秋鹿町 至 松江市魚瀬町）
@@ -578,14 +586,41 @@ model FacilityLedger {
   latitude  Decimal? @db.Decimal(9, 6)
   longitude Decimal? @db.Decimal(9, 6)
 
-  imageUrl String // 台帳のスキャン画像（Vercel Blob）
-  note     String? // 特記事項等の自由記述欄
+  note String? // 特記事項等の自由記述欄
+
+  // 台帳の画像は1枚とは限らない（同じ施設に調書・図面等、複数枚をまとめて
+  // 登録したり、後から追加したりする運用のため）。以前はFacilityLedger本体に
+  // imageUrlを1つだけ持たせていたが、1施設内で複数画像をタブ切替表示し、
+  // タブ名（label）を後から自由に変更できるようにするため、別テーブルに
+  // 切り出した（会話ログ参照。/ledgers/[id]で「Excelシート風タブ」
+  // （components/SheetTabs.tsx）を使って切り替える）。
+  images FacilityLedgerImage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([docClass])
   @@index([facilityType])
+}
+
+// FacilityLedger 1件に紐づく画像1枚（調書・図面等）。labelは表示用のタブ名で、
+// 登録時は「画像1」のように自動採番するが、登録後に自由に変更できる
+// （/ledgers/[id]。会話ログ「タブの名前付けは任意として、取り込ませたあとに
+// 任意で修正できるように」参照）。sortOrderはタブの並び順（登録順）。
+model FacilityLedgerImage {
+  id String @id @default(cuid())
+
+  ledgerId String
+  ledger   FacilityLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  label     String // タブ名（自由記述。例: 調書、平面図、断面図）
+  imageUrl  String // Vercel Blob
+  sortOrder Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ledgerId])
 }
 
 // ── 施設一覧（Access等から出力される施設管理台帳） ────────────────────

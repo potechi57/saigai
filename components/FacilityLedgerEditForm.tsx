@@ -1,63 +1,47 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createFacilityLedger, type CreateFacilityLedgerResult } from "@/lib/actions/facility-ledger-actions";
+import { updateFacilityLedger, type UpdateFacilityLedgerResult } from "@/lib/actions/facility-ledger-actions";
 import { FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
 import { FACILITY_FIELDS, FACILITY_TYPES } from "@/lib/facility-taxonomy";
 import { ROUTE_PREFIX_OPTIONS, parseRouteName } from "@/lib/route-name";
 import LocationPickerMap from "@/components/LocationPickerLoader";
 
-// トンネル台帳等、画像1枚以上＋最低限の基本情報だけの台帳を登録するフォーム。
-// 台帳（画像）は法令台帳・施設台帳のどちらにも必要になるため（会話ログ参照。
-// 以前はFacilityLedger＝法令台帳と誤って対応付けていた）、まず分類
-// （法令台帳／施設台帳）を選び、次に種別（分野→施設名称）を選ぶ2段階の
-// カスケード選択にしている。種別は検索・地図画面の法令台帳タブと同じ分類
-// （lib/facility-taxonomy.ts。島根県公共土木施設台帳の分類）をそのまま使う。
-//
-// 画像さえあれば登録できるよう、種別・管理番号・台帳名・路線名・所在地・
-// 緯度経度は全て任意にしている（台帳名は未入力なら種別から自動生成される。
-// lib/actions/facility-ledger-actions.ts参照）。管理番号は構造化データの裏付けが
-// 無い画像台帳では分かっていないことが多いため任意項目にしており、無ければ
-// 台帳名で代用表示する（lib/labels.tsのfacilityLedgerDisplayName参照）。
-//
-// 画像は同じ施設で調書・図面等を複数枚まとめて選択して登録でき（<input multiple>）、
-// 登録後も/ledgers/[id]から追加・削除・タブ名の変更ができる（会話ログ参照）。
-//
-// Excelのような自動抽出元が無いため、以前はカルテの取込画面のような自動入力が
-// 無かったが、「施設台帳（一覧表）に先に登録してから台帳画像を貼り付ける」という
-// 実務の順序に合わせ、施設台帳から選んだ内容をinitialとして受け取り、
-// 台帳名・路線名・所在地・緯度経度の初期値にできるようにした
-// （app/ledgers/new/page.tsx参照）。緯度経度が分からないことが多いため、数値の
-// 直接入力に加えて、地図クリック・地名検索でも選べるようにしている
-// （components/LocationPickerMap.tsx参照）。
-export default function FacilityLedgerForm({
-  initialDocClass,
+// 台帳詳細画面（/ledgers/[id]）で、画像以外の基本情報（分類・種別・管理番号・
+// 台帳名・路線名・所在地・緯度経度・備考）を後から編集するためのフォーム。
+// 画像取込時は最低限の情報で素早く登録できるようにしている分（会話ログ参照）、
+// 登録後に判明した管理番号を追記したり、誤りを直したりできる必要があるため
+// 用意した。フィールド構成・カスケード選択はFacilityLedgerForm（新規登録用）と
+// ほぼ同じだが、こちらは画像を扱わず、既存値をdefaultValueとして受け取る。
+export default function FacilityLedgerEditForm({
+  ledgerId,
   initial,
 }: {
-  initialDocClass?: "LEGAL" | "FACILITY";
-  initial?: {
-    managementNo?: string;
+  ledgerId: string;
+  initial: {
+    docClass: "LEGAL" | "FACILITY";
+    facilityType: string;
+    facilitySubType: string;
+    managementNo: string;
     name: string;
     routeName: string;
     location: string;
     latitude: string;
     longitude: string;
+    note: string;
   };
 }) {
-  const [state, formAction, isPending] = useActionState<CreateFacilityLedgerResult | null, FormData>(
-    createFacilityLedger,
+  const action = updateFacilityLedger.bind(null, ledgerId);
+  const [state, formAction, isPending] = useActionState<UpdateFacilityLedgerResult | null, FormData>(
+    action,
     null
   );
-  const [docClass, setDocClass] = useState<"LEGAL" | "FACILITY">(initialDocClass ?? "FACILITY");
-  const [bunya, setBunya] = useState<string>("");
-  // 路線名先頭の「(国)」等の前置きは、全角/半角の表記ゆれを防ぐため自由入力にせず
-  // 固定の選択肢から選ばせる（lib/route-name.ts参照。会話ログ「()が全角か半角かなどで
-  // 別々に登録される恐れがあります」参照）。initialの路線名（自動入力時）に前置きが
-  // 含まれていれば、フォームの初期状態にも反映する。
-  const initialRouteName = parseRouteName(initial?.routeName);
+  const [docClass, setDocClass] = useState<"LEGAL" | "FACILITY">(initial.docClass);
+  const [bunya, setBunya] = useState<string>(initial.facilityType);
+  const initialRouteName = parseRouteName(initial.routeName);
 
   return (
-    <form action={formAction} className="space-y-4 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+    <form action={formAction} className="space-y-4">
       <div>
         <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">分類</label>
         <div className="flex gap-3">
@@ -101,7 +85,7 @@ export default function FacilityLedgerForm({
             key={bunya}
             name="facilitySubType"
             disabled={!bunya}
-            defaultValue=""
+            defaultValue={initial.facilitySubType}
             className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">未選択</option>
@@ -121,7 +105,7 @@ export default function FacilityLedgerForm({
         <input
           type="text"
           name="managementNo"
-          defaultValue={initial?.managementNo}
+          defaultValue={initial.managementNo}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
@@ -133,7 +117,7 @@ export default function FacilityLedgerForm({
         <input
           type="text"
           name="name"
-          defaultValue={initial?.name}
+          defaultValue={initial.name}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
@@ -169,7 +153,7 @@ export default function FacilityLedgerForm({
         <input
           type="text"
           name="location"
-          defaultValue={initial?.location}
+          defaultValue={initial.location}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
@@ -181,23 +165,17 @@ export default function FacilityLedgerForm({
         <LocationPickerMap
           latName="latitude"
           lngName="longitude"
-          initialLatitude={initial?.latitude ? Number(initial.latitude) : null}
-          initialLongitude={initial?.longitude ? Number(initial.longitude) : null}
+          initialLatitude={initial.latitude ? Number(initial.latitude) : null}
+          initialLongitude={initial.longitude ? Number(initial.longitude) : null}
         />
       </div>
-
-      <label className="block text-sm">
-        <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-          台帳の画像ファイル（必須。スキャン画像等。同じ施設の調書・図面等を複数枚まとめて選択できます。タブ名は「画像1」「画像2」…で登録され、登録後に自由に変更できます）
-        </span>
-        <input type="file" name="images" accept="image/*" required multiple className="block w-full text-sm" />
-      </label>
 
       <label className="block text-sm">
         <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">備考</span>
         <textarea
           name="note"
           rows={3}
+          defaultValue={initial.note}
           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </label>
@@ -207,7 +185,7 @@ export default function FacilityLedgerForm({
         disabled={isPending}
         className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600 disabled:opacity-50"
       >
-        {isPending ? "登録中..." : "登録する"}
+        {isPending ? "保存中..." : "保存する"}
       </button>
 
       {state && !state.ok && (
@@ -215,6 +193,7 @@ export default function FacilityLedgerForm({
           {state.error}
         </p>
       )}
+      {state && state.ok && <p className="text-sm text-green-700 dark:text-green-400">保存しました。</p>}
     </form>
   );
 }

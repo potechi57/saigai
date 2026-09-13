@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { RESPONSE_META, responseMeta, formatFacilityType } from "@/lib/labels";
+import { RESPONSE_META, responseMeta, formatFacilityType, facilityLedgerDisplayName } from "@/lib/labels";
 import { facilityTaxonomyEmoji } from "@/lib/facility-taxonomy";
 import { haversineDistanceMeters, formatDistanceMeters } from "@/lib/geo";
 import { setHomeLocation, clearHomeLocation } from "@/lib/actions/settings-actions";
@@ -30,22 +30,32 @@ export type MapKarte = {
   lastInspectionDateLabel?: string | null; // 最終点検日時（表示用に整形済みの文字列）
 };
 
-// トンネル台帳等、道路防災カルテ（Karte）とは別枠の台帳（画像1枚＋最低限の
-// 基本情報のみ。prisma/schema.prismaのFacilityLedger参照）。カルテの検索条件とは
-// 無関係に、緯度経度が登録されているものは常に地図へ表示する（件数が少ない想定のため、
-// カルテのような「検索するまで表示しない」制御はしていない）。
+// トンネル台帳等、道路防災カルテ（Karte）とは別枠の台帳（画像1枚以上＋最低限の
+// 基本情報。prisma/schema.prismaのFacilityLedger参照）。このコンポーネント
+// 自体は受け取ったledgersをそのまま描画するだけで絞り込みはしない。表示対象の
+// 絞り込み（現在のタブ・分野・施設名称が特定されたものだけに限る）は呼び出し元の
+// app/karte/page.tsx（ledgerWhere）側で行っている（以前はここでの絞り込みが
+// 一切無く常時全件表示だったため、他タブ・他分類の台帳が地図に残り続ける不具合に
+// なっていた）。
+//
+// 1施設で複数枚の画像（調書・図面等）を持てるため（会話ログ参照）、ポップアップには
+// 代表画像（先頭の1枚）だけをサムネイル表示し、全ての画像を見る・タブ名を変更する・
+// 画像を追加するには詳細画面（/ledgers/[id]）へのリンクをたどってもらう
+// （会話ログ「map上からこの施設専用のページに飛べる仕様にできませんか」参照）。
 export type MapLedger = {
   id: string;
   docClassLabel: string; // 「法令台帳」「施設台帳」（prisma/schema.prismaのFacilityLedgerDocClass参照）
   facilityTypeLabel?: string | null; // 分野・施設名称（lib/labels.tsのformatFacilityTypeで組み立て済み）
   facilityType?: string | null; // アイコン絵文字の判定用（facilityIconEmoji参照）
   facilitySubType?: string | null;
+  managementNo?: string | null; // 管理番号（無い施設も多い。lib/labels.tsのfacilityLedgerDisplayName参照）
   name?: string | null;
   routeName?: string | null;
   location?: string | null;
   latitude: number;
   longitude: number;
-  imageUrl: string;
+  coverImageUrl?: string | null; // 代表画像（先頭の1枚）。1枚も無ければnull
+  imageCount: number; // ポップアップに「他N枚」等の案内を出すために使う
   note?: string | null;
 };
 
@@ -338,17 +348,24 @@ export default function MapView({
       const marker = L.marker([l.latitude, l.longitude], {
         icon: buildLedgerMarkerIcon(l.facilityType, l.facilitySubType),
       }).addTo(layer);
+      const displayName = facilityLedgerDisplayName(l.managementNo, l.name);
+      const detailHref = `/ledgers/${l.id}`;
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
-           <div style="font-weight:600;">${escapeHtml(l.name ?? "（名称未設定）")}</div>
+           <div style="font-weight:600;">${escapeHtml(displayName)}</div>
            <div style="color:#666;">${escapeHtml(l.docClassLabel)}${l.facilityTypeLabel ? `・${escapeHtml(l.facilityTypeLabel)}` : ""}</div>
            ${l.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(l.routeName)}</div>` : ""}
            ${l.location ? `<div style="color:#374151;">所在地: ${escapeHtml(l.location)}</div>` : ""}
-           <a href="${escapeHtml(l.imageUrl)}" target="_blank" rel="noreferrer" style="display:block;margin-top:6px;">
-             <img src="${escapeHtml(l.imageUrl)}" style="width:350px;max-width:350px;object-fit:contain;border-radius:4px;border:1px solid #d1d5db;display:block;" />
-           </a>
+           ${
+             l.coverImageUrl
+               ? `<a href="${escapeHtml(detailHref)}" style="display:block;margin-top:6px;">
+                    <img src="${escapeHtml(l.coverImageUrl)}" style="width:350px;max-width:350px;object-fit:contain;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+                  </a>`
+               : ""
+           }
+           ${l.imageCount > 1 ? `<div style="margin-top:2px;color:#9ca3af;">他${l.imageCount - 1}枚の画像</div>` : ""}
            ${l.note ? `<div style="margin-top:6px;color:#374151;white-space:pre-wrap;">${escapeHtml(l.note)}</div>` : ""}
-           <div style="margin-top:6px;"><a href="/ledgers" style="color:#2563eb;">台帳一覧を見る →</a></div>
+           <div style="margin-top:6px;"><a href="${escapeHtml(detailHref)}" style="color:#2563eb;">この施設の詳細を見る →</a></div>
          </div>`,
         { maxWidth: 400 }
       );
