@@ -98,7 +98,10 @@ export type MapGateSignInspection = {
   inspectionDateLabel?: string | null;
   latitude: number;
   longitude: number;
-  coverPhotoUrl?: string | null;
+  // 全景写真（起点側・終点側。lib/excel/gate-sign-inspection-import.tsの
+  // extractForm1OverviewPhotos参照）。両方をポップアップに表示する
+  // （会話ログ「マップ上にも起点側と終点側の両方を表示してください」参照）。
+  overviewPhotos: { url: string; caption: string | null }[];
   facilityListItemId?: string | null; // 施設台帳の該当行（紐付いていればリンクを出す）
 };
 
@@ -455,10 +458,17 @@ export default function MapView({
            ${g.location ? `<div style="color:#374151;">所在地: ${escapeHtml(g.location)}</div>` : ""}
            ${g.inspectionDateLabel ? `<div style="color:#374151;">点検実施日: ${escapeHtml(g.inspectionDateLabel)}</div>` : ""}
            ${
-             g.coverPhotoUrl
-               ? `<a href="${escapeHtml(detailHref)}" style="display:block;margin-top:6px;">
-                    <img src="${escapeHtml(g.coverPhotoUrl)}" style="width:350px;max-width:350px;object-fit:contain;border-radius:4px;border:1px solid #d1d5db;display:block;" />
-                  </a>`
+             g.overviewPhotos.length > 0
+               ? `<div style="display:flex;gap:6px;margin-top:6px;">
+                    ${g.overviewPhotos
+                      .map(
+                        (p) => `<a href="${escapeHtml(detailHref)}" style="display:block;flex:1 1 0;min-width:0;">
+                          <img src="${escapeHtml(p.url)}" style="width:100%;max-width:170px;aspect-ratio:4/3;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+                          ${p.caption ? `<div style="margin-top:2px;text-align:center;color:#6b7280;font-size:11px;">${escapeHtml(p.caption)}</div>` : ""}
+                        </a>`
+                      )
+                      .join("")}
+                  </div>`
                : ""
            }
            ${

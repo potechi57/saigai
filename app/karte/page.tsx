@@ -435,7 +435,10 @@ export default async function KarteListPage({
       where: gateSignWhere,
       orderBy: { createdAt: "desc" },
       include: {
-        overviewPhotos: { orderBy: { sortOrder: "asc" }, take: 1 },
+        // 起点側・終点側の両方をポップアップに出すため、代表1枚だけでなく
+        // 全景写真を全件取得する（通常は最大2枚。会話ログ「マップ上にも起点側と
+        // 終点側の両方を表示してください」参照）。
+        overviewPhotos: { orderBy: { sortOrder: "asc" } },
         facilityListItem: { select: { id: true } },
       },
     }),
@@ -476,7 +479,7 @@ export default async function KarteListPage({
     inspectionDateLabel: g.inspectionDate ? new Date(g.inspectionDate).toLocaleDateString("ja-JP") : null,
     latitude: Number(g.latitude),
     longitude: Number(g.longitude),
-    coverPhotoUrl: g.overviewPhotos[0]?.url ?? null,
+    overviewPhotos: g.overviewPhotos.map((p) => ({ url: p.url, caption: p.caption })),
     facilityListItemId: g.facilityListItem?.id ?? null,
   }));
 

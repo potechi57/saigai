@@ -95,18 +95,29 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
       {overviewLightboxPhotos.length > 0 && (
         <div className="border-t border-gray-300 p-4 dark:border-gray-700">
           <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">全景写真</h3>
+          {/* 元Excelでは左＝起点側、右＝終点側の並びで貼り付けられており
+              （extractForm1OverviewPhotosで列位置ソート済み）、この並び順自体は
+              維持されているが、キャプション文字列がalt/titleにしか入っておらず
+              画面上に見えていなかったため、起終点のどちらか一目で分からなかった
+              （会話ログ「起終点がどちらかわかるように配置してください」参照）。
+              写真の下にキャプションを常時表示する（karte詳細画面の「現状記録写真」
+              タブと同じ見せ方）。 */}
           <PhotoLightboxGroup photos={overviewLightboxPhotos}>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3">
               {overviewLightboxPhotos.map((p, i) => (
-                <PhotoLightboxThumbnail key={p.id} index={i}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.url}
-                    alt={p.caption ?? "全景写真"}
-                    title={p.caption ?? undefined}
-                    className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
-                  />
-                </PhotoLightboxThumbnail>
+                <div key={p.id}>
+                  <PhotoLightboxThumbnail index={i}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.url}
+                      alt={p.caption ?? "全景写真"}
+                      className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                    />
+                  </PhotoLightboxThumbnail>
+                  {p.caption && (
+                    <p className="mt-1 text-center text-xs font-medium text-gray-600 dark:text-gray-300">{p.caption}</p>
+                  )}
+                </div>
               ))}
             </div>
           </PhotoLightboxGroup>
