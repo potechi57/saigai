@@ -140,6 +140,12 @@ const FACILITY_LEDGER_ITEM_FIELD_MATCH: Record<FieldKey, string[]> = {
 // 点検調書タブの分野。「災害」が防災カルテ点検（Karte）に対応する唯一の
 // 実装済み分野で、それ以外は施設台帳と同じ施設分野に対応した点検調書
 // （FacilityInspectionRecordの横断検索）を将来置く想定の骨格のみ。
+// 「災害」だけは施設名称（橋梁・トンネル等）の概念が無く、代わりに専用の
+// 検索フォーム（従来の防災カルテ点検）を表示するという特別扱いにしている
+// （下記JSX参照）。それ以外の分野は施設台帳と同じく施設名称のドリルダウンを
+// 持つが、独立して用意したINSPECTION_TYPESを使う（施設台帳のFACILITY_LEDGER_
+// ITEM_TYPESとは別物。同じ「道路」「橋梁」という名前でも中身は別データという
+// 方針のため、定義を使い回さない）。
 const INSPECTION_FIELDS: FieldDef[] = [
   { key: "disaster", label: "災害" },
   { key: "road", label: "道路" },
@@ -147,6 +153,35 @@ const INSPECTION_FIELDS: FieldDef[] = [
   { key: "airport", label: "空港" },
   { key: "sabo", label: "砂防" },
 ];
+// 点検調書側はFacilityInspectionRecordの横断検索がまだ無いため、「災害」以外は
+// 全ての施設名称が未実装（matchが無い＝準備中）。
+const INSPECTION_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
+  road: [
+    { label: "道路共通" },
+    { label: "橋梁" },
+    { label: "トンネル" },
+    { label: "道路法面構造物" },
+    { label: "舗装" },
+    { label: "道路標識" },
+    { label: "道路照明" },
+    { label: "シェッド・シェルター" },
+    { label: "大型カルバート" },
+    { label: "道路情報提供装置" },
+    { label: "電線共同溝" },
+    { label: "冠水対策施設" },
+    { label: "消融雪設備" },
+    { label: "道の駅" },
+  ],
+  river_coast: [
+    { label: "河川共通" },
+    { label: "河川管理施設" },
+    { label: "海岸共通" },
+    { label: "海岸保全施設" },
+    { label: "ダム施設" },
+  ],
+  airport: [{ label: "空港施設" }],
+  sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
+};
 
 type SearchParams = {
   q?: string; // 施設管理番号（カルテ側）
@@ -166,6 +201,7 @@ type SearchParams = {
   ledgerBunya?: string; // 法令台帳タブの分野
   ledgerShisetsu?: string; // 法令台帳タブの施設名称
   inspBunya?: string; // 点検調書タブの分野（既定は"disaster"＝災害）
+  inspShisetsu?: string; // 点検調書タブの施設名称（分野が"disaster"以外のとき）
   soundnessGrade?: string;
   cat?: string; // 最上位タブ: "ledger"（法令台帳）|"facility"（施設台帳）|"inspection"（点検調書。既定）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
@@ -236,8 +272,10 @@ export default async function KarteListPage({
   const view: "map" | "list" = params.view === "list" ? "list" : "map";
   const cat: "ledger" | "facility" | "inspection" =
     params.cat === "ledger" ? "ledger" : params.cat === "facility" ? "facility" : "inspection";
-  // 点検調書タブの分野（既定は「災害」＝従来の防災カルテ点検）。
+  // 点検調書タブの分野（既定は「災害」＝従来の防災カルテ点検）・施設名称。
   const inspectionBunya = cat === "inspection" ? (params.inspBunya ?? "disaster") : "disaster";
+  const inspectionShisetsu =
+    cat === "inspection" && inspectionBunya !== "disaster" ? (params.inspShisetsu ?? null) : null;
   // 施設台帳タブの分野・施設名称（未選択の場合はnull）。
   const facilityBunya = cat === "facility" ? (params.facBunya ?? null) : null;
   const facilityShisetsu = cat === "facility" && facilityBunya ? (params.facShisetsu ?? null) : null;
@@ -498,7 +536,9 @@ export default async function KarteListPage({
   const ledgerShisetsuHref = (fieldKey: string, label: string) =>
     `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: label } })}`;
   const inspectionFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey } })}`;
+    `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey, inspShisetsu: undefined } })}`;
+  const inspectionShisetsuHref = (fieldKey: string, label: string) =>
+    `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey, inspShisetsu: label } })}`;
 
   return (
     // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
@@ -603,6 +643,9 @@ export default async function KarteListPage({
               <input type="hidden" name="facShisetsu" defaultValue={facilityShisetsu} />
             )}
             {cat === "inspection" && <input type="hidden" name="inspBunya" defaultValue={inspectionBunya} />}
+            {cat === "inspection" && inspectionShisetsu && (
+              <input type="hidden" name="inspShisetsu" defaultValue={inspectionShisetsu} />
+            )}
 
             {/* --- 共通フィールド（管理番号・路線名・所在地）。点検調書・施設台帳の
                 どちらでも意味が同じ条件のため、タブの外に1つだけ配置する。name属性は
@@ -700,9 +743,30 @@ export default async function KarteListPage({
                     </div>
                   </>
                 ) : (
-                  <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                    準備中です。この分野の点検調書はまだ登録されていません。
-                  </p>
+                  <>
+                    {/* 「災害」以外の分野は、施設台帳と同じ形式で施設名称のドリルダウンを
+                        もう1段持たせる（例: 道路→橋梁・トンネル・道路法面構造物等）。
+                        FacilityInspectionRecordの横断検索がまだ無いため、選んでも
+                        「準備中」表示になる（INSPECTION_TYPES参照）。 */}
+                    <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
+                      {INSPECTION_TYPES[inspectionBunya]?.map((t) => (
+                        <PendingLink
+                          key={t.label}
+                          href={inspectionShisetsuHref(inspectionBunya, t.label)}
+                          className={`rounded-full border px-2 py-0.5 text-xs ${
+                            inspectionShisetsu === t.label
+                              ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                              : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+                          }`}
+                        >
+                          {t.label}（準備中）
+                        </PendingLink>
+                      ))}
+                    </div>
+                    <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                      準備中です。この分野の点検調書はまだ登録されていません。
+                    </p>
+                  </>
                 )}
               </>
             ) : (
