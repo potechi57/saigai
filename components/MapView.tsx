@@ -656,21 +656,28 @@ export default function MapView({
         </div>
       )}
 
-      {/* 凡例（左下）。常時表示する情報はここに限定し、それ以外はマーカー選択時の
-          ポップアップに追い出すことで、地図上の情報量を最小限にとどめている。 */}
-      <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-2 rounded bg-white/90 px-2 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-900/90 dark:text-gray-300">
-        {Object.entries(RESPONSE_META).map(([key, meta]) => (
-          <span key={key} className="flex items-center gap-1">
-            <span
-              style={{ background: meta.color }}
-              className="inline-block h-3 w-3 rounded-full text-center text-[8px] leading-3 text-white"
-            >
-              {meta.mark}
+      {/* 凡例（左下。対応区分の色・記号の説明）。常時表示する情報はここに限定し、
+          それ以外はマーカー選択時のポップアップに追い出すことで、地図上の情報量を
+          最小限にとどめている。ただし、この凡例自体はカルテ（点検調書＞災害）の
+          対応区分にしか対応しないため、カルテのピンが1つも表示されていない
+          （施設台帳・法令台帳・門型標識等、他の分類を見ている）ときにまで常時
+          出していると、「関係ないカルテの凡例が常に表示されている」状態になって
+          しまう（会話ログ参照）。カルテのピンが実際にある場合だけ表示する。 */}
+      {kartes.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-2 rounded bg-white/90 px-2 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-900/90 dark:text-gray-300">
+          {Object.entries(RESPONSE_META).map(([key, meta]) => (
+            <span key={key} className="flex items-center gap-1">
+              <span
+                style={{ background: meta.color }}
+                className="inline-block h-3 w-3 rounded-full text-center text-[8px] leading-3 text-white"
+              >
+                {meta.mark}
+              </span>
+              {meta.label}
             </span>
-            {meta.label}
-          </span>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* 現在地・ホーム位置の操作（右上）。ズームコントロールは左上のLeaflet標準位置の
           ままなので、右上に置いて重ならないようにしている。 */}

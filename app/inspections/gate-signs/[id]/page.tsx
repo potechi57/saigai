@@ -7,7 +7,6 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import SheetTabs from "@/components/SheetTabs";
-import { seqToCircledNumber } from "@/lib/excel/karte-import";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +18,13 @@ const JUDGMENT_BADGE: Record<string, string> = {
 };
 
 // 点検調書（道路＞門型標識）1件の詳細画面（会話ログ参照）。様式（その１）
-// 相当の基本情報と、様式（その２）相当の損傷箇所ごとの写真付きカードを表示する。
+// 相当の基本情報タブと、様式（その２）相当（状況写真・損傷箇所ごとの詳細）の
+// タブを、元Excelのシート構成のまま「様式１」「様式２(1)」「様式２(2)」…と
+// 横並びに切り替えるタブ表示にする（karte詳細画面の様式Ａ〜Ｄ・現状記録写真と
+// 同じ、1つのSheetTabsに全シートをまとめる構成。会話ログ「様式1と様式２を
+// 縦に並べるのではなく...様式１、様式２(1)、様式2(２)というようにタブで
+// 表示してください」参照。以前は様式１・様式２を別々のセクションとして縦に
+// 並べ、様式２の中だけをタブで分けていた）。
 export default async function GateSignInspectionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const insp = await prisma.gateSignInspection.findUnique({
@@ -38,8 +43,8 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   // 元Excelの「状況写真（損傷状況）」シート（様式（その２）／様式（その２）2／
   // 様式（その２）3…）ごとにタブを分ける（会話ログ「エクセルに合わせて、状況写真の
   // タブを３つ作ってください...タブが4つ5つあるものは、それに合わせて複数作成
-  // できる仕様に」参照）。karte詳細画面の「現状記録写真」タブと同じ、pageNoで
-  // グループ化する方式（lib/excel/gate-sign-inspection-import.ts参照）。
+  // できる仕様に」参照）。pageNoでグループ化する
+  // （lib/excel/gate-sign-inspection-import.ts参照）。
   const pageGroups: { pageNo: number; members: GateSignInspectionMember[] }[] = [];
   for (const m of insp.members) {
     let group = pageGroups.find((g) => g.pageNo === m.pageNo);
@@ -50,6 +55,65 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
     group.members.push(m);
   }
   pageGroups.sort((a, b) => a.pageNo - b.pageNo);
+
+  const form1 = (
+    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">基本情報（様式１）</h2>
+      </div>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
+        <Field label="施設名" value={insp.facilityName} />
+        <Field label="形式" value={insp.facilityForm} />
+        <Field label="路線名" value={insp.routeName} />
+        <Field label="所在地" value={insp.location} />
+        <Field
+          label="緯度経度"
+          value={insp.latitude != null && insp.longitude != null ? `${insp.latitude}, ${insp.longitude}` : null}
+        />
+        <Field
+          label="定期点検実施年月日"
+          value={insp.inspectionDate ? new Date(insp.inspectionDate).toLocaleDateString("ja-JP") : null}
+        />
+        <Field label="定期点検者" value={insp.inspectorCompany} />
+        <Field label="記録者" value={insp.inspectorName} />
+        <Field label="管理者名" value={insp.managerOrgName} />
+        <Field label="代替路の有無" value={insp.hasAlternateRoute} />
+        <Field label="緊急輸送道路" value={insp.emergencyTransportRoad} />
+        <Field label="自専道or一般道" value={insp.roadCategory} />
+        <Field label="占用物件" value={insp.occupyingObjects} />
+        <Field
+          label="設置年月"
+          value={insp.installedYear ? `${insp.installedYear}年${insp.installedMonth ?? ""}月` : null}
+        />
+        <Field label="道路幅員(ｍ)" value={insp.roadWidthM != null ? String(insp.roadWidthM) : null} />
+        <Field label="構造形式" value={insp.structureType} />
+        <div className="sm:col-span-2">
+          <Field label="門型標識等毎の健全性の診断（所見）" value={insp.overallFindings} />
+        </div>
+      </dl>
+
+      {overviewLightboxPhotos.length > 0 && (
+        <div className="border-t border-gray-300 p-4 dark:border-gray-700">
+          <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">全景写真</h3>
+          <PhotoLightboxGroup photos={overviewLightboxPhotos}>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {overviewLightboxPhotos.map((p, i) => (
+                <PhotoLightboxThumbnail key={p.id} index={i}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={p.caption ?? "全景写真"}
+                    title={p.caption ?? undefined}
+                    className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                  />
+                </PhotoLightboxThumbnail>
+              ))}
+            </div>
+          </PhotoLightboxGroup>
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6">
@@ -87,83 +151,16 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         </p>
       )}
 
-      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">基本情報（様式１）</h2>
-        </div>
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
-          <Field label="施設名" value={insp.facilityName} />
-          <Field label="形式" value={insp.facilityForm} />
-          <Field label="路線名" value={insp.routeName} />
-          <Field label="所在地" value={insp.location} />
-          <Field
-            label="緯度経度"
-            value={insp.latitude != null && insp.longitude != null ? `${insp.latitude}, ${insp.longitude}` : null}
-          />
-          <Field
-            label="定期点検実施年月日"
-            value={insp.inspectionDate ? new Date(insp.inspectionDate).toLocaleDateString("ja-JP") : null}
-          />
-          <Field label="定期点検者" value={insp.inspectorCompany} />
-          <Field label="記録者" value={insp.inspectorName} />
-          <Field label="管理者名" value={insp.managerOrgName} />
-          <Field label="代替路の有無" value={insp.hasAlternateRoute} />
-          <Field label="緊急輸送道路" value={insp.emergencyTransportRoad} />
-          <Field label="自専道or一般道" value={insp.roadCategory} />
-          <Field label="占用物件" value={insp.occupyingObjects} />
-          <Field
-            label="設置年月"
-            value={insp.installedYear ? `${insp.installedYear}年${insp.installedMonth ?? ""}月` : null}
-          />
-          <Field label="道路幅員(ｍ)" value={insp.roadWidthM != null ? String(insp.roadWidthM) : null} />
-          <Field label="構造形式" value={insp.structureType} />
-          <div className="sm:col-span-2">
-            <Field label="門型標識等毎の健全性の診断（所見）" value={insp.overallFindings} />
-          </div>
-        </dl>
-
-        {overviewLightboxPhotos.length > 0 && (
-          <div className="border-t border-gray-300 p-4 dark:border-gray-700">
-            <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">全景写真</h3>
-            <PhotoLightboxGroup photos={overviewLightboxPhotos}>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {overviewLightboxPhotos.map((p, i) => (
-                  <PhotoLightboxThumbnail key={p.id} index={i}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.url}
-                      alt={p.caption ?? "全景写真"}
-                      title={p.caption ?? undefined}
-                      className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
-                    />
-                  </PhotoLightboxThumbnail>
-                ))}
-              </div>
-            </PhotoLightboxGroup>
-          </div>
-        )}
-      </section>
-
-      <section className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            状況写真（損傷状況）（様式２。{insp.members.length}件）
-          </h2>
-        </div>
-        {pageGroups.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">
-            部材単位の健全性の診断が全てⅠ（損傷なし）のため、詳細カードはありません。
-          </p>
-        ) : (
-          <SheetTabs
-            tabs={pageGroups.map((g, i) => ({
-              id: `page-${g.pageNo}`,
-              label: seqToCircledNumber(i + 1),
-              content: <GateSignMemberPage key={g.pageNo} inspection={insp} members={g.members} />,
-            }))}
-          />
-        )}
-      </section>
+      <SheetTabs
+        tabs={[
+          { id: "form1", label: "様式１", content: form1 },
+          ...pageGroups.map((g, i) => ({
+            id: `form2-${g.pageNo}`,
+            label: `様式２(${i + 1})`,
+            content: <GateSignMemberPage key={g.pageNo} inspection={insp} members={g.members} />,
+          })),
+        ]}
+      />
 
       <form action={deleteGateSignInspection.bind(null, insp.id)}>
         <ConfirmSubmitButton
@@ -187,12 +184,15 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-// 状況写真（損傷状況）の1ページ分（＝元Excelの様式（その２）系シート1枚分）。
-// karte詳細画面の「現状記録写真」タブ（app/karte/[karteNo]/page.tsxの
-// formRecordPhotos）と同じ考え方: 上部に基礎情報の一部（元Excelの各ページに
-// 繰り返し出てくるヘッダー相当）を出し、その下に写真を2×2で並べる
-// （会話ログ「上に基礎情報の一部が表示され、2×2で写真が配置され、部材名、
-// 変状の種類、健全性の診断、応急処置、所見、備考欄を作ってください」参照）。
+// 状況写真（損傷状況）の1ページ分（＝元Excelの様式（その２）系シート1枚分。
+// 「様式２(n)」タブの中身）。karte詳細画面の「現状記録写真」タブと同じ考え方:
+// 上部に基礎情報の一部（元Excelの各ページに繰り返し出てくるヘッダー相当）を出し、
+// その下に写真を2×2で並べる（会話ログ「上に基礎情報の一部が表示され、2×2で
+// 写真が配置され、部材名、変状の種類、健全性の診断、応急処置、所見、備考欄を
+// 作ってください」参照）。members.length===0の場合（損傷カード無し＝判定区分Ⅰ）
+// も、タブ自体はpageGroupsが無ければ生成されない＝様式２(n)自体が存在しない
+// ため、ここでの「このページには損傷カードがありません」表示は実質発生しない
+// （念のためのフォールバックとして残す）。
 function GateSignMemberPage({
   inspection,
   members,
@@ -203,10 +203,13 @@ function GateSignMemberPage({
   const photos = members.filter((m) => m.photoUrl).map((m) => ({ id: m.id, url: m.photoUrl!, caption: m.memberDetail ?? m.memberName }));
 
   return (
-    <div>
+    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">状況写真（損傷状況）（{members.length}件）</h2>
+      </div>
       {/* 基礎情報の一部（元Excelの様式２各ページに繰り返し出てくるヘッダー相当）。
-          全項目の詳細は上の「基本情報（様式１）」に一元化してあるため、ここでは
-          そのページの写真がどの施設・いつの点検かがすぐ分かる程度の抜粋に絞る。 */}
+          全項目の詳細は「様式１」タブに一元化してあるため、ここではそのページの
+          写真がどの施設・いつの点検かがすぐ分かる程度の抜粋に絞る。 */}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-b border-gray-200 bg-gray-50 p-3 text-xs dark:border-gray-700 dark:bg-gray-800 sm:grid-cols-4">
         <Field
           label="施設名（形式）"
@@ -275,6 +278,6 @@ function GateSignMemberPage({
           </div>
         </PhotoLightboxGroup>
       )}
-    </div>
+    </section>
   );
 }
