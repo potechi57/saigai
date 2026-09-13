@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import Form from "next/form";
 import { type Prisma, KarteType, ResponseCategory } from "@prisma/client";
@@ -15,13 +16,128 @@ import PendingLink from "@/components/PendingLink";
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
 export const dynamic = "force-dynamic";
 
-// 検索条件は「防災カルテ点検」側と「施設一覧」側で完全に別のキーにしている
+// 検索条件は「点検調書」側と「施設台帳」側で完全に別のキーにしている
 // （対象施設・対象事象が異なるため、絞り込み条件も別物になる。詳細はGROUPS参照:
 // app/import/page.tsx）。KARTE_PARAM_KEYS/FACILITY_PARAM_KEYSは、hasSearched判定
 // （キーの有無で判定）・条件クリア・もう片方の検索状態の保持（隠しinputでの引き継ぎ）
 // の3箇所で共通して使うため、配列としてまとめている。
 const KARTE_PARAM_KEYS = ["q", "routeName", "routeNo", "location", "karteType", "responseCategory"] as const;
-const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "facilityType", "soundnessGrade"] as const;
+const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "bunya", "shisetsu", "soundnessGrade"] as const;
+
+// ── 分類体系（島根県公共土木施設台帳の分類。会話ログ参照） ─────────────────
+// 最上位タブは「法令台帳」「施設台帳」「点検調書」の3つで、それぞれ完全に独立した
+// 「分野→施設名称」の階層を持つ（法令台帳内の「道路」と施設台帳内の「道路」は
+// 別物であり、まとめない。ユーザー指摘済み）。
+//
+// 現時点では実データ・実機能があるのは「施設台帳」タブの道路分野（法面構造物・
+// 道路標識）と、「法令台帳」タブの道路×トンネル（既存の/ledgers機能）のみ。
+// それ以外は分類の骨格だけを表示し、選択すると「準備中」と案内する
+// （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
+type FieldKey = string;
+type FieldDef = { key: FieldKey; label: string };
+// 施設名称のmatchは、実データのfacilityType/facilitySubType文字列に対する
+// 部分一致キーワード（いずれかを含めば該当）。matchが無いものは実データが無く
+// 未検証のため、選択すると「準備中」表示になる。
+type FacilityTypeDef = { label: string; match?: string[] };
+
+const FACILITY_LEDGER_FIELDS: FieldDef[] = [
+  { key: "road", label: "道路" },
+  { key: "river_coast", label: "河川・海岸" },
+  { key: "port", label: "港湾" },
+  { key: "sabo", label: "砂防" },
+  { key: "landslide_prevention", label: "地すべり防止区域" },
+  { key: "park", label: "公園" },
+  { key: "airport", label: "空港" },
+  { key: "avalanche_prevention", label: "雪崩対策施設" },
+  { key: "sediment_disaster_warning", label: "土砂災害予警報システム" },
+];
+const FACILITY_LEDGER_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
+  road: [
+    { label: "道路共通" },
+    { label: "橋梁" },
+    { label: "トンネル", match: ["トンネル"] }, // 唯一/ledgersに実データがある
+    { label: "道路法面構造物" },
+    { label: "舗装" },
+    { label: "道路標識" },
+    { label: "道路照明" },
+    { label: "シェッド・シェルター" },
+    { label: "大型カルバート" },
+    { label: "道路情報提供装置" },
+    { label: "電線共同溝" },
+    { label: "冠水対策施設" },
+    { label: "消融雪設備" },
+    { label: "道の駅" },
+  ],
+  river_coast: [
+    { label: "河川共通" },
+    { label: "河川管理施設" },
+    { label: "海岸共通" },
+    { label: "海岸保全施設" },
+    { label: "ダム施設" },
+  ],
+  port: [{ label: "港湾共通" }, { label: "港湾施設" }],
+  sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
+  landslide_prevention: [{ label: "地すべり防止施設" }],
+  park: [{ label: "都市公園" }],
+  airport: [{ label: "空港施設" }],
+  avalanche_prevention: [{ label: "雪崩対策施設" }],
+  sediment_disaster_warning: [{ label: "土砂災害予警報システム" }],
+};
+
+// 施設台帳タブの分野は、現時点で実データ（FacilityListItem）がある道路分野を
+// 中心に、島根県の分類のうち施設台帳が実際に存在しうる分野に絞った
+// （ユーザー提示の一覧: 道路・河川海岸・空港・砂防）。
+const FACILITY_LEDGER_ITEM_FIELDS: FieldDef[] = [
+  { key: "road", label: "道路" },
+  { key: "river_coast", label: "河川・海岸" },
+  { key: "airport", label: "空港" },
+  { key: "sabo", label: "砂防" },
+];
+const FACILITY_LEDGER_ITEM_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
+  road: [
+    { label: "道路共通" },
+    { label: "橋梁", match: ["橋"] },
+    { label: "トンネル", match: ["トンネル"] },
+    { label: "道路法面構造物", match: ["法面"] },
+    { label: "舗装" },
+    { label: "道路標識", match: ["標識"] },
+    { label: "道路照明" },
+    { label: "シェッド・シェルター" },
+    { label: "大型カルバート" },
+    { label: "道路情報提供装置" },
+    { label: "電線共同溝" },
+    { label: "冠水対策施設" },
+    { label: "消融雪設備" },
+    { label: "道の駅" },
+  ],
+  river_coast: [
+    { label: "河川共通" },
+    { label: "河川管理施設" },
+    { label: "海岸共通" },
+    { label: "海岸保全施設" },
+    { label: "ダム施設" },
+  ],
+  airport: [{ label: "空港施設" }],
+  sabo: [{ label: "砂防えん堤" }, { label: "渓流保全工" }, { label: "砂防河川共通" }],
+};
+// 分野そのものの判定キーワード（facilityType/facilitySubTypeへの部分一致）。
+const FACILITY_LEDGER_ITEM_FIELD_MATCH: Record<FieldKey, string[]> = {
+  road: ["道路"],
+  river_coast: ["河川", "海岸"],
+  airport: ["空港"],
+  sabo: ["砂防"],
+};
+
+// 点検調書タブの分野。「災害」が防災カルテ点検（Karte）に対応する唯一の
+// 実装済み分野で、それ以外は施設台帳と同じ施設分野に対応した点検調書
+// （FacilityInspectionRecordの横断検索）を将来置く想定の骨格のみ。
+const INSPECTION_FIELDS: FieldDef[] = [
+  { key: "disaster", label: "災害" },
+  { key: "road", label: "道路" },
+  { key: "river_coast", label: "河川・海岸" },
+  { key: "airport", label: "空港" },
+  { key: "sabo", label: "砂防" },
+];
 
 type SearchParams = {
   q?: string; // 施設管理番号（カルテ側）
@@ -30,12 +146,13 @@ type SearchParams = {
   location?: string;
   karteType?: string; // 災害区分
   responseCategory?: string;
-  fq?: string; // 管理番号（施設一覧側）
+  fq?: string; // 管理番号（施設台帳側）
   facRouteName?: string;
   facLocation?: string;
-  facilityType?: string;
+  bunya?: string; // 分野（施設台帳・点検調書・法令台帳で共通のキー名だが、値の意味はタブごとに独立）
+  shisetsu?: string; // 施設名称
   soundnessGrade?: string;
-  tab?: string; // "facility"のときだけ施設一覧タブを表示する（既定はカルテ）
+  cat?: string; // 最上位タブ: "ledger"（法令台帳）|"facility"（施設台帳）|"inspection"（点検調書。既定）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
 };
 
@@ -58,17 +175,31 @@ function buildQuery(
 // 「地図を中心とした画面」（ホーム画面）。指示書19章の方針に沿い、検索画面（6章）・
 // カルテ一覧画面（8章）・地図検索画面（7章）を1画面に統合している。
 //
-// 検索条件パネルは「防災カルテ点検」「施設一覧」をタブで切り替える構成に
-// している（縦に2つのフォームを並べると長くなりすぎるため）。施設一覧側は、
-// 法面構造物・道路標識等の道路附属物・橋梁等、施設種別を問わず同じ「施設一覧」形式の
-// Excelから取り込まれたデータをまとめて検索する（施設種別ごとにタブを分けていない。
-// 詳細はapp/import/page.tsxのコメント参照）。ただし管理番号・路線名・所在地はどちらの
-// 系統でも意味が同じ条件のため、タブの外（上）に共通フィールドとして1つだけ配置し、
-// タブ内には各系統固有の条件（カルテ側：災害区分・対応区分・路線番号、施設一覧側：
-// 施設種別・健全度）だけを置く。共通フィールドの実体（name属性）はタブごとに異なる
-// DB項目に対応する（カルテ側はq/routeName/location、施設一覧側はfq/facRouteName/
-// facLocation）が、これは表示中のタブに応じてinputのnameを切り替えることで実現している
-// （下記JSX参照）。
+// 検索条件パネルは、島根県の公共土木施設台帳の分類（会話ログ参照。
+// https://www.pref.shimane.lg.jp/infra/kouji/kouji_info/rokyuka/manual.html）に
+// 合わせ、最上位を「法令台帳」「施設台帳」「点検調書」の3タブに分けている
+// （以前は「防災カルテ点検」「施設一覧」の2タブだった。防災カルテ点検は
+// 「点検調書」タブの中の「災害」という分野に位置づけを変えた）。
+// 3タブはそれぞれ完全に独立した「分野→施設名称」の階層を持ち、同じ名前の
+// 分野（例: どのタブにも「道路」がある）が出てきても中身は別物として扱う
+// （FACILITY_LEDGER_FIELDS等、タブごとに別々の定数にしているのはそのため）。
+//
+// 現時点で実データ・実機能があるのは「施設台帳」タブの道路分野（法面構造物・
+// 道路標識。FacilityListItem）、「点検調書」タブの災害分野（Karte）、
+// 「法令台帳」タブの道路×トンネル（既存の/ledgers機能）のみ。それ以外の
+// 分野・施設名称は分類の骨格（ボタン）だけを表示し、選択すると「準備中」と
+// 案内する（ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
+//
+// 施設台帳側は、法面構造物・道路標識等の道路附属物・橋梁等、施設種別を問わず
+// 同じ「施設一覧」形式のExcelから取り込まれたデータをまとめて検索する
+// （詳細はapp/import/page.tsxのコメント参照）。ただし管理番号・路線名・所在地は
+// 施設台帳・点検調書のどちらでも意味が同じ条件のため、タブの外（上）に共通
+// フィールドとして1つだけ配置し、タブ内には各系統固有の条件だけを置く。
+// 共通フィールドの実体（name属性）はタブごとに異なるDB項目に対応する
+// （点検調書側はq/routeName/location、施設台帳側はfq/facRouteName/
+// facLocation）が、これは表示中のタブに応じてinputのnameを切り替えることで
+// 実現している（下記JSX参照）。法令台帳タブは検索対象データが無いため、
+// 共通フィールドの対象外。
 //
 // 地図には、検索済みの系統のピンだけを表示する（未検索の系統は表示しない＝「防災カルテ
 // と同じように検索時に表示される」という要望に対応）。タブを切り替えても、もう一方の
@@ -88,9 +219,18 @@ export default async function KarteListPage({
 }) {
   const params = await searchParams;
   const view: "map" | "list" = params.view === "list" ? "list" : "map";
-  const tab: "karte" | "facility" = params.tab === "facility" ? "facility" : "karte";
+  const cat: "ledger" | "facility" | "inspection" =
+    params.cat === "ledger" ? "ledger" : params.cat === "facility" ? "facility" : "inspection";
+  // 点検調書タブの分野（既定は「災害」＝従来の防災カルテ点検）。
+  const inspectionBunya = cat === "inspection" ? (params.bunya ?? "disaster") : "disaster";
+  // 施設台帳タブの分野・施設名称（未選択の場合はnull）。
+  const facilityBunya = cat === "facility" ? (params.bunya ?? null) : null;
+  const facilityShisetsu = cat === "facility" && facilityBunya ? (params.shisetsu ?? null) : null;
+  // 法令台帳タブの分野・施設名称。
+  const ledgerBunya = cat === "ledger" ? (params.bunya ?? null) : null;
+  const ledgerShisetsu = cat === "ledger" && ledgerBunya ? (params.shisetsu ?? null) : null;
 
-  // ---- 防災カルテ点検側 ----
+  // ---- 点検調書＞災害（旧・防災カルテ点検）側 ----
   const where: Prisma.KarteWhereInput = {};
   if (params.q) {
     where.facilityNo = { contains: params.q, mode: "insensitive" };
@@ -116,23 +256,47 @@ export default async function KarteListPage({
   // 送られるため`q=`のようにキーは残る）。
   const hasSearched = KARTE_PARAM_KEYS.some((k) => k in params);
 
-  // ---- 施設一覧側（FacilityListItem） ----
-  const facWhere: Prisma.FacilityListItemWhereInput = {};
+  // ---- 施設台帳側（FacilityListItem） ----
+  // 分野・施設名称は、島根県の分類体系（FACILITY_LEDGER_ITEM_FIELDS/TYPES）の
+  // キーワードで、実データのfacilityType/facilitySubTypeを部分一致検索する
+  // （どちらも自由記述文字列であり厳密なコード値ではないため。lib/labels.tsの
+  // formatFacilityType・components/MapView.tsxのfacilityIconEmojiと同じ考え方）。
+  const facAndConditions: Prisma.FacilityListItemWhereInput[] = [];
   if (params.fq) {
-    facWhere.managementNo = { contains: params.fq, mode: "insensitive" };
+    facAndConditions.push({ managementNo: { contains: params.fq, mode: "insensitive" } });
   }
   if (params.facRouteName) {
-    facWhere.routeName = params.facRouteName;
+    facAndConditions.push({ routeName: params.facRouteName });
   }
   if (params.facLocation) {
-    facWhere.location = { contains: params.facLocation, mode: "insensitive" };
-  }
-  if (params.facilityType) {
-    facWhere.facilityType = params.facilityType;
+    facAndConditions.push({ location: { contains: params.facLocation, mode: "insensitive" } });
   }
   if (params.soundnessGrade) {
-    facWhere.soundnessGrade = params.soundnessGrade;
+    facAndConditions.push({ soundnessGrade: params.soundnessGrade });
   }
+  const facilityShisetsuDef =
+    facilityBunya && facilityShisetsu
+      ? FACILITY_LEDGER_ITEM_TYPES[facilityBunya]?.find((t) => t.label === facilityShisetsu)
+      : undefined;
+  if (facilityShisetsu && facilityShisetsuDef?.match) {
+    facAndConditions.push({
+      OR: facilityShisetsuDef.match.flatMap((kw) => [
+        { facilityType: { contains: kw } },
+        { facilitySubType: { contains: kw } },
+      ]),
+    });
+  } else if (facilityShisetsu) {
+    // 実データが無くマッチングキーワード未設定の施設名称（＝準備中）が選ばれた場合は、
+    // 意図的に0件にする（「準備中」であることが検索結果からも分かるようにするため）。
+    facAndConditions.push({ id: "__no_data_yet__" });
+  } else if (facilityBunya && FACILITY_LEDGER_ITEM_FIELD_MATCH[facilityBunya]) {
+    facAndConditions.push({
+      OR: FACILITY_LEDGER_ITEM_FIELD_MATCH[facilityBunya].map((kw) => ({ facilityType: { contains: kw } })),
+    });
+  } else if (facilityBunya) {
+    facAndConditions.push({ id: "__no_data_yet__" });
+  }
+  const facWhere: Prisma.FacilityListItemWhereInput = facAndConditions.length > 0 ? { AND: facAndConditions } : {};
   const hasFacCondition = FACILITY_PARAM_KEYS.some((k) => params[k]);
   const hasFacSearched = FACILITY_PARAM_KEYS.some((k) => k in params);
 
@@ -141,14 +305,7 @@ export default async function KarteListPage({
   // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計
   // する。トンネル台帳等（FacilityLedger）は、件数が少ない想定のため検索条件を持たせず
   // 常に取得する（lib/actions/facility-ledger-actions.ts参照）。
-  const [
-    routeNameRows,
-    settings,
-    facilityLedgersRaw,
-    facRouteNameRows,
-    facilityTypeRows,
-    soundnessGradeRows,
-  ] = await Promise.all([
+  const [routeNameRows, settings, facilityLedgersRaw, facRouteNameRows, soundnessGradeRows] = await Promise.all([
     prisma.karte.findMany({
       distinct: ["routeName"],
       select: { routeName: true },
@@ -162,11 +319,6 @@ export default async function KarteListPage({
       orderBy: { routeName: "asc" },
     }),
     prisma.facilityListItem.findMany({
-      distinct: ["facilityType"],
-      select: { facilityType: true },
-      orderBy: { facilityType: "asc" },
-    }),
-    prisma.facilityListItem.findMany({
       distinct: ["soundnessGrade"],
       select: { soundnessGrade: true },
       orderBy: { soundnessGrade: "asc" },
@@ -174,7 +326,6 @@ export default async function KarteListPage({
   ]);
   const routeNameOptions = routeNameRows.map((r) => r.routeName).filter(Boolean);
   const facRouteNameOptions = facRouteNameRows.map((r) => r.routeName).filter((v): v is string => !!v);
-  const facilityTypeOptions = facilityTypeRows.map((r) => r.facilityType).filter((v): v is string => !!v);
   const soundnessGradeOptions = soundnessGradeRows.map((r) => r.soundnessGrade).filter((v): v is string => !!v);
   // 路線名は共通フィールドとして1つの<select>にまとめるため、両系統の選択肢を
   // 合わせて（重複除去のうえ）1つのリストにする。
@@ -310,12 +461,28 @@ export default async function KarteListPage({
   const clearFacHref = `/karte?${buildQuery(params, { remove: FACILITY_PARAM_KEYS })}`;
   // タブ切替時、共通フィールド（管理番号・路線名・所在地）に今入力済みの値を、
   // 切替先タブの項目名へそのまま引き継ぐ（同じ意味の条件を再入力させないため）。
+  // 法令台帳タブには対応する共通フィールドが無いため、切替時に引き継ぐものは無い。
+  const ledgerTabHref = `/karte?${buildQuery(params, { overrides: { cat: "ledger" } })}`;
   const facilityTabHref = `/karte?${buildQuery(params, {
-    overrides: { tab: "facility", fq: params.q, facRouteName: params.routeName, facLocation: params.location },
+    overrides: { cat: "facility", fq: params.q, facRouteName: params.routeName, facLocation: params.location },
   })}`;
-  const karteTabHref = `/karte?${buildQuery(params, {
-    overrides: { tab: "karte", q: params.fq, routeName: params.facRouteName, location: params.facLocation },
+  const inspectionTabHref = `/karte?${buildQuery(params, {
+    overrides: { cat: "inspection", q: params.fq, routeName: params.facRouteName, location: params.facLocation },
   })}`;
+
+  // 分野・施設名称ボタンのリンク先。分野を切り替えたときは、別の分野の施設名称が
+  // 残らないようshisetsuをクリアする（buildQueryはoverridesの値がundefinedの
+  // キーをクエリから除外する）。
+  const facilityFieldHref = (fieldKey: string) =>
+    `/karte?${buildQuery(params, { overrides: { cat: "facility", bunya: fieldKey, shisetsu: undefined } })}`;
+  const facilityShisetsuHref = (fieldKey: string, label: string) =>
+    `/karte?${buildQuery(params, { overrides: { cat: "facility", bunya: fieldKey, shisetsu: label } })}`;
+  const ledgerFieldHref = (fieldKey: string) =>
+    `/karte?${buildQuery(params, { overrides: { cat: "ledger", bunya: fieldKey, shisetsu: undefined } })}`;
+  const ledgerShisetsuHref = (fieldKey: string, label: string) =>
+    `/karte?${buildQuery(params, { overrides: { cat: "ledger", bunya: fieldKey, shisetsu: label } })}`;
+  const inspectionFieldHref = (fieldKey: string) =>
+    `/karte?${buildQuery(params, { overrides: { cat: "inspection", bunya: fieldKey } })}`;
 
   return (
     // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
@@ -331,191 +498,281 @@ export default async function KarteListPage({
           </PendingLink>
         </p>
 
-        {/* next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
-            従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
-            （ページ全体のリロードをしない）とloading.tsxのフォールバック表示を
-            有効にする。SearchSubmitButtonがuseFormStatus()で送信中を検知し、
-            即座にスピナー表示できるのもこの<Form>の子孫だからこそ。
-            表示中のタブに応じて、共通フィールドのname属性・タブ固有フィールドの
-            内容を切り替える（1つのフォームで両系統をカバーする）。 */}
-        <Form action="" className="space-y-3">
-          {/* 表示方法（地図/一覧）・現在のタブは、送信ボタンのname/valueではなくこの
-              隠しinputで保持する（SearchSubmitButtonのコメント参照）。 */}
-          <input type="hidden" name="view" defaultValue={view} />
-          <input type="hidden" name="tab" defaultValue={tab} />
-          {/* 表示していない方のタブが検索済みの場合のみ、その現在値を隠しinputで引き継ぐ
-              （このフォームの送信で相手側の検索状態を消してしまわないため。未検索の
-              場合は何も引き継がない＝相手側もhasXSearched=falseのまま維持される）。 */}
-          {tab === "karte" &&
-            hasFacSearched &&
-            FACILITY_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
-          {tab === "facility" &&
-            hasSearched &&
-            KARTE_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
-
-          {/* --- 共通フィールド（管理番号・路線名・所在地）。カルテ・施設一覧の
-              どちらでも意味が同じ条件のため、タブの外に1つだけ配置する。name属性は
-              表示中のタブに応じて切り替える。 */}
-          <SearchField
-            key={`num-${tab}-${(tab === "karte" ? params.q : params.fq) ?? ""}`}
-            name={tab === "karte" ? "q" : "fq"}
-            label="管理番号"
-            defaultValue={tab === "karte" ? params.q : params.fq}
-          />
-          <div>
-            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
-            {/* keyにdefaultValueを含めることで、リンク経由の遷移（タブ切替・条件クリア・
-                最近の検索等）でこのフィールドの値が変わった時にDOMごと作り直させ、
-                defaultValueが再適用されるようにしている（uncontrolledな要素は
-                マウント時にしかdefaultValueが効かないため）。 */}
-            <select
-              key={`route-${tab}-${(tab === "karte" ? params.routeName : params.facRouteName) ?? ""}`}
-              name={tab === "karte" ? "routeName" : "facRouteName"}
-              defaultValue={(tab === "karte" ? params.routeName : params.facRouteName) ?? ""}
-              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="">すべて</option>
-              {combinedRouteNameOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <SearchField
-            key={`loc-${tab}-${(tab === "karte" ? params.location : params.facLocation) ?? ""}`}
-            name={tab === "karte" ? "location" : "facLocation"}
-            label="所在地"
-            defaultValue={tab === "karte" ? params.location : params.facLocation}
-          />
-
-          {/* --- タブ切替 --- */}
-          <div className="flex border-b border-gray-200 dark:border-gray-700">
-            {tab === "karte" ? (
-              <span className="border-b-2 border-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-800 dark:border-gray-100 dark:text-gray-100">
-                防災カルテ点検
+        {/* --- 最上位タブ（法令台帳／施設台帳／点検調書）。フォームの外に置き、
+            単純なリンクで切り替える（法令台帳は検索フォーム自体を持たないため）。 */}
+        <div className="mb-3 flex border-b border-gray-200 dark:border-gray-700">
+          {(
+            [
+              { key: "ledger", label: "法令台帳", href: ledgerTabHref },
+              { key: "facility", label: "施設台帳", href: facilityTabHref },
+              { key: "inspection", label: "点検調書", href: inspectionTabHref },
+            ] as const
+          ).map((t) =>
+            cat === t.key ? (
+              <span
+                key={t.key}
+                className="border-b-2 border-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-800 dark:border-gray-100 dark:text-gray-100"
+              >
+                {t.label}
               </span>
             ) : (
               <PendingLink
-                href={karteTabHref}
+                key={t.key}
+                href={t.href}
                 className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
               >
-                防災カルテ点検
+                {t.label}
               </PendingLink>
-            )}
-            {tab === "facility" ? (
-              <span className="border-b-2 border-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-800 dark:border-gray-100 dark:text-gray-100">
-                施設一覧
-              </span>
-            ) : (
-              <PendingLink
-                href={facilityTabHref}
-                className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200"
-              >
-                施設一覧
-              </PendingLink>
-            )}
-          </div>
-
-          {tab === "karte" ? (
-            <>
-              <SearchField key={`routeNo-${params.routeNo ?? ""}`} name="routeNo" label="路線番号" defaultValue={params.routeNo} />
-              <div>
-                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
-                <select
-                  key={params.karteType ?? ""}
-                  name="karteType"
-                  defaultValue={params.karteType ?? ""}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                >
-                  <option value="">すべて</option>
-                  {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
-                <select
-                  key={params.responseCategory ?? ""}
-                  name="responseCategory"
-                  defaultValue={params.responseCategory ?? ""}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                >
-                  <option value="">すべて</option>
-                  {Object.entries(RESPONSE_META).map(([value, meta]) => (
-                    <option key={value} value={value}>
-                      {meta.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">施設種別</label>
-                <select
-                  key={params.facilityType ?? ""}
-                  name="facilityType"
-                  defaultValue={params.facilityType ?? ""}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                >
-                  <option value="">すべて</option>
-                  {facilityTypeOptions.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">健全度</label>
-                <select
-                  key={params.soundnessGrade ?? ""}
-                  name="soundnessGrade"
-                  defaultValue={params.soundnessGrade ?? ""}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                >
-                  <option value="">すべて</option>
-                  {soundnessGradeOptions.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
+            )
           )}
+        </div>
 
-          <div className="flex items-center gap-3 pt-1">
-            <SearchSubmitButton
-              type="submit"
-              targetView={view}
-              className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
-            >
-              検索
-            </SearchSubmitButton>
-            {tab === "karte" && hasCondition && (
-              <PendingLink href={clearKarteHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-                条件をクリア
-              </PendingLink>
+        {cat === "ledger" ? (
+          // 法令台帳タブ：検索フォームは持たず、分野→施設名称のドリルダウンのみ
+          // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」）。
+          // 実データがあるのは道路×トンネル（既存の/ledgers）のみ。
+          <FieldDrilldown
+            fields={FACILITY_LEDGER_FIELDS}
+            types={FACILITY_LEDGER_TYPES}
+            selectedField={ledgerBunya}
+            selectedType={ledgerShisetsu}
+            fieldHref={ledgerFieldHref}
+            typeHref={ledgerShisetsuHref}
+            clearHref={`/karte?${buildQuery(params, { remove: ["bunya", "shisetsu"] })}`}
+            renderSelection={(fieldKey, typeLabel) =>
+              fieldKey === "road" && typeLabel === "トンネル" ? (
+                <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  トンネルの法令台帳（画像）は、既存の台帳一覧ページからご覧いただけます。
+                  <br />
+                  <Link href="/ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
+                    台帳一覧を見る →
+                  </Link>
+                </p>
+              ) : (
+                <p className="mt-3 rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                  準備中です。この分類の法令台帳はまだ登録されていません。
+                </p>
+              )
+            }
+          />
+        ) : (
+          // next/formの<Form>: action=""で「同じルートに検索条件だけ変えて遷移」という
+          // 従来のGETフォームと同じ挙動を保ちつつ、クライアント側遷移
+          // （ページ全体のリロードをしない）とloading.tsxのフォールバック表示を
+          // 有効にする。SearchSubmitButtonがuseFormStatus()で送信中を検知し、
+          // 即座にスピナー表示できるのもこの<Form>の子孫だからこそ。
+          // 表示中のタブに応じて、共通フィールドのname属性・タブ固有フィールドの
+          // 内容を切り替える（1つのフォームで両系統をカバーする）。
+          <Form action="" className="space-y-3">
+            {/* 表示方法（地図/一覧）・現在のタブは、送信ボタンのname/valueではなくこの
+                隠しinputで保持する（SearchSubmitButtonのコメント参照）。 */}
+            <input type="hidden" name="view" defaultValue={view} />
+            <input type="hidden" name="cat" defaultValue={cat} />
+            {/* 表示していない方のタブが検索済みの場合のみ、その現在値を隠しinputで引き継ぐ
+                （このフォームの送信で相手側の検索状態を消してしまわないため。未検索の
+                場合は何も引き継がない＝相手側もhasXSearched=falseのまま維持される）。 */}
+            {cat === "inspection" &&
+              hasFacSearched &&
+              FACILITY_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
+            {cat === "facility" &&
+              hasSearched &&
+              KARTE_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
+            {/* 施設台帳タブの分野・施設名称は、リンク（ボタン）で切り替えるため通常の
+                フォーム項目ではない。この隠しinputで、フォーム送信（検索・条件変更）時にも
+                現在の選択を維持する。 */}
+            {cat === "facility" && facilityBunya && <input type="hidden" name="bunya" defaultValue={facilityBunya} />}
+            {cat === "facility" && facilityShisetsu && (
+              <input type="hidden" name="shisetsu" defaultValue={facilityShisetsu} />
             )}
-            {tab === "facility" && hasFacCondition && (
-              <PendingLink href={clearFacHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-                条件をクリア
-              </PendingLink>
+            {cat === "inspection" && <input type="hidden" name="bunya" defaultValue={inspectionBunya} />}
+
+            {/* --- 共通フィールド（管理番号・路線名・所在地）。点検調書・施設台帳の
+                どちらでも意味が同じ条件のため、タブの外に1つだけ配置する。name属性は
+                表示中のタブに応じて切り替える。 */}
+            <SearchField
+              key={`num-${cat}-${(cat === "inspection" ? params.q : params.fq) ?? ""}`}
+              name={cat === "inspection" ? "q" : "fq"}
+              label="管理番号"
+              defaultValue={cat === "inspection" ? params.q : params.fq}
+            />
+            <div>
+              <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+              {/* keyにdefaultValueを含めることで、リンク経由の遷移（タブ切替・条件クリア・
+                  最近の検索等）でこのフィールドの値が変わった時にDOMごと作り直させ、
+                  defaultValueが再適用されるようにしている（uncontrolledな要素は
+                  マウント時にしかdefaultValueが効かないため）。 */}
+              <select
+                key={`route-${cat}-${(cat === "inspection" ? params.routeName : params.facRouteName) ?? ""}`}
+                name={cat === "inspection" ? "routeName" : "facRouteName"}
+                defaultValue={(cat === "inspection" ? params.routeName : params.facRouteName) ?? ""}
+                className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              >
+                <option value="">すべて</option>
+                {combinedRouteNameOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <SearchField
+              key={`loc-${cat}-${(cat === "inspection" ? params.location : params.facLocation) ?? ""}`}
+              name={cat === "inspection" ? "location" : "facLocation"}
+              label="所在地"
+              defaultValue={cat === "inspection" ? params.location : params.facLocation}
+            />
+
+            {cat === "inspection" ? (
+              <>
+                {/* --- 点検調書タブの分野。「災害」だけが実装済み（防災カルテ点検＝Karte）。 --- */}
+                <div className="flex flex-wrap gap-1.5">
+                  {INSPECTION_FIELDS.map((f) => (
+                    <PendingLink
+                      key={f.key}
+                      href={inspectionFieldHref(f.key)}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${
+                        inspectionBunya === f.key
+                          ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                          : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                      }`}
+                    >
+                      {f.label}
+                    </PendingLink>
+                  ))}
+                </div>
+                {inspectionBunya === "disaster" ? (
+                  <>
+                    <SearchField
+                      key={`routeNo-${params.routeNo ?? ""}`}
+                      name="routeNo"
+                      label="路線番号"
+                      defaultValue={params.routeNo}
+                    />
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
+                      <select
+                        key={params.karteType ?? ""}
+                        name="karteType"
+                        defaultValue={params.karteType ?? ""}
+                        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                      >
+                        <option value="">すべて</option>
+                        {Object.entries(KARTE_TYPE_LABEL).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">対応区分</label>
+                      <select
+                        key={params.responseCategory ?? ""}
+                        name="responseCategory"
+                        defaultValue={params.responseCategory ?? ""}
+                        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                      >
+                        <option value="">すべて</option>
+                        {Object.entries(RESPONSE_META).map(([value, meta]) => (
+                          <option key={value} value={value}>
+                            {meta.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                    準備中です。この分野の点検調書はまだ登録されていません。
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                {/* --- 施設台帳タブの分野→施設名称ドリルダウン --- */}
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    {FACILITY_LEDGER_ITEM_FIELDS.map((f) => (
+                      <PendingLink
+                        key={f.key}
+                        href={facilityFieldHref(f.key)}
+                        className={`rounded-full border px-2.5 py-1 text-xs ${
+                          facilityBunya === f.key
+                            ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                            : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                        }`}
+                      >
+                        {f.label}
+                      </PendingLink>
+                    ))}
+                  </div>
+                  {facilityBunya && (
+                    <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
+                      {FACILITY_LEDGER_ITEM_TYPES[facilityBunya]?.map((t) => (
+                        <PendingLink
+                          key={t.label}
+                          href={facilityShisetsuHref(facilityBunya, t.label)}
+                          className={`rounded-full border px-2 py-0.5 text-xs ${
+                            facilityShisetsu === t.label
+                              ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                              : t.match
+                                ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                                : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+                          }`}
+                        >
+                          {t.label}
+                          {!t.match && "（準備中）"}
+                        </PendingLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">健全度</label>
+                  <select
+                    key={params.soundnessGrade ?? ""}
+                    name="soundnessGrade"
+                    defaultValue={params.soundnessGrade ?? ""}
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">すべて</option>
+                    {soundnessGradeOptions.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
             )}
-          </div>
-        </Form>
+
+            <div className="flex items-center gap-3 pt-1">
+              <SearchSubmitButton
+                type="submit"
+                targetView={view}
+                className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                検索
+              </SearchSubmitButton>
+              {cat === "inspection" && hasCondition && (
+                <PendingLink href={clearKarteHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+                  条件をクリア
+                </PendingLink>
+              )}
+              {cat === "facility" && hasFacCondition && (
+                <PendingLink href={clearFacHref} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+                  条件をクリア
+                </PendingLink>
+              )}
+            </div>
+          </Form>
+        )}
 
         {/* 表示中でない方のタブの検索状態も、地図には反映され続けるため、見落とさない
             ようにここで両系統の状況を常に表示する。 */}
         <p className="mt-2 space-y-0.5 text-xs text-gray-400 dark:text-gray-500">
           <span className="block">
-            防災カルテ点検：
+            点検調書（災害）：
             {!hasSearched
               ? "未検索"
               : hasCondition
@@ -524,7 +781,7 @@ export default async function KarteListPage({
             {hasSearched && withoutCoordsCount > 0 && `（座標未登録 ${withoutCoordsCount} 件を除く）`}
           </span>
           <span className="block">
-            施設一覧：
+            施設台帳：
             {!hasFacSearched
               ? "未検索"
               : hasFacCondition
@@ -534,14 +791,16 @@ export default async function KarteListPage({
           </span>
         </p>
 
-        {tab === "karte" && <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />}
+        {cat === "inspection" && (
+          <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
+        )}
       </aside>
 
       <main className="relative flex-1 bg-gray-100 dark:bg-gray-950">
         {view === "list" ? (
           <div className="h-full space-y-6 overflow-y-auto p-4">
             <div>
-              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">防災カルテ点検 検索結果</h2>
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">点検調書（災害）検索結果</h2>
               <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
@@ -603,7 +862,7 @@ export default async function KarteListPage({
             </div>
 
             <div>
-              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">施設一覧 検索結果</h2>
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">施設台帳 検索結果</h2>
               <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
@@ -651,7 +910,7 @@ export default async function KarteListPage({
               </div>
               <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
                 <Link href="/facility-list" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  施設一覧（全件）を見る →
+                  施設台帳（全件）を見る →
                 </Link>
               </p>
             </div>
@@ -666,6 +925,77 @@ export default async function KarteListPage({
           />
         )}
       </main>
+    </div>
+  );
+}
+
+// 分野→施設名称のドリルダウンUI（法令台帳タブ用。検索フォームを持たないタブの
+// ための単純な表示コンポーネント。施設台帳・点検調書タブは検索フォームと一体の
+// ため、こちらは使わずKarteListPage内に直接書いている）。
+function FieldDrilldown({
+  fields,
+  types,
+  selectedField,
+  selectedType,
+  fieldHref,
+  typeHref,
+  clearHref,
+  renderSelection,
+}: {
+  fields: FieldDef[];
+  types: Record<FieldKey, FacilityTypeDef[]>;
+  selectedField: string | null;
+  selectedType: string | null;
+  fieldHref: (fieldKey: string) => string;
+  typeHref: (fieldKey: string, label: string) => string;
+  clearHref: string;
+  renderSelection: (fieldKey: string, typeLabel: string) => ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {fields.map((f) => (
+          <PendingLink
+            key={f.key}
+            href={fieldHref(f.key)}
+            className={`rounded-full border px-2.5 py-1 text-xs ${
+              selectedField === f.key
+                ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+            }`}
+          >
+            {f.label}
+          </PendingLink>
+        ))}
+      </div>
+      {selectedField && (
+        <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
+          {types[selectedField]?.map((t) => (
+            <PendingLink
+              key={t.label}
+              href={typeHref(selectedField, t.label)}
+              className={`rounded-full border px-2 py-0.5 text-xs ${
+                selectedType === t.label
+                  ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                  : t.match
+                    ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                    : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+              }`}
+            >
+              {t.label}
+              {!t.match && "（準備中）"}
+            </PendingLink>
+          ))}
+        </div>
+      )}
+      {selectedField && selectedType && (
+        <>
+          {renderSelection(selectedField, selectedType)}
+          <PendingLink href={clearHref} className="inline-block text-xs text-gray-400 hover:underline dark:text-gray-500">
+            選択をクリア
+          </PendingLink>
+        </>
+      )}
     </div>
   );
 }
