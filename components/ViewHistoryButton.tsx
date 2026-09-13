@@ -19,7 +19,7 @@ import Link from "next/link";
 const STORAGE_KEY = "recordViewHistory";
 const MAX_ENTRIES = 10;
 
-export type ViewHistoryKind = "karte" | "facility" | "ledger";
+export type ViewHistoryKind = "karte" | "facility" | "ledger" | "gate_sign_inspection";
 
 export type ViewHistoryEntry = {
   kind: ViewHistoryKind;
@@ -34,6 +34,7 @@ const KIND_LABEL: Record<ViewHistoryKind, string> = {
   karte: "点検調書",
   facility: "施設台帳",
   ledger: "台帳（画像）",
+  gate_sign_inspection: "点検調書（門型標識）",
 };
 
 export function readViewHistory(): ViewHistoryEntry[] {

@@ -67,6 +67,19 @@ const EXCEL_INSPECTION_FORMS: { key: string; label: string }[] = [
   { key: "sabo", label: "砂防" },
 ];
 
+// 「道路」だけ、施設名称ごとにさらに様式（Excelの形式）が分かれる
+// （検索・地図画面のINSPECTION_TYPES.roadと同じ施設名称だが、あちらは検索条件、
+// こちらは取込窓口という別の用途のため定義は独立させている。会話ログ「門型標識の
+// エクセルファイル...読み込んで表示できる仕様にしてください」参照）。
+const ROAD_INSPECTION_TYPES: { key: string; label: string }[] = [
+  { key: "bridge", label: "橋梁" },
+  { key: "tunnel", label: "トンネル" },
+  { key: "slope", label: "法面構造物" },
+  { key: "gate_sign", label: "門型標識" },
+  { key: "shed_shelter", label: "シェッド・シェルター" },
+  { key: "large_culvert", label: "大型カルバート" },
+];
+
 type ReadyContent = { kind: "ready"; title: string; description: string; example: string; href: string };
 type Combo = ReadyContent | { kind: "pending" } | { kind: "excel_inspection_forms" };
 
@@ -112,7 +125,7 @@ const COMBOS: Record<MethodKey, Record<CatKey, Combo>> = {
 export default async function ImportHubPage({
   searchParams,
 }: {
-  searchParams: Promise<{ method?: string; cat?: string; form?: string }>;
+  searchParams: Promise<{ method?: string; cat?: string; form?: string; roadType?: string }>;
 }) {
   const params = await searchParams;
   const method = (["image", "list", "excel"] as const).includes(params.method as MethodKey)
@@ -122,6 +135,7 @@ export default async function ImportHubPage({
     ? (params.cat as CatKey)
     : null;
   const form = params.form ?? "disaster";
+  const roadType = params.roadType ?? "";
 
   const combo = method && cat ? COMBOS[method][cat] : null;
 
@@ -214,13 +228,13 @@ export default async function ImportHubPage({
                 className={`rounded-full border px-2.5 py-1 text-xs ${
                   form === f.key
                     ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
-                    : f.key === "disaster"
+                    : f.key === "disaster" || f.key === "road"
                       ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
                       : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
                 }`}
               >
                 {f.label}
-                {f.key !== "disaster" && "（準備中）"}
+                {f.key !== "disaster" && f.key !== "road" && "（準備中）"}
               </Link>
             ))}
           </div>
@@ -249,6 +263,49 @@ export default async function ImportHubPage({
                 することもできます。
               </p>
             </>
+          ) : form === "road" ? (
+            <div className="space-y-2">
+              <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">4. 施設名称を選ぶ</h2>
+              <div className="flex flex-wrap gap-1.5">
+                {ROAD_INSPECTION_TYPES.map((t) => (
+                  <Link
+                    key={t.key}
+                    href={`/import?method=excel&cat=inspection&form=road&roadType=${t.key}`}
+                    className={`rounded-full border px-2.5 py-1 text-xs ${
+                      roadType === t.key
+                        ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
+                        : t.key === "gate_sign"
+                          ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+                          : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+                    }`}
+                  >
+                    {t.label}
+                    {t.key !== "gate_sign" && "（準備中）"}
+                  </Link>
+                ))}
+              </div>
+              {roadType === "gate_sign" ? (
+                <Link
+                  href="/inspections/gate-signs/import"
+                  className="block rounded border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+                >
+                  <div className="px-4 py-3">
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">門型標識点検調書の取込</h3>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      「別紙２　様式１様式２」形式の門型標識点検調書Excelを取り込みます。ファイル名の先頭の管理番号（例:「A01-AE-010474」）で、施設台帳（道路標識）と自動的に紐付きます。写真も自動で取り込まれます。
+                    </p>
+                    <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                      <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
+                      「A01-AE-010474_01_松江島根線_松江市上乃木町_0.54_門型標識柱.xlsx」のような、門型標識1基ごとの点検調書ファイル。複数ファイルをまとめて取り込めます。
+                    </p>
+                  </div>
+                </Link>
+              ) : roadType ? (
+                <p className="rounded border border-dashed border-gray-300 p-4 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                  準備中です。この施設名称の点検調書Excel取込はまだ対応していません。
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="rounded border border-dashed border-gray-300 p-4 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
               準備中です。この様式（分野）の点検調書Excel取込はまだ対応していません。
@@ -268,6 +325,9 @@ export default async function ImportHubPage({
           </Link>
           <Link href="/karte/import" className="text-blue-600 dark:text-blue-400 hover:underline">
             点検調書（災害）の取込履歴を見る →
+          </Link>
+          <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
+            点検調書（門型標識）を見る →
           </Link>
         </div>
       </div>
