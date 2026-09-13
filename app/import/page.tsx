@@ -13,8 +13,11 @@ export const dynamic = "force-dynamic";
 // 3つの取込方法が将来的に必要になるとの指摘を受け、方法を先に選び、その後で
 // どの分類の資料かを選ぶ構成に変更した（会話ログ参照）。
 //   1. 画像読み込み：Excelのような構造化データが無く、スキャン画像でしか残って
-//      いない資料を、画像1枚＋最低限の基本情報で登録する（現状は法令台帳＝
-//      トンネル台帳のみ実装）。
+//      いない資料を、画像1枚＋最低限の基本情報で登録する（FacilityLedger。
+//      法令台帳・施設台帳のどちらでも使える共通の仕組み。分野・施設名称は
+//      lib/facility-taxonomy.tsの分類から任意に選べる。以前は法令台帳＝
+//      トンネル台帳と誤って対応付けていたが、トンネル台帳は実際には施設台帳に
+//      属するとの指摘を受け訂正した。会話ログ参照）。
 //   2. 一覧表：1つのExcelに多数の資料が一覧で並ぶ形式を、まとめて取り込む
 //      （現状は施設台帳＝「施設一覧」形式のみ実装）。
 //   3. エクセル読み込み：1件の資料について、様式に沿った詳細な項目を持つ
@@ -22,7 +25,7 @@ export const dynamic = "force-dynamic";
 //      エクセル読み込みは将来的に様式（分野）ごとに取込欄を分ける必要があるため
 //      （橋梁定期点検調書等）、分類を選んだ後にもう1段、様式（分野）を選ぶ
 //      構成にしている（現状「災害」以外は準備中）。
-// 実装が無い組み合わせ（例: 画像読み込み×施設台帳）は「準備中」と案内するのみ
+// 実装が無い組み合わせ（例: 一覧表×法令台帳）は「準備中」と案内するのみ
 // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」の
 // 方針を踏襲）。
 type MethodKey = "image" | "list" | "excel";
@@ -73,11 +76,18 @@ const COMBOS: Record<MethodKey, Record<CatKey, Combo>> = {
       kind: "ready",
       title: "台帳（画像）の登録",
       description:
-        "トンネル台帳等、Excelのような構造化データが無く、スキャン画像でしか残っていない台帳を、画像1枚と最低限の基本情報（台帳名・路線名・所在地・緯度経度）だけで登録します。現状はトンネルのみ対応しています。",
+        "トンネル調書等、Excelのような構造化データが無く、スキャン画像でしか残っていない台帳を、画像1枚と最低限の基本情報だけで登録します。分野・施設名称は道路・河川海岸・港湾等、種別を問いません（台帳名・路線名・所在地・緯度経度は任意項目です）。",
       example: "紙の台帳をスキャンした画像（PDF・JPG等）しか手元に無く、Excelデータが存在しない場合。",
-      href: "/ledgers/new",
+      href: "/ledgers/new?docClass=LEGAL",
     },
-    facility: { kind: "pending" },
+    facility: {
+      kind: "ready",
+      title: "台帳（画像）の登録",
+      description:
+        "トンネル台帳等、Excelのような構造化データが無く、スキャン画像でしか残っていない台帳を、画像1枚と最低限の基本情報だけで登録します。分野・施設名称は道路・河川海岸・港湾等、種別を問いません（台帳名・路線名・所在地・緯度経度は任意項目です）。",
+      example: "紙の台帳をスキャンした画像（PDF・JPG等）しか手元に無く、Excelデータが存在しない場合。",
+      href: "/ledgers/new?docClass=FACILITY",
+    },
     inspection: { kind: "pending" },
   },
   list: {
@@ -251,7 +261,7 @@ export default async function ImportHubPage({
         <p className="font-medium text-gray-700 dark:text-gray-200">既に取り込んだ資料の確認</p>
         <div className="mt-2 flex flex-wrap gap-4">
           <Link href="/ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
-            法令台帳（画像）一覧を見る →
+            台帳（画像）一覧を見る →
           </Link>
           <Link href="/facility-list" className="text-blue-600 dark:text-blue-400 hover:underline">
             施設台帳を見る →

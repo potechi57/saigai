@@ -11,12 +11,13 @@ export const KARTE_TYPE_LABEL: Record<string, string> = {
   OTHER: "その他",
 };
 
-// トンネル台帳等、カルテとは別枠の台帳（画像のみ）の種別ラベル
-// （prisma/schema.prismaのFacilityLedgerCategory参照）。
-export const FACILITY_LEDGER_CATEGORY_LABEL: Record<string, string> = {
-  TUNNEL: "トンネル台帳",
-  BRIDGE: "橋梁台帳",
-  ROAD_LEDGER: "道路台帳",
+// トンネル台帳等、カルテとは別枠の台帳（画像のみ）が、法令台帳・施設台帳の
+// どちらに属するかのラベル（prisma/schema.prismaのFacilityLedgerDocClass参照）。
+// 種別（分野・施設名称）自体はコード化していないため、lib/labels.tsでのラベル
+// 変換は不要（lib/facility-taxonomy.tsのlabelをそのまま表示に使う）。
+export const FACILITY_LEDGER_DOC_CLASS_LABEL: Record<string, string> = {
+  LEGAL: "法令台帳",
+  FACILITY: "施設台帳",
 };
 
 // 施設一覧（FacilityListItem）の施設種別表示。原本の「施設種別」列は、门型標識等の
