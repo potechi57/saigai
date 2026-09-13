@@ -22,7 +22,16 @@ export const dynamic = "force-dynamic";
 // （キーの有無で判定）・条件クリア・もう片方の検索状態の保持（隠しinputでの引き継ぎ）
 // の3箇所で共通して使うため、配列としてまとめている。
 const KARTE_PARAM_KEYS = ["q", "routeName", "routeNo", "location", "karteType", "responseCategory"] as const;
-const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "bunya", "shisetsu", "soundnessGrade"] as const;
+const FACILITY_PARAM_KEYS = ["fq", "facRouteName", "facLocation", "facBunya", "facShisetsu", "soundnessGrade"] as const;
+// 法令台帳タブの分野・施設名称は、検索クエリを一切持たない（DBに問い合わせない）
+// 表示専用の状態のため、上記2つの配列（hasSearched判定・条件クリア・タブ間引き継ぎに
+// 使う）には含めない。かつ、施設台帳側のfacBunya/facShisetsuとは別名のパラメータ
+// （ledgerBunya/ledgerShisetsu）にする。以前、法令台帳と施設台帳で同じ`bunya`
+// パラメータ名を共有していたところ、法令台帳側で分野を選ぶとFACILITY_PARAM_KEYSの
+// 「bunyaキーがURLに存在する」判定が誤って真になり、施設台帳側が絞り込み無しの
+// 全件を検索・地図表示してしまう不具合が実際に発生した（ユーザー指摘により発覚）。
+// タブごとに完全に別のパラメータ名にすることで、この種の混線を構造的に防ぐ。
+const LEDGER_PARAM_KEYS = ["ledgerBunya", "ledgerShisetsu"] as const;
 
 // ── 分類体系（島根県公共土木施設台帳の分類。会話ログ参照） ─────────────────
 // 最上位タブは「法令台帳」「施設台帳」「点検調書」の3つで、それぞれ完全に独立した
@@ -149,8 +158,14 @@ type SearchParams = {
   fq?: string; // 管理番号（施設台帳側）
   facRouteName?: string;
   facLocation?: string;
-  bunya?: string; // 分野（施設台帳・点検調書・法令台帳で共通のキー名だが、値の意味はタブごとに独立）
-  shisetsu?: string; // 施設名称
+  // 分野・施設名称は、タブごとに完全に別のパラメータ名にしている（facBunya/
+  // ledgerBunya/inspBunyaを共有すると、片方のタブで分野を選んだだけでもう片方の
+  // hasSearched判定まで真になってしまう不具合が実際に発生したため。会話ログ参照）。
+  facBunya?: string; // 施設台帳タブの分野
+  facShisetsu?: string; // 施設台帳タブの施設名称
+  ledgerBunya?: string; // 法令台帳タブの分野
+  ledgerShisetsu?: string; // 法令台帳タブの施設名称
+  inspBunya?: string; // 点検調書タブの分野（既定は"disaster"＝災害）
   soundnessGrade?: string;
   cat?: string; // 最上位タブ: "ledger"（法令台帳）|"facility"（施設台帳）|"inspection"（点検調書。既定）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
@@ -222,13 +237,13 @@ export default async function KarteListPage({
   const cat: "ledger" | "facility" | "inspection" =
     params.cat === "ledger" ? "ledger" : params.cat === "facility" ? "facility" : "inspection";
   // 点検調書タブの分野（既定は「災害」＝従来の防災カルテ点検）。
-  const inspectionBunya = cat === "inspection" ? (params.bunya ?? "disaster") : "disaster";
+  const inspectionBunya = cat === "inspection" ? (params.inspBunya ?? "disaster") : "disaster";
   // 施設台帳タブの分野・施設名称（未選択の場合はnull）。
-  const facilityBunya = cat === "facility" ? (params.bunya ?? null) : null;
-  const facilityShisetsu = cat === "facility" && facilityBunya ? (params.shisetsu ?? null) : null;
+  const facilityBunya = cat === "facility" ? (params.facBunya ?? null) : null;
+  const facilityShisetsu = cat === "facility" && facilityBunya ? (params.facShisetsu ?? null) : null;
   // 法令台帳タブの分野・施設名称。
-  const ledgerBunya = cat === "ledger" ? (params.bunya ?? null) : null;
-  const ledgerShisetsu = cat === "ledger" && ledgerBunya ? (params.shisetsu ?? null) : null;
+  const ledgerBunya = cat === "ledger" ? (params.ledgerBunya ?? null) : null;
+  const ledgerShisetsu = cat === "ledger" && ledgerBunya ? (params.ledgerShisetsu ?? null) : null;
 
   // ---- 点検調書＞災害（旧・防災カルテ点検）側 ----
   const where: Prisma.KarteWhereInput = {};
@@ -471,18 +486,19 @@ export default async function KarteListPage({
   })}`;
 
   // 分野・施設名称ボタンのリンク先。分野を切り替えたときは、別の分野の施設名称が
-  // 残らないようshisetsuをクリアする（buildQueryはoverridesの値がundefinedの
-  // キーをクエリから除外する）。
+  // 残らないよう施設名称をクリアする（buildQueryはoverridesの値がundefinedの
+  // キーをクエリから除外する）。タブごとに別のパラメータ名を使うことで、
+  // 他タブのhasSearched判定に影響しないようにしている（上記コメント参照）。
   const facilityFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "facility", bunya: fieldKey, shisetsu: undefined } })}`;
+    `/karte?${buildQuery(params, { overrides: { cat: "facility", facBunya: fieldKey, facShisetsu: undefined } })}`;
   const facilityShisetsuHref = (fieldKey: string, label: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "facility", bunya: fieldKey, shisetsu: label } })}`;
+    `/karte?${buildQuery(params, { overrides: { cat: "facility", facBunya: fieldKey, facShisetsu: label } })}`;
   const ledgerFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "ledger", bunya: fieldKey, shisetsu: undefined } })}`;
+    `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: undefined } })}`;
   const ledgerShisetsuHref = (fieldKey: string, label: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "ledger", bunya: fieldKey, shisetsu: label } })}`;
+    `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: label } })}`;
   const inspectionFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "inspection", bunya: fieldKey } })}`;
+    `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey } })}`;
 
   return (
     // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
@@ -538,7 +554,7 @@ export default async function KarteListPage({
             selectedType={ledgerShisetsu}
             fieldHref={ledgerFieldHref}
             typeHref={ledgerShisetsuHref}
-            clearHref={`/karte?${buildQuery(params, { remove: ["bunya", "shisetsu"] })}`}
+            clearHref={`/karte?${buildQuery(params, { remove: LEDGER_PARAM_KEYS })}`}
             renderSelection={(fieldKey, typeLabel) =>
               fieldKey === "road" && typeLabel === "トンネル" ? (
                 <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
@@ -580,11 +596,13 @@ export default async function KarteListPage({
             {/* 施設台帳タブの分野・施設名称は、リンク（ボタン）で切り替えるため通常の
                 フォーム項目ではない。この隠しinputで、フォーム送信（検索・条件変更）時にも
                 現在の選択を維持する。 */}
-            {cat === "facility" && facilityBunya && <input type="hidden" name="bunya" defaultValue={facilityBunya} />}
-            {cat === "facility" && facilityShisetsu && (
-              <input type="hidden" name="shisetsu" defaultValue={facilityShisetsu} />
+            {cat === "facility" && facilityBunya && (
+              <input type="hidden" name="facBunya" defaultValue={facilityBunya} />
             )}
-            {cat === "inspection" && <input type="hidden" name="bunya" defaultValue={inspectionBunya} />}
+            {cat === "facility" && facilityShisetsu && (
+              <input type="hidden" name="facShisetsu" defaultValue={facilityShisetsu} />
+            )}
+            {cat === "inspection" && <input type="hidden" name="inspBunya" defaultValue={inspectionBunya} />}
 
             {/* --- 共通フィールド（管理番号・路線名・所在地）。点検調書・施設台帳の
                 どちらでも意味が同じ条件のため、タブの外に1つだけ配置する。name属性は
