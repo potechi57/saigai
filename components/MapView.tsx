@@ -359,7 +359,9 @@ export default function MapView({
     layer.clearLayers();
 
     for (const f of facilityListItems) {
-      const marker = L.marker([f.latitude, f.longitude], { icon: buildFacilityListMarkerIcon() }).addTo(layer);
+      const marker = L.marker([f.latitude, f.longitude], {
+        icon: buildFacilityListMarkerIcon(f.facilityType, f.facilitySubType),
+      }).addTo(layer);
       const facilityTypeLabel = formatFacilityType(f.facilityType, f.facilitySubType);
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
@@ -662,9 +664,31 @@ function buildLedgerMarkerIcon(): L.DivIcon {
   });
 }
 
+// 施設種別（施設種別・施設細別の文字列。lib/labels.tsのformatFacilityType参照）から、
+// 見た目で区別しやすい絵文字を選ぶ。Font Awesome等の外部アイコンフォント／CDNを
+// 追加導入せず、既存のbuildLedgerMarkerIcon等と同じ「絵文字をそのままアイコンにする」
+// 方式を踏襲している（フォント埋め込み・追加の第三者依存が不要なため）。
+// 実データで確認済みなのは「道路法面施設」（法面構造物）と「道路附属物」＋
+// 「道路標識（門型）」（道路標識）の2パターンのみ（scripts/audit等ではなく
+// 実際のFacilityListItemデータで確認）。橋梁・トンネルはこのアプリではまだ
+// 実データで取り込まれていないが、「施設一覧」形式はどの施設種別でも同じ列構成
+// （prisma/schema.prismaのFacilityListItemコメント参照）であり、将来的に橋梁・
+// トンネルの施設一覧が取り込まれた場合に備えて分岐を用意しておく。実際の表記が
+// 想定と異なっていた場合は、取り込まれた実データを見て調整すること。
+function facilityIconEmoji(facilityType: string | null | undefined, facilitySubType: string | null | undefined): string {
+  const text = `${facilityType ?? ""} ${facilitySubType ?? ""}`;
+  if (text.includes("橋")) return "🌉"; // 橋梁
+  if (text.includes("トンネル")) return "🚇"; // トンネル（台帳ページのbuildLedgerMarkerIconと同じ絵文字）
+  if (text.includes("標識")) return "🪧"; // 道路標識（門型標識等）
+  if (text.includes("法面")) return "⛰️"; // 法面構造物
+  return "🛣️"; // 上記のいずれにも該当しない施設種別（擁壁等）は従来通りの汎用アイコン
+}
+
 // 施設一覧Excelから取り込んだ施設のマーカーアイコン。カルテ（しずく型）・
-// トンネル台帳（丸型・紫）とも見た目を変え、正方形・オレンジ系の色にしている。
-function buildFacilityListMarkerIcon(): L.DivIcon {
+// トンネル台帳（丸型・紫）とも見た目を変え、正方形・オレンジ系の色にしている
+// （色・形は施設種別を問わず共通にし、データの出どころ＝「施設一覧」由来である
+// ことを示す。施設種別ごとの区別は中の絵文字だけで表す）。
+function buildFacilityListMarkerIcon(facilityType: string | null | undefined, facilitySubType: string | null | undefined): L.DivIcon {
   return L.divIcon({
     className: "",
     html: `<div style="
@@ -674,7 +698,7 @@ function buildFacilityListMarkerIcon(): L.DivIcon {
         box-shadow:0 1px 3px rgba(0,0,0,0.4);
         display:flex;align-items:center;justify-content:center;
         font-size:11px;
-      ">🛣️</div>`,
+      ">${facilityIconEmoji(facilityType, facilitySubType)}</div>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
     popupAnchor: [0, -11],
