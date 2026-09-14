@@ -96,7 +96,7 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
             </div>
           </PhotoLightboxGroup>
         )}
-        <PhotoUploadForm karteId={karte.id} karteFacilityNo={karte.facilityNo} />
+        <PhotoUploadForm karteId={karte.id} />
       </section>
 
       <KarteForm action={action} initial={initial} submitLabel="保存する" />

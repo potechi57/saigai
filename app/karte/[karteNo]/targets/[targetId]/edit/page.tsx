@@ -133,7 +133,7 @@ export default async function EditInspectionTargetPage({
           <p className="mb-2 text-xs text-gray-400 dark:text-gray-500">
             写真を追加（先頭が&lt;詳細スケッチ欄&gt;、2枚目以降が&lt;写真張付欄&gt;に反映されます）
           </p>
-          <PhotoUploadForm targetId={target.id} karteId={target.karteId} karteFacilityNo={karteNo} compact />
+          <PhotoUploadForm targetId={target.id} karteId={target.karteId} compact />
         </div>
       </section>
 
