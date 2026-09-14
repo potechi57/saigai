@@ -53,11 +53,19 @@ export async function createFacilityLedger(
     };
   }
 
+  // 分類（法令台帳／施設台帳）は、以前は未指定・不正値の場合に無言で「施設台帳」を
+  // 既定値にしていたが、これが原因で「法令台帳として登録したつもりが、実際には
+  // 施設台帳として保存され、検索で見つからない」という事例が発生した（会話ログ
+  // 参照）。分類はデータの帰属を左右する重要な項目のため、明示的な指定が無ければ
+  // 登録自体を拒否する（components/FacilityLedgerForm.tsxのラジオボタンにも
+  // requiredを付け、通常はここに到達する前にブラウザ側で止まる想定だが、
+  // JavaScript無効時・不正なフォーム送信時のフォールバックとしてサーバー側でも
+  // 検証する）。
   const docClassRaw = formData.get("docClass");
-  const docClass =
-    typeof docClassRaw === "string" && docClassRaw in FacilityLedgerDocClass
-      ? (docClassRaw as FacilityLedgerDocClass)
-      : FacilityLedgerDocClass.FACILITY;
+  if (typeof docClassRaw !== "string" || !(docClassRaw in FacilityLedgerDocClass)) {
+    return { ok: false, error: "分類（法令台帳／施設台帳）を選択してください。" };
+  }
+  const docClass = docClassRaw as FacilityLedgerDocClass;
 
   const facilityType = str(formData, "facilityType");
   const facilitySubType = str(formData, "facilitySubType");

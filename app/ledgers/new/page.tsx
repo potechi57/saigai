@@ -29,10 +29,16 @@ export default async function NewFacilityLedgerPage({
   searchParams: Promise<{ facilityId?: string; docClass?: string; bunya?: string; shisetsu?: string; routeName?: string }>;
 }) {
   const { facilityId, docClass, bunya, shisetsu, routeName } = await searchParams;
-  // 資料読み込みハブ（/import?method=image&cat=ledger|facility）から来た場合、
-  // どちらの分類で画像登録しようとしていたかをフォームの初期選択に反映する
-  // （app/import/page.tsx参照）。直接このURLを開いた場合は施設台帳を既定にする。
-  const initialDocClass: "LEGAL" | "FACILITY" = docClass === "LEGAL" ? "LEGAL" : "FACILITY";
+  // 資料読み込みハブ（/import?method=image&cat=ledger|facility）・台帳一覧の
+  // 「＋法令台帳として登録」「＋施設台帳として登録」から来た場合、どちらの分類で
+  // 画像登録しようとしていたかをフォームの初期選択に反映する（app/import/page.tsx・
+  // app/ledgers/page.tsx参照）。docClassの指定が無いまま直接このURLを開いた場合は
+  // どちらも初期選択しない（undefined）。以前はここで無言で「施設台帳」を既定に
+  // していたが、これが原因で法令台帳のつもりで登録した台帳が施設台帳として保存され、
+  // 検索で見つからなくなる事例が発生した（会話ログ「法令台帳として登録したものが、
+  // なぜか施設台帳に登録されているのかもしれません」参照）。
+  const initialDocClass: "LEGAL" | "FACILITY" | undefined =
+    docClass === "LEGAL" ? "LEGAL" : docClass === "FACILITY" ? "FACILITY" : undefined;
 
   const shisetsuDef = bunya && shisetsu ? FACILITY_LEDGER_ITEM_TYPES[bunya]?.find((t) => t.label === shisetsu) : undefined;
 

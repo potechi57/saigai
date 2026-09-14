@@ -31,14 +31,28 @@ export default async function LedgersPage() {
       <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
         ← 地図に戻る
       </Link>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">台帳（画像）一覧</h1>
-        <Link
-          href="/ledgers/new"
-          className="rounded bg-gray-800 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
-        >
-          ＋ 新規登録
-        </Link>
+        {/* 分類（法令台帳／施設台帳）を指定せずに登録画面へ渡すと、フォーム側が
+            「施設台帳」を無言でデフォルト選択してしまい、法令台帳のつもりで登録した
+            台帳が施設台帳側に紛れ込む問題があった（会話ログ「法令台帳として登録した
+            ものが、なぜか施設台帳に登録されているのかもしれません」参照）。
+            資料読み込みハブ（app/import/page.tsx）と同じく、分類ごとに別のボタンに
+            分けることで、登録前に必ずどちらかを意識して選んでもらう。 */}
+        <div className="flex gap-2">
+          <Link
+            href="/ledgers/new?docClass=LEGAL"
+            className="rounded bg-gray-800 px-4 py-1.5 text-sm text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
+          >
+            ＋ 法令台帳として登録
+          </Link>
+          <Link
+            href="/ledgers/new?docClass=FACILITY"
+            className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            ＋ 施設台帳として登録
+          </Link>
+        </div>
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400">
         Excelのような構造化データが無く、スキャン画像でしか残っていない台帳（トンネル台帳等）を、画像1枚と最低限の基本情報だけで登録します。緯度経度を入力すると、地図上にもピンで表示されます。

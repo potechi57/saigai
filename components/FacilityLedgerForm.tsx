@@ -54,7 +54,15 @@ export default function FacilityLedgerForm({
     createFacilityLedger,
     null
   );
-  const [docClass, setDocClass] = useState<"LEGAL" | "FACILITY">(initialDocClass ?? "FACILITY");
+  // 分類（法令台帳／施設台帳）は、呼び出し元（資料読み込みハブ・台帳一覧の
+  // 「＋法令台帳として登録」等）が明示的に指定してきた場合のみ初期選択し、
+  // 指定が無い場合はどちらも選ばせない（undefined）。以前は指定が無いと無言で
+  // 「施設台帳」を初期選択していたため、法令台帳のつもりで登録したユーザーが
+  // ラジオボタンに気付かず、実際には施設台帳として保存されてしまう事例が発生した
+  // （会話ログ「法令台帳として登録したものが、なぜか施設台帳に登録されている
+  // のかもしれません」参照）。下のinput要素にrequiredを付け、未選択のまま送信
+  // できないようにしている。
+  const [docClass, setDocClass] = useState<"LEGAL" | "FACILITY" | undefined>(initialDocClass);
   const [bunya, setBunya] = useState<string>("");
   // 分類（法令台帳／施設台帳）に応じて、種別選択で使う分野・施設名称の一覧を
   // 切り替える（上のコメント参照）。
@@ -69,7 +77,9 @@ export default function FacilityLedgerForm({
   return (
     <form action={formAction} className="space-y-4 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
       <div>
-        <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">分類</label>
+        <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+          分類 <span className="text-red-500">*</span>
+        </label>
         <div className="flex gap-3">
           {(Object.entries(FACILITY_LEDGER_DOC_CLASS_LABEL) as [("LEGAL" | "FACILITY"), string][]).map(
             ([value, label]) => (
@@ -78,6 +88,7 @@ export default function FacilityLedgerForm({
                   type="radio"
                   name="docClass"
                   value={value}
+                  required
                   checked={docClass === value}
                   onChange={() => {
                     setDocClass(value);
@@ -92,6 +103,11 @@ export default function FacilityLedgerForm({
             )
           )}
         </div>
+        {!docClass && (
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            法令台帳・施設台帳のどちらとして登録するか選んでください。
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
