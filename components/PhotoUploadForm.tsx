@@ -9,15 +9,13 @@ import { uploadPhoto } from "@/lib/actions/photo-actions";
 export default function PhotoUploadForm({
   targetId,
   karteId,
-  karteFacilityNo,
   compact,
 }: {
   targetId?: string | null;
   karteId: string;
-  karteFacilityNo: string;
   compact?: boolean;
 }) {
-  const action = uploadPhoto.bind(null, targetId ?? null, karteId, karteFacilityNo);
+  const action = uploadPhoto.bind(null, targetId ?? null, karteId);
   const [state, formAction, isPending] = useActionState(action, null);
 
   return (

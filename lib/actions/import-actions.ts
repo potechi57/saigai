@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { put, del } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { isOwnBlobUrl } from "@/lib/blob-url";
 import {
   type Prisma,
   KarteType,
@@ -304,6 +305,13 @@ async function importRecordPhotos(
 // 独立しており、前の呼び出しでパース済みのWorkBookをメモリ上に持ち越せないため）。
 // ファイルサイズが数MB程度であれば、取得・再パース自体は数百ms程度で完了する。
 async function loadWorkbookFromBlob(blobUrl: string): Promise<{ wb: XLSX.WorkBook; sourceBuffer: Buffer } | { error: string }> {
+  // セキュリティレビューより: blobUrlは呼び出し元のServer Action引数（クライアントから
+  // 渡される）であり、UIを経由せず任意のURLを指定して直接呼び出すことも可能なため、
+  // 自分のVercel Blobストアのものであることを確認してから取得する（SSRF対策。
+  // lib/blob-url.tsのコメント参照）。
+  if (!isOwnBlobUrl(blobUrl)) {
+    return { error: "不正なファイルURLです。" };
+  }
   const res = await fetch(blobUrl);
   if (!res.ok) {
     return { error: "アップロード済みファイルの取得に失敗しました。もう一度お試しください。" };

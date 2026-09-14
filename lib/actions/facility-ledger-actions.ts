@@ -8,6 +8,7 @@ import { FacilityLedgerDocClass } from "@prisma/client";
 import { composeRouteName } from "@/lib/route-name";
 import { logAudit } from "@/lib/audit";
 import { facilityLedgerDisplayName } from "@/lib/labels";
+import { safeImageExtension } from "@/lib/safe-filename";
 
 // トンネル台帳等、Excelのような構造化データが無くスキャン画像でしか残っていない
 // 台帳を、「画像1枚以上＋最低限の基本情報」という単純な形で登録するための
@@ -84,7 +85,14 @@ export async function createFacilityLedger(
   try {
     imageUrls = await Promise.all(
       files.map(async (file) => {
-        const blob = await put(`facility-ledgers/${docClass}-${Date.now()}-${file.name}`, file, { access: "public" });
+        // セキュリティレビューより: 元のファイル名（file.name）はブラウザ側で
+        // 自由に設定できる文字列のため、Blobの保存パスにはそのまま使わず、
+        // 安全な拡張子だけを抽出したファイル名にする（lib/safe-filename.ts参照）。
+        const blob = await put(
+          `facility-ledgers/${docClass}-${Date.now()}-${Math.random().toString(36).slice(2)}.${safeImageExtension(file)}`,
+          file,
+          { access: "public" }
+        );
         return blob.url;
       })
     );
@@ -231,7 +239,11 @@ export async function addFacilityLedgerImage(
 
   let imageUrl: string;
   try {
-    const blob = await put(`facility-ledgers/${ledger.docClass}-${Date.now()}-${file.name}`, file, { access: "public" });
+    const blob = await put(
+      `facility-ledgers/${ledger.docClass}-${Date.now()}-${Math.random().toString(36).slice(2)}.${safeImageExtension(file)}`,
+      file,
+      { access: "public" }
+    );
     imageUrl = blob.url;
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

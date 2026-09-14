@@ -19,6 +19,12 @@ export async function POST(request: Request): Promise<NextResponse> {
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ],
         addRandomSuffix: true,
+        // セキュリティレビューより: 上限が無いと、未認証のまま無制限サイズの
+        // アップロードトークンを発行できてしまう（allowedContentTypesはクライアント
+        // 申告値のため実質的な検証にならない）。実際の防災カルテExcel（写真埋め込み）
+        // は数MB〜10MB程度（README「大きいファイルのアップロード」参照）のため、
+        // 余裕を持たせつつ上限を設ける。
+        maximumSizeInBytes: 50 * 1024 * 1024, // 50MB
       }),
     });
     return NextResponse.json(jsonResponse);

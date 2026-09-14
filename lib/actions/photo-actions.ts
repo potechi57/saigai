@@ -4,6 +4,7 @@ import { put } from "@vercel/blob";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { PhotoSourceForm } from "@prisma/client";
+import { safeImageExtension } from "@/lib/safe-filename";
 
 // 写真の保存先はVercel Blob。ローカルディスクへの保存はVercel本番環境（サーバーレス、
 // ファイルシステムはデプロイのたびにリセットされる）では機能しないため採用していない。
@@ -26,7 +27,6 @@ export type UploadPhotoResult = { ok: true } | { ok: false; error: string };
 export async function uploadPhoto(
   targetId: string | null,
   karteId: string,
-  karteFacilityNo: string,
   _prevState: UploadPhotoResult | null,
   formData: FormData
 ): Promise<UploadPhotoResult> {
@@ -37,6 +37,17 @@ export async function uploadPhoto(
   if (!file.type.startsWith("image/")) {
     return { ok: false, error: "画像ファイル（jpg/png等）を選択してください。" };
   }
+
+  // セキュリティレビューより: karteFacilityNoはServer Actionのbind済み引数として
+  // クライアントから渡されるため、UIを経由せず直接呼び出された場合、実際のkarteId
+  // と食い違う値・不正な値を指定できてしまう（保存パスの構築に使っているため）。
+  // DBから実際のfacilityNoを取得し直し、以後はそちらだけを使う（karteIdが実在しない
+  // 場合もここで早期に検出できる）。
+  const karte = await prisma.karte.findUnique({ where: { id: karteId }, select: { facilityNo: true } });
+  if (!karte) {
+    return { ok: false, error: "カルテが見つかりません。" };
+  }
+  const facilityNo = karte.facilityNo;
 
   // @vercel/blob は認証情報が全く無い場合、すぐには失敗せず内部のリトライ処理で
   // 1分以上待たされた末にエラーになることを実際に確認した。UXが悪いため、
@@ -53,9 +64,14 @@ export async function uploadPhoto(
   let url: string;
   try {
     const scope = targetId ?? "_karte";
-    const blob = await put(`karte-photos/${karteFacilityNo}/${scope}/${Date.now()}-${file.name}`, file, {
-      access: "public",
-    });
+    // 元のファイル名（file.name）はブラウザ側で自由に設定できる文字列のため、
+    // 保存パスにはそのまま使わず、安全な拡張子だけを抽出したファイル名にする
+    // （lib/safe-filename.ts参照）。
+    const blob = await put(
+      `karte-photos/${facilityNo}/${scope}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeImageExtension(file)}`,
+      file,
+      { access: "public" }
+    );
     url = blob.url;
   } catch (e) {
     // TODO: 原因特定のため一時的に実際のエラー内容を表示している。解決したら
@@ -84,6 +100,6 @@ export async function uploadPhoto(
     },
   });
 
-  revalidatePath(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/karte/${facilityNo}`);
   return { ok: true };
 }
