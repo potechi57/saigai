@@ -8,6 +8,7 @@ import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSignInspection } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
+import { buildInspectionCommonConditions } from "@/lib/inspection-search";
 import {
   getKarteRouteNameOptions,
   getFacilityListRouteNameOptions,
@@ -59,7 +60,13 @@ const FACILITY_PARAM_KEYS = [
 // 「bunyaキーがURLに存在する」判定が誤って真になり、施設台帳側が絞り込み無しの
 // 全件を検索・地図表示してしまう不具合が実際に発生した（ユーザー指摘により発覚）。
 // タブごとに完全に別のパラメータ名にすることで、この種の混線を構造的に防ぐ。
-const LEDGER_PARAM_KEYS = ["ledgerBunya", "ledgerShisetsu", "ledgerName"] as const;
+const LEDGER_PARAM_KEYS = [
+  "ledgerBunya",
+  "ledgerShisetsu",
+  "ledgerName",
+  "ledgerRouteName",
+  "ledgerLocation",
+] as const;
 
 // ── 分類体系（島根県公共土木施設台帳の分類。会話ログ参照） ─────────────────
 // 最上位タブは「法令台帳」「施設台帳」「点検調書」の3つで、それぞれ完全に独立した
@@ -155,9 +162,18 @@ type SearchParams = {
   // 法令台帳タブの名称検索（台帳（画像）のname・managementNo）。法令台帳タブは
   // 他に検索クエリを持たないため単独のパラメータにしている。
   ledgerName?: string;
+  // 法令台帳タブの路線名・所在地（施設台帳タブのfacRouteName/facLocationに相当。
+  // FacilityLedgerもroute Name/locationカラムを持つが、以前は名称検索(ledgerName)
+  // しか無かった。会話ログ「法令台帳の検索方法を施設台帳と揃えてほしい」参照）。
+  ledgerRouteName?: string;
+  ledgerLocation?: string;
   inspBunya?: string; // 点検調書タブの分野（既定は"disaster"＝災害）
   inspShisetsu?: string; // 点検調書タブの施設名称（分野が"disaster"以外のとき）
   soundnessGrade?: string;
+  // 点検調書＞道路＞門型標識の判定区分（Ⅰ〜Ⅳ）検索。将来、橋梁・道路法面等の
+  // 点検調書が増えた場合も同様の判定区分を持つ想定だが、様式が未確認のため
+  // 今は門型標識専用のパラメータ名にしている（会話ログ参照）。
+  gsJudgment?: string;
   cat?: string; // 最上位タブ: "ledger"（法令台帳）|"facility"（施設台帳）|"inspection"（点検調書。既定）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
 };
@@ -314,15 +330,26 @@ export default async function KarteListPage({
         { facilitySubType: { contains: kw } },
       ]),
     });
-  } else if ((facilityShisetsu || facilityBunya) && !params.facName) {
+  } else if (
+    (facilityShisetsu || facilityBunya) &&
+    !params.facName &&
+    !params.fq &&
+    !params.facRouteName &&
+    !params.facLocation
+  ) {
     // 施設名称（細別）がまだ選ばれていない場合（分野のみ選択、または準備中の
     // 施設名称が選ばれた場合）は、意図的に0件にする。以前は分野のみ選択時に
     // FACILITY_LEDGER_ITEM_FIELD_MATCHで分野全体を広く一致させていたが、細別を
     // 選ぶ前から該当しそうな施設が全て表示されてしまう不具合になっていたため、
     // 「施設名称まで特定されるまでは何も表示しない」方針に統一する
     // （ユーザー指摘: 「その細別を選択する前に道路に該当するすべてが表示されます」）。
-    // ただし名称検索（facName）が指定されている場合は、細別を問わず横断的に
-    // 探せることの方が有用なため、この0件化は行わない。
+    // ただし管理番号・路線名・所在地・施設名称のいずれかが具体的に指定されている
+    // 場合は、細別を問わず横断的に探せることの方が有用なため、この0件化は行わない
+    // （会話ログ「路線における構造物等を横断的に探す」参照。以前はfacNameだけが
+    // この例外対象だったが、路線名等でも同じ考え方で探せるべきとの指摘を受けて
+    // 拡張した。なお、この例外が無くても分野の孫ボタンを一切押さず路線名だけを
+    // 指定した場合は元々横断検索できていた＝この分岐自体を通らないため影響が無い。
+    // 影響が出るのは「分野ボタンだけ押した状態で、さらに路線名等も指定した」場合）。
     facAndConditions.push({ id: "__no_data_yet__" });
   }
   const facWhere: Prisma.FacilityListItemWhereInput = facAndConditions.length > 0 ? { AND: facAndConditions } : {};
@@ -348,14 +375,22 @@ export default async function KarteListPage({
       : cat === "facility"
         ? facilityShisetsuDef
         : undefined;
-  // 台帳の名称（name）・管理番号（managementNo）による検索。タブごとに別パラメータ
-  // （法令台帳: ledgerName／施設台帳: facName）を使うが、対象はどちらもFacilityLedger
-  // （会話ログ「法令台帳...について...名前による検索ができません」参照）。分野・
-  // 施設名称の絞り込みキーワードとはORで組み合わせる（＝名称検索を指定すれば、
-  // 細別を選び切っていなくても、あるいは選んだ細別と異なる分類の施設でも、名前が
-  // 一致すれば横断的に見つけられる。一方、名称検索が空の場合は従来どおり細別が
-  // 特定されるまで何も表示しない）。
+  // 台帳の名称（name）・管理番号（managementNo）・路線名・所在地による検索。
+  // タブごとに別パラメータ（法令台帳: ledgerName/ledgerRouteName/ledgerLocation／
+  // 施設台帳: facName/facRouteName/facLocation）を使うが、対象はどちらも
+  // FacilityLedger（会話ログ「法令台帳...について...名前による検索ができません」
+  // 「法令台帳の検索方法を施設台帳と揃えてほしい」参照）。分野・施設名称の絞り込み
+  // キーワードとはORで組み合わせる（＝これらのいずれかを指定すれば、細別を選び
+  // 切っていなくても、あるいは選んだ細別と異なる分類の施設でも、横断的に見つけら
+  // れる。一方、何も指定しない場合は従来どおり細別が特定されるまで何も表示しない）。
+  // 名称検索と異なり、路線名・所在地は複数件ヒットしうる自由記述のため、施設台帳
+  // タブ（facWhere）のようなAND絞り込みではなくOR絞り込みのままにしている
+  // （このFacilityLedger側の「名称かOR路線名かOR所在地かOR分類のいずれかに
+  // 一致すれば表示」という設計は元々の名称検索の時点からの方針を踏襲したもので、
+  // 施設台帳側のAND方式とは意図的に異なる。詳細は上のコメント参照）。
   const ledgerNameQuery = cat === "ledger" ? params.ledgerName : cat === "facility" ? params.facName : undefined;
+  const ledgerRouteQuery = cat === "ledger" ? params.ledgerRouteName : cat === "facility" ? params.facRouteName : undefined;
+  const ledgerLocationQuery = cat === "ledger" ? params.ledgerLocation : cat === "facility" ? params.facLocation : undefined;
   const ledgerOrConditions: Prisma.FacilityLedgerWhereInput[] = [];
   if (ledgerShisetsuDef?.match) {
     ledgerOrConditions.push({
@@ -372,6 +407,12 @@ export default async function KarteListPage({
         { managementNo: { contains: ledgerNameQuery, mode: "insensitive" } },
       ],
     });
+  }
+  if (ledgerRouteQuery) {
+    ledgerOrConditions.push({ routeName: ledgerRouteQuery });
+  }
+  if (ledgerLocationQuery) {
+    ledgerOrConditions.push({ location: { contains: ledgerLocationQuery, mode: "insensitive" } });
   }
   const ledgerWhere: Prisma.FacilityLedgerWhereInput =
     ledgerDocClass && ledgerOrConditions.length > 0
@@ -390,9 +431,28 @@ export default async function KarteListPage({
   // （会話ログ「点検調書タブの道路の門型標識を選択しても、施設台帳と連動した
   // 点検調書が表示されません...点検調書でも表示してほしい」参照）。他の分野
   // （橋梁・トンネル等）はまだ実データが無いため対象外。
+  //
+  // 検索条件は、点検調書タブ共通の管理番号・路線名・所在地（q/routeName/
+  // location。カルテ＞災害と共用のフィールド。分野を問わず同じname属性で
+  // 送信されるため、gateSignReadyのときはそのままGateSignInspectionの絞り込みに
+  // 使う）に加え、この系統固有の判定区分（gsJudgment）で絞り込む。判定区分は
+  // 点検調書の検索方法として重要度が高いとの指摘を受けて追加した（会話ログ
+  // 参照）。lib/inspection-search.tsの共通ヘルパーを使うことで、近日実装予定の
+  // 橋梁点検・道路法面点検の調書でも同じ組み立て方を再利用できるようにしている
+  // （判定区分は体系がモデルごとに異なりうるため、ヘルパーには含めずここで個別に
+  // 組み立てる）。
   const gateSignReady = cat === "inspection" && inspectionBunya === "road" && inspectionShisetsu === "門型標識";
+  const gsAndConditions: Prisma.GateSignInspectionWhereInput[] = gateSignReady
+    ? (buildInspectionCommonConditions(
+        { managementNo: params.q, routeName: params.routeName, location: params.location },
+        { managementNo: "managementNo", routeName: "routeName", location: "location" }
+      ) as Prisma.GateSignInspectionWhereInput[])
+    : [];
+  if (gateSignReady && params.gsJudgment) {
+    gsAndConditions.push({ overallJudgment: params.gsJudgment });
+  }
   const gateSignWhere: Prisma.GateSignInspectionWhereInput = gateSignReady
-    ? { latitude: { not: null }, longitude: { not: null } }
+    ? { latitude: { not: null }, longitude: { not: null }, AND: gsAndConditions }
     : { id: "__no_data_yet__" };
 
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
@@ -670,15 +730,16 @@ export default async function KarteListPage({
 
         {cat === "ledger" ? (
           // 法令台帳タブ：分野→施設名称のドリルダウンに加え、台帳名称（name・
-          // managementNo）による検索フォームを持つ（会話ログ「法令台帳...について...
-          // 名前による検索ができません」参照。以前は検索フォーム自体が無かったが、
-          // ドリルダウンで細別を選ばなくても名前で横断的に探せるよう追加した）。
+          // managementNo）・路線名・所在地による検索フォームを持つ（会話ログ
+          // 「法令台帳...について...名前による検索ができません」「法令台帳の検索方法
+          // を施設台帳と揃えてほしい」参照。以前は名称検索しか無かったが、施設台帳
+          // タブと同じ「路線名・所在地」でも横断的に探せるよう拡張した）。
           // 台帳（画像。FacilityLedger）は分野・施設名称を問わず登録できるが
           // （/ledgers/new。会話ログ参照）、地図上での表示は施設台帳タブと同様、
-          // ここで分野・施設名称（細別）まで選ぶか、名称検索を使ったときだけになる
-          // （上記ledgerWhere参照）。
+          // ここで分野・施設名称（細別）まで選ぶか、名称・路線名・所在地のいずれかで
+          // 検索したときだけになる（上記ledgerWhere参照）。
           <>
-            <Form action="" className="mb-3 flex items-end gap-2">
+            <Form action="" className="mb-3 space-y-3">
               {/* ドリルダウンの選択（分野・施設名称）は、フォーム送信で消えないよう
                   隠しinputで引き継ぐ（施設台帳タブの隠しinputと同じ方針）。 */}
               <input type="hidden" name="cat" defaultValue="ledger" />
@@ -690,24 +751,46 @@ export default async function KarteListPage({
                 label="名称（台帳名・管理番号）"
                 defaultValue={params.ledgerName}
               />
-              <SearchSubmitButton
-                type="submit"
-                targetView={view}
-                className="shrink-0 rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
-              >
-                検索
-              </SearchSubmitButton>
-            </Form>
-            {params.ledgerName && (
-              <p className="-mt-2 mb-3">
-                <PendingLink
-                  href={`/karte?${buildQuery(params, { remove: ["ledgerName"] })}`}
-                  className="text-xs text-gray-400 hover:underline dark:text-gray-500"
+              <div>
+                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+                <select
+                  key={`ledgerRoute-${params.ledgerRouteName ?? ""}`}
+                  name="ledgerRouteName"
+                  defaultValue={params.ledgerRouteName ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                 >
-                  名称検索をクリア
-                </PendingLink>
-              </p>
-            )}
+                  <option value="">すべて</option>
+                  {combinedRouteNameOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <SearchField
+                key={`ledgerLocation-${params.ledgerLocation ?? ""}`}
+                name="ledgerLocation"
+                label="所在地"
+                defaultValue={params.ledgerLocation}
+              />
+              <div className="flex items-center gap-3">
+                <SearchSubmitButton
+                  type="submit"
+                  targetView={view}
+                  className="shrink-0 rounded bg-gray-800 dark:bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600"
+                >
+                  検索
+                </SearchSubmitButton>
+                {(params.ledgerName || params.ledgerRouteName || params.ledgerLocation) && (
+                  <PendingLink
+                    href={`/karte?${buildQuery(params, { remove: ["ledgerName", "ledgerRouteName", "ledgerLocation"] })}`}
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:underline"
+                  >
+                    検索条件をクリア
+                  </PendingLink>
+                )}
+              </div>
+            </Form>
             <FieldDrilldown
               fields={FACILITY_FIELDS}
               types={FACILITY_TYPES}
@@ -914,17 +997,39 @@ export default async function KarteListPage({
                       })}
                     </div>
                     {inspectionBunya === "road" && inspectionShisetsu === "門型標識" ? (
-                      <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        門型標識の点検調書 {mapGateSignInspections.length}件を地図に表示中です。
-                        <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
-                          専用の一覧ページ
-                        </Link>
-                        で確認・
-                        <Link href="/inspections/gate-signs/import" className="text-blue-600 dark:text-blue-400 hover:underline">
-                          Excel取込
-                        </Link>
-                        もできます（施設台帳・地図の共通の検索条件（管理番号・路線名・所在地等）とは連動しません）。
-                      </p>
+                      <>
+                        {/* 判定区分（健全性の診断。Ⅰ〜Ⅳ）は点検調書の検索方法として
+                            特に重要度が高いとの指摘を受けて設けている（会話ログ参照）。
+                            管理番号・路線名・所在地は上の共通フィールド（q/routeName/
+                            location）をそのまま使う（lib/inspection-search.ts参照）。 */}
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">判定区分</label>
+                          <select
+                            key={params.gsJudgment ?? ""}
+                            name="gsJudgment"
+                            defaultValue={params.gsJudgment ?? ""}
+                            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                          >
+                            <option value="">すべて</option>
+                            {["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ"].map((j) => (
+                              <option key={j} value={j}>
+                                {j}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                          門型標識の点検調書 {mapGateSignInspections.length}件を地図に表示中です。
+                          <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
+                            専用の一覧ページ
+                          </Link>
+                          で確認・
+                          <Link href="/inspections/gate-signs/import" className="text-blue-600 dark:text-blue-400 hover:underline">
+                            Excel取込
+                          </Link>
+                          もできます。
+                        </p>
+                      </>
                     ) : (
                       <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
                         準備中です。この分野の点検調書はまだ登録されていません。
@@ -1034,6 +1139,14 @@ export default async function KarteListPage({
                 ? `検索結果 ${facilityItems.length} 件`
                 : `全 ${facilityItems.length} 件を地図に表示中`}
             {hasFacSearched && facWithoutCoordsCount > 0 && `（座標未登録 ${facWithoutCoordsCount} 件を除く）`}
+          </span>
+          <span className="block">
+            点検調書（門型標識）：
+            {!gateSignReady
+              ? "未選択"
+              : gsAndConditions.length > 0
+                ? `検索結果 ${mapGateSignInspections.length} 件`
+                : `全 ${mapGateSignInspections.length} 件を地図に表示中`}
           </span>
         </p>
 
