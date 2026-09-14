@@ -1,11 +1,25 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
 import ViewHistoryButton from "@/components/ViewHistoryButton";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
   title: "道路施設管理 Web GIS (MVP)",
   description: "道路施設の点検・台帳管理支援システム MVP",
+  // app/manifest.tsを参照させ、スマホのホーム画面に追加できるようにする
+  // （優先事項10「現場（スマホ）向け画面の本格実装」Phase 5）。
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "道路施設管理" },
+};
+
+// テーマ切替（ThemeToggle・ライト/ダーク）に合わせ、スマホのステータスバー・
+// タスク切替画面のアクセントカラー（theme-color）もライト/ダークで出し分ける。
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#1f2937" },
+  ],
 };
 
 // 保存済みのテーマ（またはOS設定）を、Reactの初回描画より前に<html>へ反映する。
@@ -32,6 +46,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-screen flex-col">
+        <ServiceWorkerRegister />
         {/* h-14固定にしているのは、地図中心の検索画面（app/karte/page.tsx）が
             ヘッダー分を差し引いた高さ(h-[calc(100vh-3.5rem)])で地図を敷き詰めるため、
             ヘッダーの実高さを正確に把握できる必要があるため（曖昧なpy-*任せにすると
@@ -53,13 +68,21 @@ export default function RootLayout({
               複数存在するようになったため、それぞれを個別にヘッダーへ並べるのではなく
               「資料読み込み」1つのボタンにまとめ、遷移先（/import）で各手法を
               説明付きで案内する構成にしている。 */}
-          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 sm:gap-4">
             {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
                 ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
                 /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
                 （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。
                 ThemeToggleだけは、スマホ側の/mでも屋外の明るさ等に応じて切り替え
                 られるよう、隠さず常に表示する。 */}
+            {/* sm未満（スマホ幅）でのみ表示する、現場向け簡易画面（/m）への入口。
+                PC幅では/karte以下がメインのため不要（優先事項10 Phase 5）。 */}
+            <a
+              href="/m"
+              className="sm:hidden shrink-0 whitespace-nowrap rounded bg-gray-800 px-2 py-1.5 text-xs text-white dark:bg-gray-700"
+            >
+              📱 現場用
+            </a>
             <nav className="hidden items-center gap-4 sm:flex">
               <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                 ★ お気に入り

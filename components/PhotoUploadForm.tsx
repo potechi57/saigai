@@ -10,17 +10,29 @@ export default function PhotoUploadForm({
   targetId,
   karteId,
   compact,
+  capture,
 }: {
   targetId?: string | null;
   karteId: string;
   compact?: boolean;
+  // trueの場合、スマホでファイル選択時にカメラを直接起動する（現場での撮影用。
+  // /m以下の現場向け画面から使う想定。PC側の既存利用箇所には影響しないよう
+  // 既定はfalseのままにしている）。
+  capture?: boolean;
 }) {
   const action = uploadPhoto.bind(null, targetId ?? null, karteId);
   const [state, formAction, isPending] = useActionState(action, null);
 
   return (
     <form action={formAction} className={`flex flex-wrap items-end gap-2 ${compact ? "text-xs" : "text-sm"}`}>
-      <input type="file" name="file" accept="image/*" required className="text-xs" />
+      <input
+        type="file"
+        name="file"
+        accept="image/*"
+        capture={capture ? "environment" : undefined}
+        required
+        className="text-xs"
+      />
       <input
         type="date"
         name="takenAt"

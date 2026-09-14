@@ -314,3 +314,39 @@ export async function createInspectionEvent(
   revalidatePath(`/karte/${karteFacilityNo}`);
   redirect(`/karte/${karteFacilityNo}`);
 }
+
+// ── 点検記録の簡易登録（現場＝/m向け） ─────────────────────────────
+//
+// PC側のcreateInspectionEvent（上記）は、点検対象1件ごとの前回差異・被災履歴・
+// 補修履歴まで一括入力する様式Ｃ相当のフル機能だが、現場でスマホから素早く
+// 「今日来て、判定はこうでした」を記録したい場面では過剰。
+// 優先事項10「現場（スマホ）向け画面の本格実装」Phase 5で要望された
+// 「点検結果の簡易登録（判定区分・コメント等）」に合わせ、点検対象ごとの結果
+// （InspectionResult）は作らず、点検イベント本体（点検日・判定区分・特記事項）
+// だけを登録する軽量版として別関数にしている。PC側の詳細な記録は従来通り
+// /karte/[karteNo]/events/new から行う想定で、この関数は置き換えない。
+export async function createQuickInspectionEvent(karteId: string, karteFacilityNo: string, formData: FormData) {
+  const inspectionDate = dateVal(formData, "inspectionDate");
+  if (!inspectionDate) throw new Error("点検日は必須です");
+
+  const event = await prisma.inspectionEvent.create({
+    data: {
+      karteId,
+      inspectionDate,
+      weather: enumVal(formData, "weather", Weather),
+      specialistJudgement: enumVal(formData, "specialistJudgement", ResponseCategory),
+      specialTopics: str(formData, "specialTopics"),
+    },
+  });
+
+  await logAudit({
+    action: "CREATE",
+    entityType: "点検記録",
+    summary: `${karteFacilityNo} に点検記録（${event.inspectionDate.toLocaleDateString("ja-JP")}、現場画面より簡易登録）を登録`,
+    karteFacilityNo,
+  });
+
+  revalidatePath(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/m/${karteFacilityNo}`);
+  redirect(`/m/${karteFacilityNo}`);
+}
