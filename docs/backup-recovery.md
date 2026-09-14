@@ -55,6 +55,11 @@ Artifactが正常に生成されることを一度確認しておくとよい。
    （ローカルにPostgreSQLクライアント一式が必要。`brew install postgresql` /
    Windowsは[EDBのインストーラー](https://www.postgresql.org/download/windows/)等）
 
+   **注意（バージョン）**: `pg_dump`と同様、`pg_restore`もNeon側のPostgreSQL
+   バージョン（本ドキュメント作成時点で18系）以上のクライアントでないと
+   `server version mismatch`エラーになる。手元の`pg_restore --version`で確認し、
+   古い場合はインストールし直す
+
    ```
    pg_restore --no-owner --no-privileges --clean --if-exists -d "<復元先の接続文字列>" db-backup.dump
    ```
