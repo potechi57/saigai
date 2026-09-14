@@ -25,10 +25,15 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    # pg_dumpのバージョンをNeon側（比較的新しいPostgreSQLバージョン）と揃えるため、
-    # Ubuntuランナー標準のクライアントではなく、postgresの公式イメージを使う。
+    # pg_dumpのバージョンをNeon側と揃えるため、Ubuntuランナー標準のクライアントではなく
+    # postgresの公式イメージを使う。pg_dumpは「自分より新しいメジャーバージョンの
+    # サーバー」からのダンプを拒否する仕様のため、Neon側のバージョン（実行時点で18.6を
+    # 確認済み）以上である必要がある。メジャーバージョンのタグ（18-bookworm）を使い、
+    # Neon側が18系内でマイナーアップデートされても追従できるようにしている。
+    # 将来Neonがメジャーバージョンを19等に上げた場合は、ここも合わせて更新すること
+    # （その際も同様の "server version mismatch" エラーで気づける）。
     container:
-      image: postgres:17-bookworm
+      image: postgres:18-bookworm
     steps:
       - name: Check secret is configured
         run: |
