@@ -409,6 +409,36 @@ model Photo {
 // シングルトン行（id="singleton"固定）として保持する。県土整備事務所など、点検の
 // 起点となる拠点の緯度経度を保存し、各カルテ地点までの距離表示に使う
 // （lib/geo.ts参照）。将来ログイン機能が入った場合は、ユーザーごとのテーブルに分割する。
+// ── 認証（PoC） ──────────────────────────────────────────────
+// 本番実装に向けた優先事項の検討で、「ログイン機能・アクセス制御」が最優先と
+// 判断された（会話ログ参照）。認証方式（自前ID/パスワード方式 or Google
+// Workspace等の組織アカウント連携）の比較検討の結果、対象事務所が組織アカウントを
+// 実際に使っているか未確認だったため、まずAuth.js（NextAuth v5）がこのプロジェクトの
+// スタック（Next.js 16 App Router）で問題なく動くかを検証するPoCとして、外部の
+// 設定作業が不要なCredentials Provider（メール＋パスワード）から着手している
+// （lib/auth.tsも参照）。組織アカウント連携が使える場合は、同じAuth.js基盤の上に
+// Google/Microsoft Providerを追加するだけで済む設計を想定している。
+// 【PoCの範囲】ログイン・セッション・ルート保護の仕組みが動くことの検証が目的で、
+// ロールに応じた実際の権限制御（Server Actionsでの書き込み制限等）や、ユーザー
+// 管理画面、AuditLogへの「誰が」の記録は、方式確定後の本実装フェーズで対応する
+// （CLAUDE.md「PoCを本実装に先走らせない」方針）。
+enum UserRole {
+  ADMIN // ユーザー管理を含む全ての操作が可能（想定: 少数の管理者）
+  EDITOR // 閲覧・登録・編集・削除が可能（既存の「誰でも編集できる」相当の権限）
+  VIEWER // 閲覧のみ
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  hashedPassword String
+  name           String?
+  role           UserRole @default(VIEWER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model AppSettings {
   id String @id @default("singleton")
 
