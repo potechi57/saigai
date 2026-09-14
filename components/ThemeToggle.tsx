@@ -30,7 +30,7 @@ export default function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-label="ダークモード切替"
-      className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+      className="shrink-0 whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
     >
       {isDark === null ? "…" : isDark ? "☀️ ライト" : "🌙 ダーク"}
     </button>

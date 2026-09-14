@@ -101,5 +101,6 @@ export async function uploadPhoto(
   });
 
   revalidatePath(`/karte/${facilityNo}`);
+  revalidatePath(`/m/${facilityNo}`); // 現場向け画面（優先事項10）からのアップロードにも反映させる
   return { ok: true };
 }
