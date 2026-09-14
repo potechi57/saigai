@@ -1,0 +1,57 @@
+name: DB Backup
+
+# 本番DBの定期バックアップ。
+#
+# 【背景】NeonのFreeプランはPoint-in-Time Restore（誤操作・障害時に過去の任意時点へ
+# 巻き戻せる機能）が過去24時間分しか保持されない。それより古い時点に戻す手段が
+# 無かったため、追加費用なしで復旧可能期間を延ばす目的で、GitHub Actionsの
+# 成果物（Artifacts）保存機能を使い、毎日のダンプを最大30日分保持する。
+#
+# 復旧手順は docs/backup-recovery.md を参照。
+#
+# 事前準備（このワークフローを有効にするには、リポジトリのSettings > Secrets and
+# variables > Actions で以下のSecretを設定する必要がある）:
+#   BACKUP_DATABASE_URL … 本番DBの「プーリングなし」接続文字列
+#     （NeonダッシュボードでConnection stringの"Pooled connection"をオフにしたもの。
+#     ホスト名に "-pooler" が付かない形。pg_dumpはプーリング接続だと
+#     正常に動作しないことがあるため、必ず直接接続のものを使うこと）
+
+on:
+  schedule:
+    # 毎日 04:00 JST (= 前日 19:00 UTC) に実行
+    - cron: "0 19 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # pg_dumpのバージョンをNeon側（比較的新しいPostgreSQLバージョン）と揃えるため、
+    # Ubuntuランナー標準のクライアントではなく、postgresの公式イメージを使う。
+    container:
+      image: postgres:17-bookworm
+    steps:
+      - name: Check secret is configured
+        run: |
+          if [ -z "${{ secrets.BACKUP_DATABASE_URL }}" ]; then
+            echo "::error::Secret BACKUP_DATABASE_URL が未設定です。リポジトリのSettings > Secrets and variables > Actions で設定してください（詳細は docs/backup-recovery.md）。"
+            exit 1
+          fi
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -eu
+          pg_dump "$DATABASE_URL" \
+            --no-owner \
+            --no-privileges \
+            --format=custom \
+            --file=db-backup.dump
+          ls -lh db-backup.dump
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: db-backup.dump
+          retention-days: 30

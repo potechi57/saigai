@@ -787,6 +787,20 @@ Preview/Development環境とで別々の値を設定しており、Previewデプ
 今回は有効化しておらず、Preview全体で1つの`development`ブランチを共有する構成に
 とどめている（まずは最小限の分離を優先し、必要になれば拡張する方針）。
 
+### データバックアップ・復旧計画について
+
+本番実装に向けた優先事項の1つとして、DBのバックアップ体制を整備した。Neon（Free
+プラン）のPoint-in-Time Restoreは過去24時間分しか保持されないため、追加費用なしで
+復旧可能期間を延ばす目的で、GitHub Actions（[`.github/workflows/db-backup.yml`](.github/workflows/db-backup.yml)）
+により毎日`pg_dump`を実行し、Artifactsとして最大30日分保持する方式を採用した。
+実際に障害が起きた際の復旧手順は[`docs/backup-recovery.md`](docs/backup-recovery.md)を参照。
+
+アップロード済み画像（Vercel Blob）は今回のバックアップ対象に含めていない。
+
+**利用開始にはリポジトリのGitHub Secretsに`BACKUP_DATABASE_URL`（本番DBのプーリング
+なし接続文字列）の設定が必要**（詳細は上記ドキュメント参照）。未設定のままだと
+ワークフローはエラーで停止する。
+
 ## 実データとの差分・既知の制限
 
 [../12_DATA_MODEL_WEBGIS_MVP.md](../12_DATA_MODEL_WEBGIS_MVP.md) の「意図的にMVPでは作らなかったもの」を参照。
