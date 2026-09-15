@@ -4,13 +4,16 @@ import { formatDistanceMeters } from "@/lib/geo";
 import NearbySearchButton from "@/components/NearbySearchButton";
 import MobileMapView from "@/components/MobileMapLoader";
 import MobileSearchPanel from "@/components/MobileSearchPanel";
-import { searchMobileByText, searchMobileNearby, MOBILE_RESULT_KIND_LABEL, type MobileSearchResult } from "@/lib/mobile-search";
+import {
+  searchMobileByText,
+  searchMobileNearby,
+  MOBILE_RESULT_KIND_LABEL,
+  NEARBY_RADIUS_M,
+  type MobileSearchResult,
+} from "@/lib/mobile-search";
 
 export const dynamic = "force-dynamic";
 
-// 「現在地から探す」の対象範囲（会話ログ「現在地から半径1キロのデータを確認できる
-// 仕様」より）。
-const NEARBY_RADIUS_M = 1000;
 // 一覧に表示する上限件数（現在地検索・テキスト検索共通）。
 const RESULT_LIMIT = 30;
 
@@ -70,7 +73,13 @@ export default async function MobileHomePage({
   return (
     // ヘッダー（h-14固定）ぶんを差し引いた高さいっぱいに地図を敷き詰める
     // （app/karte/page.tsxの地図中心レイアウトと同じ考え方）。
-    <div className="relative h-[calc(100vh-3.5rem)] w-full overflow-hidden">
+    // 100vhではなく100dvh（動的ビューポート単位）を使う。スマホブラウザは
+    // アドレスバーの表示/非表示で実際に見えている高さが変わるが、100vhは
+    // それに追従せず「アドレスバーが隠れた状態」を基準に固定されてしまうため、
+    // 状況によっては下端の検索パネル（開く/閉じるボタン）が実際の表示領域より
+    // 下にずれ、タップできなくなることがあった（会話ログ「一度検索欄を閉じると
+    // 再度開けることができない」の一因）。100dvhは実際の表示領域に追従する。
+    <div className="relative h-[calc(100dvh-3.5rem)] w-full overflow-hidden">
       <MobileMapView results={results} center={isNearbyMode ? { lat: nearbyLat, lng: nearbyLng } : null} />
 
       <MobileSearchPanel defaultOpen={hasResultsSection}>
