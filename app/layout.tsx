@@ -14,24 +14,36 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, statusBarStyle: "default", title: "道路施設管理" },
 };
 
-// テーマ切替（ThemeToggle・ライト/ダーク）に合わせ、スマホのステータスバー・
-// タスク切替画面のアクセントカラー（theme-color）もライト/ダークで出し分ける。
+// スマホのステータスバー・タスク切替画面のアクセントカラー（theme-color）。
+//
+// 【不具合修正・会話ログより】「設定ボタンを押した瞬間にライトモードに切り替わる」
+// との報告があり調査した。以前はここをprefers-color-scheme（OS側の設定）だけで
+// 出し分けていたが、それとThemeToggleでの手動切替（localStorage「theme」）は
+// 別物のため、「OSはライト設定だが、アプリ内では手動でダークモードを選んでいる」
+// 場合に、ページの中身はダークのままでも、ブラウザ/PWA側のステータスバー・
+// アドレスバーの色（theme-color）だけがライト側に戻ってしまう不整合があった。
+// ページ遷移のたびにtheme-colorがOS設定に基づいて再評価されるため、
+// 「ボタンを押した瞬間に」チラつく・切り替わって見えるように感じられたと考えられる。
+// ここでは静的な既定値（JS未実行時点の初期表示用）だけを置き、実際の値は
+// 手動選択を優先してTHEME_INIT_SCRIPT・ThemeToggle.tsxがJSで直接
+// <meta name="theme-color">を書き換える方式に変更した。
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#1f2937" },
-  ],
+  themeColor: "#ffffff",
 };
 
 // 保存済みのテーマ（またはOS設定）を、Reactの初回描画より前に<html>へ反映する。
 // useEffect任せにすると一瞬ライトモードで表示されてからダークに切り替わる
 // 「ちらつき」が起きるため、<head>内でブロッキング実行するインラインスクリプトにしている。
+// theme-colorの2値はcomponents/ThemeToggle.tsxのtoggle()内と一致させること
+// （手動切替時もここと同じ値でmetaタグを書き換えるため）。
 const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem("theme");
     var dark = stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.classList.toggle("dark", dark);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", dark ? "#1f2937" : "#ffffff");
   } catch (e) {}
 })();
 `;
