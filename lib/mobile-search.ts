@@ -13,6 +13,10 @@
 // GateSignInspection 1件）のため、PostGIS等の専用の仕組みは導入せず、
 // 全件取得してサーバー側でHaversine距離計算する方式にしている
 // （詳細はapp/m/page.tsxの元コメント・会話ログ参照）。
+//
+// 緯度経度も結果に含めているのは、/mのトップ画面に地図を表示する要望
+// （会話ログ「地図と現在地が表示されている仕様がイメージ通り」参照）に対応する
+// ため、検索結果を地図上にピン表示できるようにするため。
 
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceMeters } from "@/lib/geo";
@@ -40,6 +44,8 @@ export type MobileSearchResult = {
   // カルテと同様の現場向け画面を追加する）。
   href: string;
   distanceM?: number; // 現在地検索時のみ設定
+  latitude: number | null; // 地図表示用（無い場合はピンを打てない）
+  longitude: number | null;
 };
 
 // 1テーブルあたりのテキスト検索件数の上限（DBへの問い合わせ自体を軽く保つため）。
@@ -60,7 +66,15 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
       },
       orderBy: { facilityNo: "asc" },
       take: PER_KIND_TEXT_TAKE,
-      select: { facilityNo: true, karteType: true, routeName: true, locationDistrict: true, locationTown: true },
+      select: {
+        facilityNo: true,
+        karteType: true,
+        routeName: true,
+        locationDistrict: true,
+        locationTown: true,
+        latitude: true,
+        longitude: true,
+      },
     }),
     prisma.facilityLedger.findMany({
       where: {
@@ -72,7 +86,16 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         ],
       },
       take: PER_KIND_TEXT_TAKE,
-      select: { id: true, docClass: true, managementNo: true, name: true, routeName: true, location: true },
+      select: {
+        id: true,
+        docClass: true,
+        managementNo: true,
+        name: true,
+        routeName: true,
+        location: true,
+        latitude: true,
+        longitude: true,
+      },
     }),
     prisma.facilityListItem.findMany({
       where: {
@@ -84,7 +107,15 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         ],
       },
       take: PER_KIND_TEXT_TAKE,
-      select: { id: true, managementNo: true, facilityName: true, routeName: true, location: true },
+      select: {
+        id: true,
+        managementNo: true,
+        facilityName: true,
+        routeName: true,
+        location: true,
+        latitude: true,
+        longitude: true,
+      },
     }),
     prisma.gateSignInspection.findMany({
       where: {
@@ -95,7 +126,7 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         ],
       },
       take: PER_KIND_TEXT_TAKE,
-      select: { id: true, managementNo: true, routeName: true, location: true },
+      select: { id: true, managementNo: true, routeName: true, location: true, latitude: true, longitude: true },
     }),
   ]);
 
@@ -108,6 +139,8 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         subtitle: `${KARTE_TYPE_LABEL[k.karteType] ?? k.karteType} ・ ${k.routeName}`,
         location: [k.locationDistrict, k.locationTown].filter(Boolean).join(" ") || null,
         href: `/m/${k.facilityNo}`,
+        latitude: k.latitude != null ? Number(k.latitude) : null,
+        longitude: k.longitude != null ? Number(k.longitude) : null,
       })
     ),
     ...ledgers.map(
@@ -118,6 +151,8 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         subtitle: `${FACILITY_LEDGER_DOC_CLASS_LABEL[l.docClass] ?? l.docClass}${l.routeName ? ` ・ ${l.routeName}` : ""}`,
         location: l.location,
         href: `/ledgers/${l.id}`,
+        latitude: l.latitude != null ? Number(l.latitude) : null,
+        longitude: l.longitude != null ? Number(l.longitude) : null,
       })
     ),
     ...facilities.map(
@@ -128,6 +163,8 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         subtitle: f.routeName ?? "",
         location: f.location,
         href: `/facility-list/${f.id}`,
+        latitude: f.latitude != null ? Number(f.latitude) : null,
+        longitude: f.longitude != null ? Number(f.longitude) : null,
       })
     ),
     ...gateSigns.map(
@@ -138,6 +175,8 @@ export async function searchMobileByText(q: string): Promise<MobileSearchResult[
         subtitle: g.routeName ?? "",
         location: g.location,
         href: `/inspections/gate-signs/${g.id}`,
+        latitude: g.latitude != null ? Number(g.latitude) : null,
+        longitude: g.longitude != null ? Number(g.longitude) : null,
       })
     ),
   ];
@@ -196,6 +235,8 @@ export async function searchMobileNearby(lat: number, lng: number, radiusM: numb
       subtitle: `${KARTE_TYPE_LABEL[k.karteType] ?? k.karteType} ・ ${k.routeName}`,
       location: [k.locationDistrict, k.locationTown].filter(Boolean).join(" ") || null,
       href: `/m/${k.facilityNo}`,
+      latitude: Number(k.latitude),
+      longitude: Number(k.longitude),
       distanceM: haversineDistanceMeters(lat, lng, Number(k.latitude), Number(k.longitude)),
     })),
     ...ledgers.map((l) => ({
@@ -205,6 +246,8 @@ export async function searchMobileNearby(lat: number, lng: number, radiusM: numb
       subtitle: `${FACILITY_LEDGER_DOC_CLASS_LABEL[l.docClass] ?? l.docClass}${l.routeName ? ` ・ ${l.routeName}` : ""}`,
       location: l.location,
       href: `/ledgers/${l.id}`,
+      latitude: Number(l.latitude),
+      longitude: Number(l.longitude),
       distanceM: haversineDistanceMeters(lat, lng, Number(l.latitude), Number(l.longitude)),
     })),
     ...facilities.map((f) => ({
@@ -214,6 +257,8 @@ export async function searchMobileNearby(lat: number, lng: number, radiusM: numb
       subtitle: f.routeName ?? "",
       location: f.location,
       href: `/facility-list/${f.id}`,
+      latitude: Number(f.latitude),
+      longitude: Number(f.longitude),
       distanceM: haversineDistanceMeters(lat, lng, Number(f.latitude), Number(f.longitude)),
     })),
     ...gateSigns.map((g) => ({
@@ -223,6 +268,8 @@ export async function searchMobileNearby(lat: number, lng: number, radiusM: numb
       subtitle: g.routeName ?? "",
       location: g.location,
       href: `/inspections/gate-signs/${g.id}`,
+      latitude: Number(g.latitude),
+      longitude: Number(g.longitude),
       distanceM: haversineDistanceMeters(lat, lng, Number(g.latitude), Number(g.longitude)),
     })),
   ];

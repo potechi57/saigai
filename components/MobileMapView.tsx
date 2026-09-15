@@ -1,0 +1,171 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { MOBILE_RESULT_KIND_LABEL, type MobileSearchResult } from "@/lib/mobile-search";
+
+// 現場向け画面（/m）専用の軽量な地図。PC版（components/MapView.tsx）は
+// ホーム位置・お気に入り・道路距離・場所検索等、機能が多く重いため、
+// 「現在地の表示」と「検索結果のピン表示」だけに絞った別コンポーネントとして
+// 新規に作った（会話ログ「webページに飛んだ際に、地図と現在地が表示されている
+// 仕様がイメージ通り」参照）。地図の基本セットアップ（タイル・divIconでの
+// マーカー描画）はMapView.tsxと同じ考え方を踏襲している。
+const KIND_COLOR: Record<MobileSearchResult["kind"], string> = {
+  karte: "#2563eb", // 青（/mの他の場所の距離表示と統一）
+  ledger: "#9333ea", // 紫（PC版地図の台帳ピンと同系色）
+  facility: "#ea580c", // 橙（PC版地図の施設一覧ピンと同系色）
+  gateSign: "#16a34a", // 緑
+};
+
+function buildResultIcon(kind: MobileSearchResult["kind"]): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        background:${KIND_COLOR[kind]};
+        width:22px;height:22px;border-radius:50%;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+      "></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11],
+  });
+}
+
+const CURRENT_LOCATION_ICON = L.divIcon({
+  className: "",
+  html: `<div style="
+      background:#60a5fa;width:16px;height:16px;border-radius:50%;
+      border:3px solid #2563eb;box-shadow:0 0 0 4px rgba(37,99,235,0.25);
+    "></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+export default function MobileMapView({
+  results,
+  center,
+}: {
+  results: MobileSearchResult[];
+  // 現在地検索（NearbySearchButton）から来た場合の検索中心地点。指定があれば
+  // 初期表示の中心にする（結果のbounds合わせより、検索した地点そのものを
+  // 中心に見せる方が現場での意図に合うため）。
+  center: { lat: number; lng: number } | null;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const resultLayerRef = useRef<L.LayerGroup | null>(null);
+  const currentLocationMarkerRef = useRef<L.Marker | null>(null);
+  // 検索結果が無い・現在地検索でもない通常表示時、地図の初期中心を決めるための
+  // 島根県中央付近（MapView.tsxの初期表示と同じ座標）。
+  const DEFAULT_CENTER: [number, number] = [35.46, 133.06];
+
+  // 地図本体の初期化（1回だけ）。
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = L.map(containerRef.current, { zoomControl: true }).setView(
+      center ? [center.lat, center.lng] : DEFAULT_CENTER,
+      center ? 15 : 12
+    );
+    mapRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    resultLayerRef.current = L.layerGroup().addTo(map);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      resultLayerRef.current = null;
+      currentLocationMarkerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 現在地の自動取得・表示。ボタン操作（NearbySearchButton＝半径1km検索）とは別に、
+  // ページを開いた時点で「今どこにいるか」を地図上に示す（会話ログ「地図と現在地が
+  // 表示されている仕様」）。ユーザー操作を介さない自動取得のため、位置情報が
+  // 許可されない・取得できない場合もエラー表示はせず、ただ現在地ピンが出ない
+  // だけにする（NearbySearchButton側は明示的な操作なのでエラーを出す。この
+  // 自動取得は受動的な演出のため、エラーで通知するとかえって煩わしいと判断）。
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const map = mapRef.current;
+        if (!map) return;
+        const { latitude, longitude } = pos.coords;
+        if (currentLocationMarkerRef.current) {
+          currentLocationMarkerRef.current.setLatLng([latitude, longitude]);
+        } else {
+          currentLocationMarkerRef.current = L.marker([latitude, longitude], {
+            icon: CURRENT_LOCATION_ICON,
+            zIndexOffset: 500,
+          })
+            .addTo(map)
+            .bindPopup("現在地");
+        }
+        // 明示的な検索結果（center指定または検索結果あり）が無い、素のトップ画面の
+        // 場合のみ、現在地に地図を寄せる（検索結果を見ている最中に地図が勝手に
+        // 動いてしまうと分かりにくいため）。
+        if (!center && results.length === 0) {
+          map.setView([latitude, longitude], 14);
+        }
+      },
+      () => {
+        // 失敗時は何もしない（上記の通り、自動取得の失敗をユーザーに通知する必要は無い）。
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+    // 初回のみ（centerやresultsの変化のたびに取得し直す必要は無い）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 検索結果のピンを構築する。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = resultLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+
+    // ポップアップの中身は、MapView.tsx（PC版地図）と同じく文字列HTML＋通常の
+    // <a>リンクで組み立てる（タップで通常のページ遷移。/mの一覧側はnext/linkで
+    // クライアント遷移しているが、Leafletのポップアップは元々Reactツリーの外側の
+    // 生DOMのため、Reactコンポーネントをそのまま埋め込むにはcreateRoot等の追加の
+    // 仕組みが要る。地図上のピンは「タップしたら詳細を開く」の一撃で十分なため、
+    // 複雑さに見合わないと判断し見送った）。
+    results.forEach((r) => {
+      if (r.latitude == null || r.longitude == null) return; // 座標が無い施設はピンを打てない
+      const marker = L.marker([r.latitude, r.longitude], { icon: buildResultIcon(r.kind) }).addTo(layer);
+      marker.bindPopup(
+        `<div style="min-width:160px">
+           <div style="font-size:10px;color:#6b7280;margin-bottom:2px;">${MOBILE_RESULT_KIND_LABEL[r.kind]}</div>
+           <a href="${r.href}" style="font-weight:600;color:#2563eb;">${r.title}</a>
+           ${r.subtitle ? `<div style="font-size:12px;color:#6b7280;">${r.subtitle}</div>` : ""}
+         </div>`
+      );
+    });
+
+    // 検索結果があれば、それらが収まるようbounds調整（現在地検索の場合はcenter指定を
+    // 優先しているため、ここでは上書きしない）。
+    if (!center && results.length > 0) {
+      const coords = results.filter((r) => r.latitude != null && r.longitude != null) as Array<
+        MobileSearchResult & { latitude: number; longitude: number }
+      >;
+      if (coords.length > 0) {
+        map.fitBounds(
+          coords.map((r) => [r.latitude, r.longitude]),
+          { padding: [32, 32], maxZoom: 15 }
+        );
+      }
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
+
+  return <div ref={containerRef} className="h-full w-full" />;
+}
