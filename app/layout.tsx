@@ -70,9 +70,7 @@ export default function RootLayout({
             {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
                 ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
                 /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
-                （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。
-                ThemeToggleだけは、スマホ側の/mでも屋外の明るさ等に応じて切り替え
-                られるよう、隠さず常に表示する。 */}
+                （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。 */}
             {/* sm未満（スマホ幅）でのみ表示する、現場向け簡易画面（/m）への入口。
                 PC幅では/karte以下がメインのため不要（優先事項10 Phase 5）。 */}
             <a
@@ -97,6 +95,18 @@ export default function RootLayout({
             <span className="sm:hidden">
               <ViewHistoryButton compact />
             </span>
+            {/* 会話ログ「スマホ用画面では、ダークモードライトモードの切り替えは
+                不要かもしれない。設定ボタンを追加して、そこで切り替えられるように
+                してください」より、スマホ幅ではライト/ダーク切替をヘッダー直接では
+                なく設定画面（/m/settings）にまとめた。PC幅は従来通りThemeToggleを
+                直接ヘッダーに置く（下記参照）。 */}
+            <a
+              href="/m/settings"
+              aria-label="設定"
+              className="sm:hidden shrink-0 text-base text-gray-600 dark:text-gray-300"
+            >
+              ⚙️
+            </a>
             <nav className="hidden items-center gap-4 sm:flex">
               <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                 ★ お気に入り
@@ -112,7 +122,9 @@ export default function RootLayout({
                 ＋ 資料読み込み
               </a>
             </nav>
-            <ThemeToggle />
+            <span className="hidden sm:inline-block">
+              <ThemeToggle />
+            </span>
           </div>
         </header>
         {/* 幅・余白の決め方はページごとに任せる（mainには一律のpaddingを付けない）。
