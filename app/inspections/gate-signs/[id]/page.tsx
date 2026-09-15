@@ -127,7 +127,7 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   );
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-6">
+    <div className="mx-auto max-w-6xl space-y-4 p-6">
       <RecordViewHistory
         kind="gate_sign_inspection"
         id={insp.id}
@@ -242,44 +242,84 @@ function GateSignMemberPage({
         <p className="p-4 text-sm text-gray-400 dark:text-gray-500">このページには損傷カードがありません。</p>
       ) : (
         <PhotoLightboxGroup photos={photos}>
-          <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
+          {/* 元Excelでは、1件の損傷カードが「写真番号・部材名・変状の種類・健全性の
+              診断（ラベル列＋値列、A7:E12相当）」と「写真（F7:L12相当）」が左右に
+              並ぶ横長の構成で、そのカードが1シートに2件ずつ（写真番号1・2が1行、
+              3・4がもう1行）並ぶ。以前はカード内で写真を上・説明文を下に縦積みして
+              いたため、Excelでは横長のカードがWeb上では縦長になってしまっていた
+              （会話ログ「エクセルでは基本的に四つの要素が並んで全体としては横長
+              ですが、Web上では縦長となっています…画像とその説明を縦に並べている
+              ため」参照）。情報列を写真の左に横並びにし、カード同士もlg以上でのみ
+              2列にすることで、Excelの見た目に近づけている。 */}
+          <div className="grid grid-cols-1 gap-4 p-3 lg:grid-cols-2">
             {members.map((m) => {
               const photoIndex = photos.findIndex((p) => p.id === m.id);
-              const postAction = [m.postActionJudgment, m.postActionContent].filter(Boolean).join("：") || null;
               return (
-                <div key={m.id} className="rounded border border-gray-200 dark:border-gray-700">
-                  {m.photoUrl && photoIndex >= 0 ? (
-                    <PhotoLightboxThumbnail index={photoIndex}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={m.photoUrl}
-                        alt={m.memberDetail ?? m.memberName ?? "損傷写真"}
-                        className="aspect-[4/3] w-full cursor-zoom-in rounded-t border-b border-gray-200 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
-                      />
-                    </PhotoLightboxThumbnail>
-                  ) : (
-                    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-t border-b border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                      写真なし
+                <div key={m.id} className="overflow-hidden rounded border border-gray-200 dark:border-gray-700">
+                  <div className="flex flex-col md:flex-row">
+                    {/* 情報列（Excel A7:E12相当）: 写真の"左"に配置する */}
+                    <div className="space-y-2 border-b border-gray-200 p-3 text-sm dark:border-gray-700 md:w-[42%] md:shrink-0 md:border-b-0 md:border-r">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {m.photoNo != null && (
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            写真{m.photoNo}
+                          </span>
+                        )}
+                      </div>
+                      <Field label="部材名" value={[m.memberName, m.memberDetail].filter(Boolean).join(" / ") || null} />
+                      <Field label="変状の種類" value={m.damageType} />
+                      <div>
+                        <dt className="text-xs text-gray-400 dark:text-gray-500">健全性の診断</dt>
+                        <dd className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="flex items-center gap-1">
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400">定期点検時</span>
+                            {m.judgment ? (
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[m.judgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+                              >
+                                {m.judgment}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                            )}
+                          </span>
+                          {m.postActionJudgment && (
+                            <span className="flex items-center gap-1">
+                              <span className="text-[11px] text-gray-500 dark:text-gray-400">応急措置後</span>
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[m.postActionJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+                              >
+                                {m.postActionJudgment}
+                              </span>
+                            </span>
+                          )}
+                        </dd>
+                      </div>
                     </div>
-                  )}
-                  <div className="space-y-1.5 p-3 text-sm">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {m.photoNo != null && (
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                          写真{m.photoNo}
-                        </span>
-                      )}
-                      {m.judgment && (
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[m.judgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
-                        >
-                          健全性の診断 {m.judgment}
-                        </span>
+
+                    {/* 写真（Excel F7:L12相当）: 情報列の"右"に配置する */}
+                    <div className="md:w-[58%]">
+                      {m.photoUrl && photoIndex >= 0 ? (
+                        <PhotoLightboxThumbnail index={photoIndex} className="block h-full w-full text-left">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={m.photoUrl}
+                            alt={m.memberDetail ?? m.memberName ?? "損傷写真"}
+                            className="aspect-[4/3] w-full cursor-zoom-in bg-gray-50 object-contain dark:bg-gray-800"
+                          />
+                        </PhotoLightboxThumbnail>
+                      ) : (
+                        <div className="flex aspect-[4/3] w-full items-center justify-center border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                          写真なし
+                        </div>
                       )}
                     </div>
-                    <Field label="部材名" value={[m.memberName, m.memberDetail].filter(Boolean).join(" / ") || null} />
-                    <Field label="変状の種類" value={m.damageType} />
-                    <Field label="応急処置" value={postAction} />
+                  </div>
+
+                  {/* 応急処置内容・所見・備考欄（Excel D13:L13等相当）:
+                      情報列・写真の両方の下に、カード幅いっぱいで配置する */}
+                  <div className="space-y-1.5 border-t border-gray-200 p-3 text-sm dark:border-gray-700">
+                    <Field label="応急処置内容" value={m.postActionContent} />
                     <Field label="所見" value={m.findings} />
                     <Field label="備考欄" value={m.remarks} />
                   </div>
