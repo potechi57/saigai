@@ -2,8 +2,7 @@ import Link from "next/link";
 import Form from "next/form";
 import { formatDistanceMeters } from "@/lib/geo";
 import NearbySearchButton from "@/components/NearbySearchButton";
-import MobileMapView from "@/components/MobileMapLoader";
-import MobileSearchPanel from "@/components/MobileSearchPanel";
+import MobileHomeShell from "@/components/MobileHomeShell";
 import {
   searchMobileByText,
   searchMobileNearby,
@@ -80,9 +79,11 @@ export default async function MobileHomePage({
     // 下にずれ、タップできなくなることがあった（会話ログ「一度検索欄を閉じると
     // 再度開けることができない」の一因）。100dvhは実際の表示領域に追従する。
     <div className="relative h-[calc(100dvh-3.5rem)] w-full overflow-hidden">
-      <MobileMapView results={results} center={isNearbyMode ? { lat: nearbyLat, lng: nearbyLng } : null} />
-
-      <MobileSearchPanel defaultOpen={hasResultsSection}>
+      <MobileHomeShell
+        results={results}
+        center={isNearbyMode ? { lat: nearbyLat, lng: nearbyLng } : null}
+        defaultOpen={hasResultsSection}
+      >
         <div className="space-y-3 pt-3">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             施設管理番号・路線名・所在地のいずれかの一部を入力して検索してください（カルテ・法令台帳・施設台帳・点検調書を横断して検索します）。
@@ -170,7 +171,7 @@ export default async function MobileHomePage({
             </ul>
           )}
         </div>
-      </MobileSearchPanel>
+      </MobileHomeShell>
     </div>
   );
 }

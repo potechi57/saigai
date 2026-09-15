@@ -37,6 +37,8 @@ export async function setFavorite(
   revalidatePath(`/karte/${karteFacilityNo}`);
   revalidatePath("/karte");
   revalidatePath("/karte/favorites");
+  revalidatePath(`/m/${karteFacilityNo}`); // 現場向け画面（/m）の★ボタンからも呼ばれるため
+  revalidatePath("/m/favorites");
   return { ok: true };
 }
 

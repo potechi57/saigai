@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
-
 // /mのトップ画面（地図）に重ねる、タップで開閉する検索パネル。
+//
+// 開閉状態は呼び出し元（components/MobileHomeShell.tsx）が持つ制御コンポーネントに
+// している。地図タップでも閉じられるようにする必要があり（会話ログ「地図タップで
+// パネルを自動的に閉じる」）、地図（MobileMapView）と状態を共有する必要が
+// あったため。
 //
 // 【不具合修正・会話ログより】以前は画面下端に薄い帯状のバーを常時貼り付け、
 // それをタップして開閉する作りにしていたが、実機で「一度閉じると再度開けない
@@ -20,21 +23,21 @@ import { useState } from "react";
 // アニメーションは付けず、開閉は即座に切り替える（凝った演出よりも、
 // 現場でもたつかず使えることを優先）。
 export default function MobileSearchPanel({
-  defaultOpen,
+  open,
+  onOpenChange,
   children,
 }: {
-  defaultOpen: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-
   if (!open) {
     return (
-      <div className="absolute inset-x-0 bottom-0 z-[1500] flex justify-center pb-4">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1500] flex justify-center pb-4">
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="rounded-full bg-gray-800 px-5 py-3 text-sm font-semibold text-white shadow-lg dark:bg-gray-700"
+          onClick={() => onOpenChange(true)}
+          className="pointer-events-auto rounded-full bg-gray-800 px-5 py-3 text-sm font-semibold text-white shadow-lg dark:bg-gray-700"
         >
           🔍 検索
         </button>
@@ -43,18 +46,18 @@ export default function MobileSearchPanel({
   }
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-[1500] mx-2 mb-2 flex max-h-[70vh] flex-col rounded-xl border border-gray-300 bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.2)] dark:border-gray-700 dark:bg-gray-900">
-      <div className="flex items-center justify-between rounded-t-xl border-b border-gray-200 px-4 py-2.5 dark:border-gray-700">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1500] mx-2 mb-2 flex max-h-[70vh] flex-col rounded-xl border border-gray-300 bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.2)] dark:border-gray-700 dark:bg-gray-900">
+      <div className="pointer-events-auto flex items-center justify-between rounded-t-xl border-b border-gray-200 px-4 py-2.5 dark:border-gray-700">
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">検索</span>
         <button
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={() => onOpenChange(false)}
           className="rounded px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           ✕ 閉じる
         </button>
       </div>
-      <div className="overflow-y-auto px-4 pb-4 pt-3">{children}</div>
+      <div className="pointer-events-auto overflow-y-auto px-4 pb-4 pt-3">{children}</div>
     </div>
   );
 }

@@ -81,6 +81,22 @@ export default function RootLayout({
             >
               📱 現場用
             </a>
+            {/* お気に入り・閲覧履歴も、スマホ幅では上記と同じ理由でPC向けnavごと
+                隠れてしまっていたが、会話ログ「ヘッダーにお気に入り・閲覧履歴が
+                あると、一度戻ってしまった際にすぐに戻れてよい」との要望を受け、
+                スマホ幅専用にアイコンのみのコンパクト版を追加した（文字入りだと
+                他の項目と合わせて折り返してしまうため）。リンク先は/karte/favorites
+                ではなく/m/favoritesにする（PC向け画面は崩れるため）。 */}
+            <a
+              href="/m/favorites"
+              aria-label="お気に入り"
+              className="sm:hidden shrink-0 text-base text-gray-600 dark:text-gray-300"
+            >
+              ★
+            </a>
+            <span className="sm:hidden">
+              <ViewHistoryButton compact />
+            </span>
             <nav className="hidden items-center gap-4 sm:flex">
               <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                 ★ お気に入り
