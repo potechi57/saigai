@@ -20,9 +20,27 @@ export default async function MobileHomePage({
   // 検索前にトリムする（末尾の全角/半角スペースが残ると、実在する施設番号でも
   // 「見つかりませんでした」になってしまうため）。
   const trimmedQ = q?.trim();
+  // 現場では「施設管理番号を正確に覚えていない」ことも多いため、施設管理番号だけで
+  // なく、路線名・位置目印・所在地（郡市〜町村／大字等）のいずれかに部分一致すれば
+  // ヒットする単一の検索欄にしている（会話ログ「路線から検索できるように」より）。
+  // PC側（/karte）は分野横断の多条件フォームだが、/mは片手操作を優先し、
+  // 項目を分けず1つの入力欄でOR検索する方針にした。
+  //
+  // 所在地はlocationDistrict（郡・市〜町村）とlocationTown（大字等）の2カラムに
+  // 分かれているため、検索語がどちらか一方に収まっていればここで拾えるが、
+  // 2カラムの境界をまたぐ語（例: districtの末尾〜townの先頭にまたがる地名の一部）は
+  // 拾えない（/karteのJS側フィルタと同様の制限。詳細検索が必要な場合はPC版を案内する）。
   const kartes = trimmedQ
     ? await prisma.karte.findMany({
-        where: { facilityNo: { contains: trimmedQ, mode: "insensitive" } },
+        where: {
+          OR: [
+            { facilityNo: { contains: trimmedQ, mode: "insensitive" } },
+            { routeName: { contains: trimmedQ, mode: "insensitive" } },
+            { landmark: { contains: trimmedQ, mode: "insensitive" } },
+            { locationDistrict: { contains: trimmedQ, mode: "insensitive" } },
+            { locationTown: { contains: trimmedQ, mode: "insensitive" } },
+          ],
+        },
         orderBy: { facilityNo: "asc" },
         take: 30,
         select: { facilityNo: true, karteType: true, routeName: true, locationDistrict: true, locationTown: true },
@@ -33,14 +51,14 @@ export default async function MobileHomePage({
     <div className="mx-auto max-w-md space-y-4 p-4">
       <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">現場確認（写真）</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        施設管理番号の一部を入力して検索してください。
+        施設管理番号・路線名・所在地のいずれかの一部を入力して検索してください。
       </p>
       <Form action="" className="flex gap-2">
         <input
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="例: SAMPLE-0001"
+          placeholder="例: SAMPLE-0001 / 国道9号 / 松江市"
           className="flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
         <button
@@ -53,6 +71,13 @@ export default async function MobileHomePage({
 
       {trimmedQ && (
         <ul className="space-y-2">
+          {/* take:30で打ち切っているため、路線名等で広くヒットする検索語だと
+              全件ではない可能性がある。気づかず「これで全部」と誤解しないよう明示する。 */}
+          {kartes.length === 30 && (
+            <li className="rounded border border-yellow-300 bg-yellow-50 p-2 text-center text-xs text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-300">
+              先頭30件のみ表示しています。絞り込めない場合は、より詳しい語句（施設管理番号等）で再検索してください。
+            </li>
+          )}
           {kartes.map((k) => (
             <li key={k.facilityNo}>
               <Link
