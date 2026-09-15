@@ -3,13 +3,8 @@ import Form from "next/form";
 import { formatDistanceMeters } from "@/lib/geo";
 import NearbySearchButton from "@/components/NearbySearchButton";
 import MobileHomeShell from "@/components/MobileHomeShell";
-import {
-  searchMobileByText,
-  searchMobileNearby,
-  MOBILE_RESULT_KIND_LABEL,
-  NEARBY_RADIUS_M,
-  type MobileSearchResult,
-} from "@/lib/mobile-search";
+import { searchMobileByText, searchMobileNearby, MOBILE_RESULT_KIND_LABEL, type MobileSearchResult } from "@/lib/mobile-search";
+import { NEARBY_RADIUS_OPTIONS_M, DEFAULT_NEARBY_RADIUS_M, formatRadiusLabel } from "@/lib/mobile-prefs";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +27,9 @@ const RESULT_LIMIT = 30;
 export default async function MobileHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; lat?: string; lng?: string; acc?: string }>;
+  searchParams: Promise<{ q?: string; lat?: string; lng?: string; acc?: string; radius?: string }>;
 }) {
-  const { q, lat, lng, acc } = await searchParams;
+  const { q, lat, lng, acc, radius } = await searchParams;
 
   // 現在地検索（NearbySearchButton）からの遷移かどうか。lat/lngが揃っている場合は
   // テキスト検索より優先する（同一画面に両方の結果を混在させると分かりにくいため、
@@ -43,6 +38,12 @@ export default async function MobileHomePage({
   const nearbyLng = lng ? Number(lng) : NaN;
   const isNearbyMode = Number.isFinite(nearbyLat) && Number.isFinite(nearbyLng);
   const accuracyM = acc ? Number(acc) : null;
+  // 半径は設定画面（/m/settings）でユーザーが選べる（会話ログ「現在地検索の半径変更」）。
+  // NearbySearchButton側がlocalStorageの設定値をクエリパラメータに載せて渡してくる。
+  // 想定外の値（改ざん・古いリンク等）は既定値にフォールバックする。
+  const radiusM = radius && (NEARBY_RADIUS_OPTIONS_M as readonly number[]).includes(Number(radius))
+    ? Number(radius)
+    : DEFAULT_NEARBY_RADIUS_M;
 
   // スマホのソフトキーボード・自動補完で前後に空白が混じりやすいため、
   // 検索前にトリムする（末尾の全角/半角スペースが残ると、実在する施設番号でも
@@ -53,7 +54,7 @@ export default async function MobileHomePage({
   let totalBeforeTruncate = 0;
 
   if (isNearbyMode) {
-    const withDistance = await searchMobileNearby(nearbyLat, nearbyLng, NEARBY_RADIUS_M);
+    const withDistance = await searchMobileNearby(nearbyLat, nearbyLng, radiusM);
     totalBeforeTruncate = withDistance.length;
     results = withDistance.slice(0, RESULT_LIMIT);
   } else if (trimmedQ) {
@@ -82,6 +83,7 @@ export default async function MobileHomePage({
       <MobileHomeShell
         results={results}
         center={isNearbyMode ? { lat: nearbyLat, lng: nearbyLng } : null}
+        radiusM={radiusM}
         defaultOpen={hasResultsSection}
       >
         <div className="space-y-3 pt-3">
@@ -114,7 +116,7 @@ export default async function MobileHomePage({
           {isNearbyMode && (
             <div>
               <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                📍 現在地から半径1km以内（{totalBeforeTruncate}件）
+                📍 現在地から半径{formatRadiusLabel(radiusM)}以内（{totalBeforeTruncate}件）
               </h2>
               {/* GPSの誤差が大きい場合（屋内・山間部等）、実際にはもう少し離れている／
                   近い可能性があることを伝える。日本の一般的なスマホGPSでは平常時
@@ -164,7 +166,7 @@ export default async function MobileHomePage({
               {results.length === 0 && (
                 <li className="rounded border border-gray-300 bg-white p-4 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
                   {isNearbyMode
-                    ? "現在地から半径1km以内にデータが見つかりませんでした。"
+                    ? `現在地から半径${formatRadiusLabel(radiusM)}以内にデータが見つかりませんでした。`
                     : "該当するデータが見つかりませんでした。"}
                 </li>
               )}

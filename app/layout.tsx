@@ -36,6 +36,19 @@ const THEME_INIT_SCRIPT = `
 })();
 `;
 
+// 文字サイズ設定（components/FontSizeToggle.tsx）も、テーマ同様に初回描画前へ
+// ブロッキング適用する（useEffect任せだと一瞬標準サイズで表示されてから
+// 大きくなる「ちらつき」＝レイアウトシフトが起きるため）。
+const FONT_SIZE_INIT_SCRIPT = `
+(function () {
+  try {
+    if (localStorage.getItem("mobileLargeText") === "1") {
+      document.documentElement.classList.add("large-text");
+    }
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -45,6 +58,7 @@ export default function RootLayout({
     <html lang="ja" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: FONT_SIZE_INIT_SCRIPT }} />
       </head>
       <body className="flex min-h-screen flex-col">
         <ServiceWorkerRegister />

@@ -22,10 +22,8 @@ import { prisma } from "@/lib/prisma";
 import { haversineDistanceMeters } from "@/lib/geo";
 import { KARTE_TYPE_LABEL, FACILITY_LEDGER_DOC_CLASS_LABEL, facilityLedgerDisplayName } from "@/lib/labels";
 
-// 「現在地から探す」の対象範囲（会話ログ「現在地から半径1キロのデータを確認
-// できる仕様」より）。app/m/page.tsx（絞り込み）とcomponents/MobileMapView.tsx
-// （地図上の同心円描画）の両方から参照するため、ここに置いて一元化する。
-export const NEARBY_RADIUS_M = 1000;
+// 「現在地から探す」の対象範囲は、既定値も含めてlib/mobile-prefs.tsに集約している
+// （会話ログ「現在地検索の半径変更」により、設定画面で変更できるようにしたため）。
 
 export type MobileResultKind = "karte" | "ledger" | "facility" | "gateSign";
 
