@@ -102,3 +102,14 @@ export const RESPONSE_META: Record<string, { label: string; color: string; badge
 export function responseMeta(category: string) {
   return RESPONSE_META[category] ?? RESPONSE_META.UNEVALUATED;
 }
+
+// 写真の由来様式（prisma/schema.prismaのPhotoSourceForm参照）。
+// 現場向け画面（/m/[facilityNo]）で、様式ごとにタブ分けして表示するために使う
+// （会話ログ「様式A,B,Cのような分類は分かるようにしてくれませんか」参照）。
+export const PHOTO_SOURCE_FORM_LABEL: Record<string, string> = {
+  FORM_A: "様式A（位置図）",
+  FORM_B: "様式B（詳細）",
+  FORM_D: "様式D（平面図等）",
+  GENERAL_RECORD: "現状記録写真",
+  OTHER: "その他",
+};

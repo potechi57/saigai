@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { MOBILE_RESULT_KIND_LABEL, type MobileSearchResult } from "@/lib/mobile-search";
+import { MOBILE_RESULT_KIND_LABEL, NEARBY_RADIUS_M, type MobileSearchResult } from "@/lib/mobile-search";
 
 // 現場向け画面（/m）専用の軽量な地図。PC版（components/MapView.tsx）は
 // ホーム位置・お気に入り・道路距離・場所検索等、機能が多く重いため、
@@ -57,6 +57,7 @@ export default function MobileMapView({
   const mapRef = useRef<L.Map | null>(null);
   const resultLayerRef = useRef<L.LayerGroup | null>(null);
   const currentLocationMarkerRef = useRef<L.Marker | null>(null);
+  const radiusCircleRef = useRef<L.Circle | null>(null);
   // 検索結果が無い・現在地検索でもない通常表示時、地図の初期中心を決めるための
   // 島根県中央付近（MapView.tsxの初期表示と同じ座標）。
   const DEFAULT_CENTER: [number, number] = [35.46, 133.06];
@@ -82,9 +83,37 @@ export default function MobileMapView({
       mapRef.current = null;
       resultLayerRef.current = null;
       currentLocationMarkerRef.current = null;
+      radiusCircleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 現在地検索（半径1km）の対象範囲を、検索地点を中心にした円で地図上に描く
+  // （会話ログ「現在地からの一キロの同心円を描写できませんか。どこまでを
+  // 映しているのかが分かると便利」）。centerが無い（現在地検索でない）場合は
+  // 円を消す。
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (radiusCircleRef.current) {
+      map.removeLayer(radiusCircleRef.current);
+      radiusCircleRef.current = null;
+    }
+    if (center) {
+      const circle = L.circle([center.lat, center.lng], {
+        radius: NEARBY_RADIUS_M,
+        color: "#2563eb",
+        weight: 1.5,
+        fillColor: "#60a5fa",
+        fillOpacity: 0.08,
+      }).addTo(map);
+      radiusCircleRef.current = circle;
+      // 円がきちんと収まるようにズーム調整する（マウント時の初期表示は
+      // zoom15固定のため、円が画面からはみ出す場合がある。検索地点が変わった
+      // 場合もここで追従する）。
+      map.fitBounds(circle.getBounds(), { padding: [24, 24] });
+    }
+  }, [center]);
 
   // 現在地の自動取得・表示。ボタン操作（NearbySearchButton＝半径1km検索）とは別に、
   // ページを開いた時点で「今どこにいるか」を地図上に示す（会話ログ「地図と現在地が
