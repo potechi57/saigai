@@ -3,6 +3,7 @@ import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
 import ViewHistoryButton from "@/components/ViewHistoryButton";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import HeaderHomeLink from "@/components/HeaderHomeLink";
 
 export const metadata: Metadata = {
   title: "道路施設管理 Web GIS (MVP)",
@@ -58,10 +59,7 @@ export default function RootLayout({
             z-indexだけ上げても地図側のz-[1000]には勝てないため、ヘッダー自体に
             地図より大きいz-indexを与える必要がある）。 */}
         <header className="relative z-[2000] flex h-14 shrink-0 items-center justify-between border-b border-gray-300 bg-white px-6 dark:border-gray-700 dark:bg-gray-900">
-          <a href="/karte" className="truncate text-base font-bold text-gray-800 dark:text-gray-100 sm:text-lg">
-            道路施設管理 Web GIS{" "}
-            <span className="text-sm font-normal text-gray-500 dark:text-gray-400">MVP</span>
-          </a>
+          <HeaderHomeLink />
           {/* 「設定やらいろいろ」置き場。検索画面自体には検索条件パネルしか
               置かない方針にしたため、画面をまたいで常に使う操作はすべてここへ集約
               している。データの追加方法（Excel取込・台帳画像登録・手入力など）が
