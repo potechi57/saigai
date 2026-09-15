@@ -59,7 +59,7 @@ export function pushViewHistory(entry: Omit<ViewHistoryEntry, "viewedAt">) {
   }
 }
 
-export default function ViewHistoryButton() {
+export default function ViewHistoryButton({ compact }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState<ViewHistoryEntry[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,9 +83,10 @@ export default function ViewHistoryButton() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="hover:text-gray-900 hover:underline dark:hover:text-gray-100"
+        aria-label="閲覧履歴"
+        className={compact ? "text-base" : "hover:text-gray-900 hover:underline dark:hover:text-gray-100"}
       >
-        🕘 閲覧履歴
+        {compact ? "🕘" : "🕘 閲覧履歴"}
       </button>
       {open && (
         <div className="absolute right-0 z-50 mt-2 w-72 rounded border border-gray-300 bg-white p-2 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800">

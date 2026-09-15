@@ -46,12 +46,17 @@ const CURRENT_LOCATION_ICON = L.divIcon({
 export default function MobileMapView({
   results,
   center,
+  onMapTap,
 }: {
   results: MobileSearchResult[];
   // 現在地検索（NearbySearchButton）から来た場合の検索中心地点。指定があれば
   // 初期表示の中心にする（結果のbounds合わせより、検索した地点そのものを
   // 中心に見せる方が現場での意図に合うため）。
   center: { lat: number; lng: number } | null;
+  // 地図（マーカー・ポップアップ以外の何も無い部分）をタップした時に呼ばれる。
+  // 検索パネルを開いたまま地図を見たい場面で、いちいち✕を押さなくても地図タップで
+  // 閉じられるようにするために使う（会話ログ「地図タップでパネルを自動的に閉じる」）。
+  onMapTap?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -61,6 +66,12 @@ export default function MobileMapView({
   // 検索結果が無い・現在地検索でもない通常表示時、地図の初期中心を決めるための
   // 島根県中央付近（MapView.tsxの初期表示と同じ座標）。
   const DEFAULT_CENTER: [number, number] = [35.46, 133.06];
+
+  // onMapTapは親（app/m/page.tsx側）の状態次第で毎レンダー新しい関数参照になりうるが、
+  // 地図初期化effectの依存配列に入れて再実行（＝地図を作り直す）したくないため、
+  // refで最新の関数を保持し、リスナー登録は1回だけにする。
+  const onMapTapRef = useRef(onMapTap);
+  onMapTapRef.current = onMapTap;
 
   // 地図本体の初期化（1回だけ）。
   useEffect(() => {
@@ -77,6 +88,10 @@ export default function MobileMapView({
     }).addTo(map);
 
     resultLayerRef.current = L.layerGroup().addTo(map);
+
+    // マーカー・ポップアップのクリックはLeaflet内部でmapへの伝播が止まるため、
+    // ここは「地図の何も無い部分をタップした」場合だけ呼ばれる。
+    map.on("click", () => onMapTapRef.current?.());
 
     return () => {
       map.remove();
