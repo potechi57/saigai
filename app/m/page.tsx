@@ -1,30 +1,25 @@
 import Link from "next/link";
 import Form from "next/form";
-import { prisma } from "@/lib/prisma";
-import { KARTE_TYPE_LABEL } from "@/lib/labels";
-import { haversineDistanceMeters, formatDistanceMeters } from "@/lib/geo";
+import { formatDistanceMeters } from "@/lib/geo";
 import NearbySearchButton from "@/components/NearbySearchButton";
+import { searchMobileByText, searchMobileNearby, MOBILE_RESULT_KIND_LABEL, type MobileSearchResult } from "@/lib/mobile-search";
 
 export const dynamic = "force-dynamic";
 
 // 「現在地から探す」の対象範囲（会話ログ「現在地から半径1キロのデータを確認できる
 // 仕様」より）。
 const NEARBY_RADIUS_M = 1000;
+// 一覧に表示する上限件数（現在地検索・テキスト検索共通）。
+const RESULT_LIMIT = 30;
 
-type KarteListItem = {
-  facilityNo: string;
-  karteType: string;
-  routeName: string;
-  locationDistrict: string | null;
-  locationTown: string | null;
-  distanceM?: number; // 現在地検索の場合のみ設定
-};
-
-// スマホ側の簡易ビュー（現場確認用）。PC側（/karte以下）のような検索条件・地図・
-// 様式再現等のリッチな機能は持たせず、「施設管理番号で検索→その場で撮った写真を
-// 確認する」という最小限の用途に絞っている（ユーザー要望「カルテデータの写真を
-// 表示できればよい。PC版のようなリッチな機能は不要」に対応）。
-// 認証機能はこのMVP全体に無いため、ここでも追加していない（PC側と同じ開放範囲）。
+// スマホ側の簡易ビュー（現場確認用）。当初はカルテ（防災カルテ）専用だったが、
+// 「検索結果の一覧画面に法令台帳・施設台帳・点検調書のいずれの情報についても
+// 取得できるようにしておいてください」との要望を受け、lib/mobile-search.tsで
+// 4テーブルを横断検索するようにした（詳細はそちらのコメント参照）。
+// PC側（/karte以下）のような検索条件・地図・様式再現等のリッチな機能は
+// 持たせておらず、「検索→その場で撮った写真を確認する」という現場での用途に
+// 絞っている。認証機能はこのMVP全体に無いため、ここでも追加していない
+// （PC側と同じ開放範囲）。
 export default async function MobileHomePage({
   searchParams,
 }: {
@@ -45,70 +40,31 @@ export default async function MobileHomePage({
   // 「見つかりませんでした」になってしまうため）。
   const trimmedQ = q?.trim();
 
-  let kartes: KarteListItem[] = [];
-  let nearbyTotalBeforeTruncate = 0;
+  let results: MobileSearchResult[] = [];
+  let totalBeforeTruncate = 0;
 
   if (isNearbyMode) {
-    // 【技術選定・会話ログより】座標を持つカルテは現時点で127件と少数のため、
-    // PostGIS等の専用の地理空間検索機能は導入せず、全件取得してサーバー側で
-    // Haversine距離計算・絞り込みする方式にした（lib/geo.ts、MapView.tsxの
-    // ホーム位置距離表示と同じ考え方）。件数が大幅に増えた場合は、緯度経度の
-    // 範囲で先に絞り込む等の最適化を検討する。
-    const candidates = await prisma.karte.findMany({
-      where: { latitude: { not: null }, longitude: { not: null } },
-      select: {
-        facilityNo: true,
-        karteType: true,
-        routeName: true,
-        locationDistrict: true,
-        locationTown: true,
-        latitude: true,
-        longitude: true,
-      },
-    });
-    const withDistance = candidates
-      .map((k) => ({
-        ...k,
-        distanceM: haversineDistanceMeters(nearbyLat, nearbyLng, Number(k.latitude), Number(k.longitude)),
-      }))
-      .filter((k) => k.distanceM <= NEARBY_RADIUS_M)
-      .sort((a, b) => a.distanceM - b.distanceM);
-    nearbyTotalBeforeTruncate = withDistance.length;
-    kartes = withDistance.slice(0, 30);
+    const withDistance = await searchMobileNearby(nearbyLat, nearbyLng, NEARBY_RADIUS_M);
+    totalBeforeTruncate = withDistance.length;
+    results = withDistance.slice(0, RESULT_LIMIT);
   } else if (trimmedQ) {
     // 現場では「施設管理番号を正確に覚えていない」ことも多いため、施設管理番号だけで
     // なく、路線名・位置目印・所在地（郡市〜町村／大字等）のいずれかに部分一致すれば
     // ヒットする単一の検索欄にしている（会話ログ「路線から検索できるように」より）。
     // PC側（/karte）は分野横断の多条件フォームだが、/mは片手操作を優先し、
     // 項目を分けず1つの入力欄でOR検索する方針にした。
-    //
-    // 所在地はlocationDistrict（郡・市〜町村）とlocationTown（大字等）の2カラムに
-    // 分かれているため、検索語がどちらか一方に収まっていればここで拾えるが、
-    // 2カラムの境界をまたぐ語（例: districtの末尾〜townの先頭にまたがる地名の一部）は
-    // 拾えない（/karteのJS側フィルタと同様の制限。詳細検索が必要な場合はPC版を案内する）。
-    kartes = await prisma.karte.findMany({
-      where: {
-        OR: [
-          { facilityNo: { contains: trimmedQ, mode: "insensitive" } },
-          { routeName: { contains: trimmedQ, mode: "insensitive" } },
-          { landmark: { contains: trimmedQ, mode: "insensitive" } },
-          { locationDistrict: { contains: trimmedQ, mode: "insensitive" } },
-          { locationTown: { contains: trimmedQ, mode: "insensitive" } },
-        ],
-      },
-      orderBy: { facilityNo: "asc" },
-      take: 30,
-      select: { facilityNo: true, karteType: true, routeName: true, locationDistrict: true, locationTown: true },
-    });
+    const all = await searchMobileByText(trimmedQ);
+    totalBeforeTruncate = all.length;
+    results = all.slice(0, RESULT_LIMIT);
   }
 
   const hasResultsSection = isNearbyMode || trimmedQ;
 
   return (
     <div className="mx-auto max-w-md space-y-4 p-4">
-      <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">現場確認（写真）</h1>
+      <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">現場確認</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        施設管理番号・路線名・所在地のいずれかの一部を入力して検索してください。
+        施設管理番号・路線名・所在地のいずれかの一部を入力して検索してください（カルテ・法令台帳・施設台帳・点検調書を横断して検索します）。
       </p>
       <Form action="" className="flex gap-2">
         <input
@@ -136,7 +92,7 @@ export default async function MobileHomePage({
       {isNearbyMode && (
         <div>
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            📍 現在地から半径1km以内（{nearbyTotalBeforeTruncate}件）
+            📍 現在地から半径1km以内（{totalBeforeTruncate}件）
           </h2>
           {/* GPSの誤差が大きい場合（屋内・山間部等）、実際にはもう少し離れている／
               近い可能性があることを伝える。日本の一般的なスマホGPSでは平常時
@@ -152,42 +108,42 @@ export default async function MobileHomePage({
 
       {hasResultsSection && (
         <ul className="space-y-2">
-          {/* take:30で打ち切っているため、路線名等で広くヒットする検索語だと
-              全件ではない可能性がある。気づかず「これで全部」と誤解しないよう明示する。
-              現在地検索は絞り込み後の正確な件数が分かっているため、その値で判定する。 */}
-          {(isNearbyMode ? nearbyTotalBeforeTruncate > 30 : kartes.length === 30) && (
+          {/* 各テーブル個別のtakeで打ち切っているため、路線名等で広くヒットする
+              検索語だと全件ではない可能性がある。気づかず「これで全部」と誤解
+              しないよう明示する（現在地検索・テキスト検索とも、絞り込み後の
+              正確な合計件数が分かっているため、その値で判定する）。 */}
+          {totalBeforeTruncate > RESULT_LIMIT && (
             <li className="rounded border border-yellow-300 bg-yellow-50 p-2 text-center text-xs text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-300">
-              先頭30件のみ表示しています。絞り込めない場合は、より詳しい語句（施設管理番号等）で再検索してください。
+              先頭{RESULT_LIMIT}件のみ表示しています。絞り込めない場合は、より詳しい語句（管理番号等）で再検索してください。
             </li>
           )}
-          {kartes.map((k) => (
-            <li key={k.facilityNo}>
+          {results.map((r) => (
+            <li key={r.key}>
               <Link
-                href={`/m/${k.facilityNo}`}
+                href={r.href}
                 className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
               >
-                <p className="font-semibold text-gray-800 dark:text-gray-100">
-                  {k.facilityNo}
-                  {k.distanceM != null && (
-                    <span className="ml-2 font-normal text-blue-600 dark:text-blue-400">
-                      📍 {formatDistanceMeters(k.distanceM)}
+                <p className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                    {MOBILE_RESULT_KIND_LABEL[r.kind]}
+                  </span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-100">{r.title}</span>
+                  {r.distanceM != null && (
+                    <span className="font-normal text-blue-600 dark:text-blue-400">
+                      📍 {formatDistanceMeters(r.distanceM)}
                     </span>
                   )}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {KARTE_TYPE_LABEL[k.karteType] ?? k.karteType} ・ {k.routeName}
-                </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
-                </p>
+                {r.subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{r.subtitle}</p>}
+                {r.location && <p className="text-xs text-gray-400 dark:text-gray-500">{r.location}</p>}
               </Link>
             </li>
           ))}
-          {kartes.length === 0 && (
+          {results.length === 0 && (
             <li className="rounded border border-gray-300 bg-white p-4 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
               {isNearbyMode
-                ? "現在地から半径1km以内にカルテが見つかりませんでした。"
-                : "該当するカルテが見つかりませんでした。"}
+                ? "現在地から半径1km以内にデータが見つかりませんでした。"
+                : "該当するデータが見つかりませんでした。"}
             </li>
           )}
         </ul>
