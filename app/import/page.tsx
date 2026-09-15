@@ -274,13 +274,13 @@ export default async function ImportHubPage({
                     className={`rounded-full border px-2.5 py-1 text-xs ${
                       roadType === t.key
                         ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
-                        : t.key === "gate_sign"
+                        : t.key === "gate_sign" || t.key === "bridge"
                           ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
                           : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
                     }`}
                   >
                     {t.label}
-                    {t.key !== "gate_sign" && "（準備中）"}
+                    {t.key !== "gate_sign" && t.key !== "bridge" && "（準備中）"}
                   </Link>
                 ))}
               </div>
@@ -297,6 +297,22 @@ export default async function ImportHubPage({
                     <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
                       <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
                       「A01-AE-010474_01_松江島根線_松江市上乃木町_0.54_門型標識柱.xlsx」のような、門型標識1基ごとの点検調書ファイル。複数ファイルをまとめて取り込めます。
+                    </p>
+                  </div>
+                </Link>
+              ) : roadType === "bridge" ? (
+                <Link
+                  href="/inspections/bridges/import"
+                  className="block rounded border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+                >
+                  <div className="px-4 py-3">
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">橋梁台帳の取込</h3>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      「橋梁調書・橋梁台帳・画像・付属図」の4シート構成の橋梁台帳Excelを取り込みます。Excel内の管理番号（例:「P72-AB-911702」）で、施設台帳（橋梁）と自動的に紐付きます。基本諸元（橋梁調書）は項目ごとに、構造設計・数量計算等の密な帳票（橋梁台帳）は元Excelの見た目のまま取り込まれます。
+                    </p>
+                    <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                      <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
+                      「P72-AB-911702_01_藤谷島橋.xlsx」のような、橋梁1橋ごとの橋梁台帳ファイル。複数ファイルをまとめて取り込めます。
                     </p>
                   </div>
                 </Link>
@@ -328,6 +344,9 @@ export default async function ImportHubPage({
           </Link>
           <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
             点検調書（門型標識）を見る →
+          </Link>
+          <Link href="/inspections/bridges" className="text-blue-600 dark:text-blue-400 hover:underline">
+            橋梁台帳を見る →
           </Link>
         </div>
       </div>

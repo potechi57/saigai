@@ -704,6 +704,7 @@ model FacilityListItem {
 
   inspections         FacilityInspectionRecord[]
   gateSignInspections GateSignInspection[]
+  bridgeLedgers       BridgeLedger[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -844,9 +845,150 @@ model GateSignInspectionPhoto {
   inspectionId String
   inspection   GateSignInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 
-  url     String
-  caption String? // 例: 起点側、終点側
-  sortOrder Int    @default(0)
+  url       String
+  caption   String? // 例: 起点側、終点側
+  sortOrder Int     @default(0)
 
   @@index([inspectionId])
+}
+
+// ── 橋梁台帳（島根県 橋梁点検・橋梁台帳システム(IMS)由来のExcel） ──────────
+// 1ファイル＝1橋。Excelは5シート構成: 「橋梁調書」（橋名・路線名・所在地・
+// 緯度経度・橋長・幅員等、約50項目の基本諸元。1橋1枚のシンプルな台帳）、
+// 「橋梁台帳」（支承・材料集計・工事費等、490箇所超のセル結合を持つ非常に
+// 密な構造設計・数量計算の帳票）、「画像」（位置図・工事費・維持管理表等）、
+// 「付属図」（平面図・側面図等の添付図面）、「IMS設定シート」（非表示）。
+//
+// 会話ログで、道路防災管理という本来の目的に対して使用頻度が低い「橋梁台帳」
+// 「画像」「付属図」シートまで点検調書と同じ「1項目=1DB列＋忠実なCSSレイアウト」
+// で作り込むのはコストに見合わないと判断し、以下のように使い分けている
+// （会話ログ「汎用テーブル表示で再現（推奨）」参照）:
+//   - 「橋梁調書」シート（基本諸元）: 点検調書の様式１と同じ考え方で、
+//     項目ごとにこのモデルの列として構造化する（管理番号・緯度経度等、
+//     検索・地図表示に使う可能性がある情報のため）。
+//   - 「橋梁台帳」「画像」「付属図」シート: 個々の項目をDB列化せず、
+//     セル値・結合・列幅・行高をそのままJSONで保持し（BridgeLedgerSheet、
+//     lib/excel/excel-grid-extract.ts参照）、表示時に汎用のExcelグリッド
+//     再現コンポーネント（components/ExcelSheetGrid.tsx）でHTML表として
+//     見た目だけ忠実に再現する（個別項目の検索・編集はできないが、密な
+//     帳票を人が参照する用途には十分で、将来別の密な帳票が来ても
+//     スキーマ変更なしで対応できる）。
+model BridgeLedger {
+  id String @id @default(cuid())
+
+  facilityListItemId String?
+  facilityListItem   FacilityListItem? @relation(fields: [facilityListItemId], references: [id])
+
+  // 管理番号は「橋梁調書」シート内（管理番号セル）から取得できる
+  // （点検調書と異なり、ファイル名からではなくExcel本体から読み取れる）。
+  managementNo       String?
+  managementCategory String? // 管理区分（例: 管理中）
+
+  bridgeNameKana String? // 橋名（フリガナ）
+  bridgeName     String? // 橋名（漢字）
+  officeName     String? // 事務所名
+  routeName      String? // 路線名
+  spanCount      Int? // 径間数
+  // 架設年月日はExcel側が未入力だと1970-01-01等の異常値になることがある
+  // （FacilityListItem.constructionYearと同じ問題。会話ログの過去の対応と
+  // 同じ方針で、日付化せず文字列のまま保持する）。
+  constructedAt  String?
+
+  location      String? // 所在地（「自：〜　至：〜」をまとめた文字列）
+  bridgeType    String? // 橋種（例: ＲＣ橋）
+  bridgeLengthM Decimal? @db.Decimal(6, 2) // 橋長(m)
+
+  superstructureType String? // 上部工形式
+  deckMaterial       String? // 床板材料
+  substructureType   String? // 下部工形式（A1／A2／橋脚の内容をまとめた文字列）
+  appliedSpec        String? // 適用示方書
+
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+
+  // 幅員・面積は、車道／自・歩道／路肩／地覆／その他／合計の6区分がExcel上
+  // そのまま列になっているため、同じ粒度で保持する。
+  widthRoadwayM  Decimal? @db.Decimal(6, 2)
+  widthSidewalkM Decimal? @db.Decimal(6, 2)
+  widthShoulderM Decimal? @db.Decimal(6, 2)
+  widthCurbM     Decimal? @db.Decimal(6, 2)
+  widthOtherM    Decimal? @db.Decimal(6, 2)
+  widthTotalM    Decimal? @db.Decimal(6, 2)
+  widthRemarks   String? // 幅員表の備考（例: 石垣橋台）
+
+  areaRoadwayM2  Decimal? @db.Decimal(8, 2)
+  areaSidewalkM2 Decimal? @db.Decimal(8, 2)
+  areaShoulderM2 Decimal? @db.Decimal(8, 2)
+  areaCurbM2     Decimal? @db.Decimal(8, 2)
+  areaOtherM2    Decimal? @db.Decimal(8, 2)
+  areaTotalM2    Decimal? @db.Decimal(8, 2)
+
+  censusNo               String? // センサス番号
+  seismicReinforcement   String? // 耐震補強
+  surveyYear             String? // 調査年
+  trafficVolume          String? // 交通量
+  largeVehicleTraffic    String? // 大型車交通量
+  coastDistance          String? // 海岸からの距離
+  emergencyTransportRoad String? // 緊急輸送道路の指定
+  priorityRoute          String? // 優先確保ルートの指定
+
+  mainGirderCount     Int? // 主桁本数
+  abutmentHeightM     Decimal? @db.Decimal(6, 2) // 橋台高さ
+  pierHeightM         Decimal? @db.Decimal(6, 2) // 橋脚高さ
+  occupyingObjectName String? // 占用物件（名称）
+
+  denselyPopulatedArea String? // 人工密集地区
+  detourRoute          String? // 迂回路
+  busRoute             String? // バス路線
+
+  overpassRailway String? // 跨線橋
+  overpassRoad    String? // 跨道線
+  overseaBridge   String? // 渡海橋
+  longBridge      String? // 長大橋
+  saltDamageArea  String? // 塩害地域
+  upDownLine      String? // 上下線
+
+  bicycleRoad     String? // 自転車道
+  footbridge      String? // 歩道橋
+  sideRoadBridge  String? // 側道橋
+  weatheringSteel String? // 耐候性鋼材
+  underRiver      String? // 路下条件・河川
+  underRoad       String? // 路下条件・道路
+
+  bridgeManagementCategory String? // 橋梁管理区分
+  roadCategory             String? // 自専道or一般道
+  loadRestriction          String? // 荷重制限
+  underRailway             String? // 路下条件・鉄道
+  underOther               String? // 路下条件・その他
+
+  sourceFileName String?
+
+  // 「橋梁台帳」「画像」「付属図」シートの汎用グリッド再現データ
+  // （上記コメント参照）。
+  sheets BridgeLedgerSheet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([managementNo])
+  @@index([facilityListItemId])
+}
+
+// BridgeLedger 1件に紐づく「汎用再現シート」1枚分（橋梁台帳・画像・付属図の
+// いずれか）。個々のセルをDB列化せず、セル値・結合範囲・列幅・行高をまとめて
+// gridにJSONで保持する（構造はlib/excel/excel-grid-extract.tsのExtractedGrid
+// 型を参照。components/ExcelSheetGrid.tsxで汎用的にHTML表として描画する）。
+model BridgeLedgerSheet {
+  id             String       @id @default(cuid())
+  bridgeLedgerId String
+  bridgeLedger   BridgeLedger @relation(fields: [bridgeLedgerId], references: [id], onDelete: Cascade)
+
+  sheetName String // 元のExcelシート名（例: 橋梁台帳、画像、付属図）
+  label     String // タブ表示名（初期値はsheetNameと同じ）
+  sortOrder Int    @default(0)
+  grid      Json // ExtractedGrid（セル値・結合・列幅・行高）
+
+  createdAt DateTime @default(now())
+
+  @@index([bridgeLedgerId])
 }
