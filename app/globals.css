@@ -18,3 +18,12 @@ body {
   color: #e5e7eb;
   background: #030712;
 }
+
+/* 文字サイズの拡大設定（<html class="large-text">。components/FontSizeToggle.tsx参照。
+   会話ログ「文字サイズの拡大」）。Tailwindの文字サイズ・余白ユーティリティは
+   既定でrem単位（ルートのfont-sizeを基準にした相対値）のため、ルートの
+   font-sizeを上げるだけで、文字だけでなく余白等も含めて画面全体が
+   比例して大きくなる（ブラウザの拡大表示に近い挙動）。 */
+html.large-text {
+  font-size: 120%;
+}

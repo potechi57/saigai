@@ -13,11 +13,15 @@ import type { MobileSearchResult } from "@/lib/mobile-search";
 export default function MobileHomeShell({
   results,
   center,
+  radiusM,
   defaultOpen,
   children,
 }: {
   results: MobileSearchResult[];
   center: { lat: number; lng: number } | null;
+  // 現在地検索の半径（会話ログ「現在地検索の半径変更」）。地図上の同心円の
+  // 大きさに使う。centerが無い場合は使われない。
+  radiusM: number;
   defaultOpen: boolean;
   children: React.ReactNode;
 }) {
@@ -25,7 +29,7 @@ export default function MobileHomeShell({
 
   return (
     <>
-      <MobileMapView results={results} center={center} onMapTap={() => setOpen(false)} />
+      <MobileMapView results={results} center={center} radiusM={radiusM} onMapTap={() => setOpen(false)} />
       <MobileSearchPanel open={open} onOpenChange={setOpen}>
         {children}
       </MobileSearchPanel>

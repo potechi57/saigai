@@ -1,9 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { readNearbyRadiusM, formatRadiusLabel, DEFAULT_NEARBY_RADIUS_M } from "@/lib/mobile-prefs";
 
-// 現在地から半径1km以内のカルテを探すボタン（/m専用）。
+// 現在地から探すボタン（/m専用）。半径は設定画面（/m/settings）で変更できる
+// （会話ログ「現在地検索の半径変更」。既定は1km）。
 //
 // 【技術選定・会話ログより】PC側の地図（MapView.tsx handleLocate）が使っている
 // ブラウザ標準のnavigator.geolocation APIをそのまま踏襲する。既に本番で
@@ -17,6 +19,14 @@ export default function NearbySearchButton() {
   const router = useRouter();
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 初回描画（サーバー側）ではlocalStorageを読めないため、既定値で描画してから
+  // マウント後に実際の設定値へ更新する（ThemeToggle等と同じ、ハイドレーション
+  // 不一致を避けるパターン）。
+  const [radiusM, setRadiusM] = useState(DEFAULT_NEARBY_RADIUS_M);
+
+  useEffect(() => {
+    setRadiusM(readNearbyRadiusM());
+  }, []);
 
   function handleClick() {
     if (!navigator.geolocation) {
@@ -25,12 +35,15 @@ export default function NearbySearchButton() {
     }
     setLocating(true);
     setError(null);
+    // クリック時点の最新設定を読み直す（設定画面から戻ってきた直後でも
+    // 反映されるように）。
+    const radius = readNearbyRadiusM();
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-        // 集計結果の絞り込み・距離計算は/m（サーバー側）で行う（lib/geo.ts参照）。
+        // 絞り込み・距離計算は/m（サーバー側）で行う（lib/geo.ts参照）。
         // 精度（誤差半径）も一緒に渡し、大きく誤差がある場合は結果画面側で注意書きを出す。
-        router.push(`/m?lat=${latitude}&lng=${longitude}&acc=${Math.round(accuracy)}`);
+        router.push(`/m?lat=${latitude}&lng=${longitude}&acc=${Math.round(accuracy)}&radius=${radius}`);
       },
       (err) => {
         setLocating(false);
@@ -54,7 +67,7 @@ export default function NearbySearchButton() {
         disabled={locating}
         className="w-full rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
       >
-        {locating ? "現在地を取得中..." : "📍 現在地から探す（半径1km）"}
+        {locating ? "現在地を取得中..." : `📍 現在地から探す（半径${formatRadiusLabel(radiusM)}）`}
       </button>
       {error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { MOBILE_RESULT_KIND_LABEL, NEARBY_RADIUS_M, type MobileSearchResult } from "@/lib/mobile-search";
+import { MOBILE_RESULT_KIND_LABEL, type MobileSearchResult } from "@/lib/mobile-search";
 
 // 現場向け画面（/m）専用の軽量な地図。PC版（components/MapView.tsx）は
 // ホーム位置・お気に入り・道路距離・場所検索等、機能が多く重いため、
@@ -46,6 +46,7 @@ const CURRENT_LOCATION_ICON = L.divIcon({
 export default function MobileMapView({
   results,
   center,
+  radiusM,
   onMapTap,
 }: {
   results: MobileSearchResult[];
@@ -53,6 +54,9 @@ export default function MobileMapView({
   // 初期表示の中心にする（結果のbounds合わせより、検索した地点そのものを
   // 中心に見せる方が現場での意図に合うため）。
   center: { lat: number; lng: number } | null;
+  // 同心円の半径（メートル）。設定画面で変更できる（会話ログ「現在地検索の半径変更」）。
+  // centerが無い場合は使われない。
+  radiusM: number;
   // 地図（マーカー・ポップアップ以外の何も無い部分）をタップした時に呼ばれる。
   // 検索パネルを開いたまま地図を見たい場面で、いちいち✕を押さなくても地図タップで
   // 閉じられるようにするために使う（会話ログ「地図タップでパネルを自動的に閉じる」）。
@@ -116,7 +120,7 @@ export default function MobileMapView({
     }
     if (center) {
       const circle = L.circle([center.lat, center.lng], {
-        radius: NEARBY_RADIUS_M,
+        radius: radiusM,
         color: "#2563eb",
         weight: 1.5,
         fillColor: "#60a5fa",
@@ -124,11 +128,12 @@ export default function MobileMapView({
       }).addTo(map);
       radiusCircleRef.current = circle;
       // 円がきちんと収まるようにズーム調整する（マウント時の初期表示は
-      // zoom15固定のため、円が画面からはみ出す場合がある。検索地点が変わった
-      // 場合もここで追従する）。
+      // zoom15固定のため、円が画面からはみ出す場合がある。検索地点・半径が
+      // 変わった場合もここで追従する）。
       map.fitBounds(circle.getBounds(), { padding: [24, 24] });
     }
-  }, [center]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center, radiusM]);
 
   // 現在地の自動取得・表示。ボタン操作（NearbySearchButton＝半径1km検索）とは別に、
   // ページを開いた時点で「今どこにいるか」を地図上に示す（会話ログ「地図と現在地が
