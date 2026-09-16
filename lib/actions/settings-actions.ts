@@ -44,7 +44,10 @@ export async function setHomeLocation(
     };
   }
   // マップだけでなく、他画面から距離を参照する可能性も見据えてカルテ配下全体を対象にする。
+  // /settings（会話ログ「ホーム位置の設定やダークモードなどの設定も設定に加えて
+  // ください」参照）にも現在のホーム位置を表示するため、そちらも対象にする。
   revalidatePath("/karte", "layout");
+  revalidatePath("/settings");
   return { ok: true };
 }
 
@@ -62,5 +65,6 @@ export async function clearHomeLocation(): Promise<SettingsActionResult> {
     };
   }
   revalidatePath("/karte", "layout");
+  revalidatePath("/settings");
   return { ok: true };
 }

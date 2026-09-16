@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import ThemeToggle from "@/components/ThemeToggle";
 import ViewHistoryButton from "@/components/ViewHistoryButton";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import HeaderHomeLink from "@/components/HeaderHomeLink";
@@ -142,8 +141,19 @@ export default function RootLayout({
               </a>
               <ViewHistoryButton />
               {/* PC向け設定画面（会話ログ「基本的な機能ではないので、設定画面などに
-                  あるとよいかと思います」参照。現状は路線名の道路種別の手動設定のみ）。
-                  スマホ側は/m/settingsが別に存在するため、ここはPC幅（sm:flex）限定。 */}
+                  あるとよいかと思います」「ホーム位置の設定やダークモードなどの
+                  設定も設定に加えてください」参照）。表示テーマ・ホーム位置の設定・
+                  路線名の道路種別の手動設定を集約している。スマホ側は/m/settingsが
+                  別に存在するため、ここはPC幅（sm:flex）限定。
+                  表示テーマの切替ボタンは、以前はここ（ヘッダー）に直接置いていたが、
+                  /settingsにも同じ<ThemeToggle/>を置くことになり、同一ページに
+                  2つのインスタンスが同時に存在すると、それぞれが独立したローカル
+                  state（isDark）を持つため、一方をクリックしてもDOM上のdarkクラスは
+                  正しく切り替わる一方、もう一方の表示（ボタンのラベル）が古いまま
+                  ズレる不具合が実際に発生した。スマホ版（/m/settings導入時にヘッダー
+                  から外した経緯）と同じ理由で、ヘッダーからは外し/settingsだけに
+                  置くことにした（会話ログ「スマホ用画面では、ダークモード
+                  ライトモードの切り替えは不要かもしれない」の判断をPC側にも適用）。 */}
               <a href="/settings" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                 ⚙️ 設定
               </a>
@@ -154,9 +164,6 @@ export default function RootLayout({
                 ＋ 資料読み込み
               </a>
             </nav>
-            <span className="hidden sm:inline-block">
-              <ThemeToggle />
-            </span>
           </div>
         </header>
         {/* 幅・余白の決め方はページごとに任せる（mainには一律のpaddingを付けない）。

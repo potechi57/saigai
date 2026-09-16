@@ -1,25 +1,37 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { getKarteRouteNameOptions, getRouteRoadTypeOverrides } from "@/lib/reference-data";
 import { isRoadTypeGroupKey, roadTypeGroupLabel, roadTypeGroupPrefix, type RoadTypeGroupKey } from "@/lib/road-type-groups";
 import RouteRoadTypeSelect from "@/components/RouteRoadTypeSelect";
+import HomeLocationSettings from "@/components/HomeLocationSettings";
+import ThemeToggle from "@/components/ThemeToggle";
+import type { HomeLocation } from "@/components/MapLoader";
 
 export const dynamic = "force-dynamic";
 
 // PC向けの設定画面（会話ログ「基本的な機能ではないので、設定画面などにあると
-// よいかと思います」参照）。現状は「点検調書（防災）の路線名の道路種別」
-// 手動設定のみを置く。他の設定が増えた場合もこのページに追加していく想定
-// （/m/settingsはスマホ現場用画面専用のため別物のまま）。
-//
-// 【背景】点検調書（防災＝Karte）の路線名は、施設台帳のような信頼できる
-// 道路種別データを持たない（路線名検索を道路種別＋路線名の2段階にする際に
-// 施設台帳側の路線名と照合したが一致が0件だった）。「宮の原線のような、
-// 道路種別が決まっていない路線を手動で分類したい」との要望を受け、
-// RouteRoadTypeOverrideテーブルへの手動割り当てをここで行えるようにする。
-// 一度設定すると、検索画面の路線名2段階絞り込み・一覧・カルテ詳細画面で
-// 「（町）」のような記号付きで表示されるようになる（app/karte/page.tsx・
-// app/karte/[karteNo]/page.tsx参照）。
+// よいかと思います」「ホーム位置の設定やダークモードなどの設定も設定に加えて
+// ください」参照）。従来ヘッダーに個別に置いていたホーム位置・表示テーマの
+// 設定と、点検調書（防災）の路線名・道路種別の手動設定をここに集約する
+// （/m/settingsはスマホ現場用画面専用のため別物のまま）。表示テーマは
+// 会話ログの経緯で元々PC幅ではヘッダーにも残す方針だったため、こちらは
+// ヘッダーからは外さず両方に置く（そのままでもいつでも切り替えられる方が
+// 便利なため）。
 export default async function SettingsPage() {
-  const [routeNames, overrides] = await Promise.all([getKarteRouteNameOptions(), getRouteRoadTypeOverrides()]);
+  const [routeNames, overrides, appSettings] = await Promise.all([
+    getKarteRouteNameOptions(),
+    getRouteRoadTypeOverrides(),
+    prisma.appSettings.findUnique({ where: { id: "singleton" } }),
+  ]);
+
+  const home: HomeLocation =
+    appSettings?.homeLatitude != null && appSettings?.homeLongitude != null
+      ? {
+          latitude: Number(appSettings.homeLatitude),
+          longitude: Number(appSettings.homeLongitude),
+          label: appSettings.homeLabel,
+        }
+      : null;
 
   const overrideMap = new Map<string, RoadTypeGroupKey>(
     overrides
@@ -39,6 +51,27 @@ export default async function SettingsPage() {
         ← 地図に戻る
       </Link>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">設定</h1>
+
+      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="border-b border-gray-300 px-4 py-3 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">表示テーマ</h2>
+        </div>
+        <div className="p-4">
+          <ThemeToggle />
+        </div>
+      </section>
+
+      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="border-b border-gray-300 px-4 py-3 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">ホーム位置</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            県土整備事務所等、点検の起点となる拠点の位置です。地図上の現在地・お気に入り等からの距離表示に使われます（事務所で1つを共有します）。
+          </p>
+        </div>
+        <div className="p-4">
+          <HomeLocationSettings home={home} />
+        </div>
+      </section>
 
       <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="border-b border-gray-300 px-4 py-3 dark:border-gray-700">
@@ -88,6 +121,17 @@ export default async function SettingsPage() {
             </table>
           </div>
         )}
+      </section>
+
+      {/* 会話ログ「今はないですが、ヘルプなどもここですね」参照。ヘルプ自体は
+          まだ存在しないため、今回は将来ここに置く場所だけを示す枠にとどめる
+          （中身が無いまま作り込みすぎない方針。他の未実装の分類・組み合わせで
+          「準備中」表示にとどめている箇所（例: app/import/page.tsx）と同じ考え方）。 */}
+      <section className="rounded border border-dashed border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="px-4 py-3">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">ヘルプ</h2>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">準備中です。操作方法の説明等は今後ここに追加予定です。</p>
+        </div>
       </section>
     </div>
   );
