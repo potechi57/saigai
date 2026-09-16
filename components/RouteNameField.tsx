@@ -1,20 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ROAD_TYPE_GROUPS, roadTypeGroupPrefix, type RoadTypeGroupKey } from "@/lib/road-type-groups";
+import { ROAD_TYPE_GROUPS, type RoadTypeGroupKey } from "@/lib/road-type-groups";
 
 // 「路線名」を、道路種別→路線名の2段階で選べるようにする汎用コンポーネント
 // （会話ログ「路線名検索を道路種別＋路線名の2段階にする」参照）。施設台帳タブ
 // （facRouteName。道路種別は全路線が施設台帳自身のrouteTypeから判明済み）と
-// 点検調書タブ（routeName。道路種別が分かっている路線は/settingsで手動設定した
-// ものだけ＝多くはgroup: null「未分類」になる。会話ログ「道路種別が決まって
-// いない道路を手動で分類できる仕様」参照）の両方で使うため、groupの判定方法は
-// 呼び出し側（app/karte/page.tsx）に任せ、このコンポーネントは
-// 「routeNameごとに解決済みのgroup」を受け取るだけにしている。
+// 点検調書タブ（routeName。道路種別はKarte.roadTypeという実データから判明する。
+// lib/karte-route-classification.ts参照）の両方で使うため、groupの判定方法・
+// 表示用テキスト（displayName）の組み立て方は呼び出し側（app/karte/page.tsx）
+// に任せ、このコンポーネントは「routeNameごとに解決済みのgroup・displayName」
+// を受け取るだけにしている（施設台帳側の路線名は国道・主要地方道・一般県道で
+// 既に「（国）」「（主）」「（一）」を含んでいるため、ここでさらに記号を付ける
+// と二重になってしまう不具合があった。会話ログ「(県)(主)松江鹿島美保関線と
+// 表示されてしまってます」参照。呼び出し側で二重にならないよう組み立て済みの
+// 文字列をそのまま出す方式にした）。
 //
 // 最終的に送信するのは既存と同じ<select name={name}>なので、サーバー側の
 // 検索処理・URLの形式は一切変えていない（既存の路線名検索との互換性を維持する）。
-export type RouteGroupOption = { routeName: string; group: RoadTypeGroupKey | null };
+export type RouteGroupOption = { routeName: string; group: RoadTypeGroupKey | null; displayName: string };
 
 type GroupSelection = RoadTypeGroupKey | "all" | "unclassified";
 
@@ -58,7 +62,7 @@ export default function RouteNameField({
         if (group === "unclassified") return r.group === null;
         return r.group === group;
       })
-      .filter((r) => !normalizedFilter || r.routeName.includes(normalizedFilter));
+      .filter((r) => !normalizedFilter || r.displayName.includes(normalizedFilter));
   }, [routes, group, filter]);
 
   return (
@@ -112,8 +116,7 @@ export default function RouteNameField({
         <option value="">すべて</option>
         {filteredRoutes.map((r) => (
           <option key={r.routeName} value={r.routeName}>
-            {roadTypeGroupPrefix(r.group)}
-            {r.routeName}
+            {r.displayName}
           </option>
         ))}
       </select>

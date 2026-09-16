@@ -13,6 +13,7 @@
 // 拡張できる）。
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import type { RoadType } from "@prisma/client";
 
 const CACHE_OPTIONS = { revalidate: 30, tags: ["reference-data"] };
 
@@ -26,6 +27,23 @@ export const getKarteRouteNameOptions = unstable_cache(
     return rows.map((r) => r.routeName).filter(Boolean);
   },
   ["reference-data:karte-route-name"],
+  CACHE_OPTIONS
+);
+
+// 点検調書（防災）タブの路線名2段階検索（道路種別→路線名）用（会話ログ
+// 「路線名検索を道路種別＋路線名の2段階にする」参照。lib/karte-route-classification.ts）。
+// 同じrouteNameを持つ複数のKarte行が異なるroadTypeを持つことは無いことを確認済み
+// （DB調査済み）。
+export const getKarteRouteOptionsWithType = unstable_cache(
+  async (): Promise<{ routeName: string; roadType: RoadType | null }[]> => {
+    const rows = await prisma.karte.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true, roadType: true },
+      orderBy: { routeName: "asc" },
+    });
+    return rows.filter((r): r is { routeName: string; roadType: RoadType | null } => !!r.routeName);
+  },
+  ["reference-data:karte-route-with-type"],
   CACHE_OPTIONS
 );
 
@@ -72,17 +90,6 @@ export const getFacilityListSoundnessGradeOptions = unstable_cache(
     return rows.map((r) => r.soundnessGrade).filter((v): v is string => !!v);
   },
   ["reference-data:facility-list-soundness-grade"],
-  CACHE_OPTIONS
-);
-
-// 点検調書（防災＝Karte）の路線名に対する道路種別の手動設定一覧
-// （会話ログ「道路種別が決まっていない道路を手動で分類できる仕様」参照。
-// /settingsで編集する。prisma/schema.prismaのRouteRoadTypeOverride参照）。
-export const getRouteRoadTypeOverrides = unstable_cache(
-  async (): Promise<{ routeName: string; roadTypeGroup: string }[]> => {
-    return prisma.routeRoadTypeOverride.findMany({ select: { routeName: true, roadTypeGroup: true } });
-  },
-  ["reference-data:route-road-type-overrides"],
   CACHE_OPTIONS
 );
 
