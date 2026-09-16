@@ -9,6 +9,7 @@ import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLi
 import SheetTabs from "@/components/SheetTabs";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
+import { roadTypeGroupPrefix, isRoadTypeGroupKey, type RoadTypeGroupKey } from "@/lib/road-type-groups";
 
 // 一覧画面と同じ理由で静的プリレンダリングを無効化する。
 export const dynamic = "force-dynamic";
@@ -79,6 +80,18 @@ export default async function KarteDetailPage({
 
   if (!karte) notFound();
 
+  // 路線名の道路種別が/settingsで手動設定されていれば「（町）」等の記号を
+  // 前置する（会話ログ「名前の前にも(町)のようにつけるようにしたいです」参照）。
+  const routeTypeOverride = await prisma.routeRoadTypeOverride.findUnique({
+    where: { routeName: karte.routeName },
+    select: { roadTypeGroup: true },
+  });
+  const routeGroup: RoadTypeGroupKey | null =
+    routeTypeOverride && isRoadTypeGroupKey(routeTypeOverride.roadTypeGroup)
+      ? (routeTypeOverride.roadTypeGroup as RoadTypeGroupKey)
+      : null;
+  const routeDisplayName = `${roadTypeGroupPrefix(routeGroup)}${karte.routeName}`;
+
   const resultByTargetAndEvent = new Map<string, (typeof karte.events)[number]["results"][number]>();
   for (const ev of karte.events) {
     for (const r of ev.results) {
@@ -123,7 +136,7 @@ export default async function KarteDetailPage({
               href={`/karte?cat=inspection&routeName=${encodeURIComponent(karte.routeName)}`}
               className="text-blue-600 dark:text-blue-400 hover:underline"
             >
-              {karte.routeName}
+              {routeDisplayName}
             </Link>
           ) : (
             "—"
@@ -973,7 +986,7 @@ export default async function KarteDetailPage({
       <RecordViewHistory
         kind="karte"
         id={karte.facilityNo}
-        title={karte.routeName}
+        title={routeDisplayName}
         subtitle={karte.facilityNo}
         href={`/karte/${karte.facilityNo}`}
       />

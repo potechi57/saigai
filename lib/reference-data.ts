@@ -75,6 +75,17 @@ export const getFacilityListSoundnessGradeOptions = unstable_cache(
   CACHE_OPTIONS
 );
 
+// 点検調書（防災＝Karte）の路線名に対する道路種別の手動設定一覧
+// （会話ログ「道路種別が決まっていない道路を手動で分類できる仕様」参照。
+// /settingsで編集する。prisma/schema.prismaのRouteRoadTypeOverride参照）。
+export const getRouteRoadTypeOverrides = unstable_cache(
+  async (): Promise<{ routeName: string; roadTypeGroup: string }[]> => {
+    return prisma.routeRoadTypeOverride.findMany({ select: { routeName: true, roadTypeGroup: true } });
+  },
+  ["reference-data:route-road-type-overrides"],
+  CACHE_OPTIONS
+);
+
 export const getFacilityLedgerRouteNameOptions = unstable_cache(
   async (): Promise<string[]> => {
     const rows = await prisma.facilityLedger.findMany({

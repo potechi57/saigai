@@ -141,6 +141,12 @@ export default function RootLayout({
                 編集履歴
               </a>
               <ViewHistoryButton />
+              {/* PC向け設定画面（会話ログ「基本的な機能ではないので、設定画面などに
+                  あるとよいかと思います」参照。現状は路線名の道路種別の手動設定のみ）。
+                  スマホ側は/m/settingsが別に存在するため、ここはPC幅（sm:flex）限定。 */}
+              <a href="/settings" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                ⚙️ 設定
+              </a>
               <a
                 href="/import"
                 className="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
