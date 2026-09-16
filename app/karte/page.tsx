@@ -24,10 +24,36 @@ import {
 } from "@/lib/facility-taxonomy";
 import SearchSubmitButton from "@/components/SearchSubmitButton";
 import PendingLink from "@/components/PendingLink";
+import FacilityShisetsuCheckboxes from "@/components/FacilityShisetsuCheckboxes";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
 export const dynamic = "force-dynamic";
+
+// 施設種別（施設名称／細別）の複数選択検索で「すべて」を表す特別な値
+// （会話ログ「施設種別の複数選択検索」参照）。個別のラベルと衝突しない
+// よう__で囲んだ内部専用の値にしている。ラベルと違いUIには出さない。
+const FACILITY_SHISETSU_ALL = "__all__";
+
+// searchParamsの値は、同名キーが1回だけ現れると文字列、複数回現れると配列に
+// なる（Next.jsの仕様）。施設種別（facShisetsu）はチェックボックスの複数選択に
+// 対応するため配列になりうる唯一のフィールドだが、他の大多数の単一値フィールドと
+// 型を共有しているため、読み取り側で必ずこのヘルパーを通して配列に正規化する。
+function toStringArray(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+// DBへの問い合わせ・地図描画・一覧表示のいずれも、検索条件に一致する件数が
+// どれだけ多くても無制限に扱っていた（会話ログ「検索結果が大量になった場合の
+// 件数制限・負荷対策」参照。実際に調査したところ、PrismaのfindMany呼び出しに
+// take/skipが一切無く、フロント側での間引きも無かった）。現在の実データ規模
+// （カルテ127件・施設台帳82件等）では実害が無いが、今回追加する施設種別の
+// 複数選択検索はOR条件を広げるため、件数が増えやすくなる。DB取得自体に上限を
+// 設け、あわせて実際の総件数（count）も取得して「◯件中△件を表示」と案内する
+// 方式にする（会話ログで比較検討し、この方式を採用）。上限に達しても
+// 「すべて」という検索条件自体は無効化せず、取得件数だけを絞る。
+const SEARCH_RESULT_LIMIT = 200;
 
 // 検索条件は「点検調書」側と「施設台帳」側で完全に別のキーにしている
 // （対象施設・対象事象が異なるため、絞り込み条件も別物になる。詳細はGROUPS参照:
@@ -156,7 +182,13 @@ type SearchParams = {
   // ledgerBunya/inspBunyaを共有すると、片方のタブで分野を選んだだけでもう片方の
   // hasSearched判定まで真になってしまう不具合が実際に発生したため。会話ログ参照）。
   facBunya?: string; // 施設台帳タブの分野
-  facShisetsu?: string; // 施設台帳タブの施設名称
+  // 施設台帳タブの施設名称（細別）。複数選択検索に対応するため、URL上で
+  // 同名キーを複数回繰り返す形（例:「facShisetsu=橋梁&facShisetsu=トンネル」）で
+  // 表現する。Next.jsの仕様上、1回だけの場合は文字列、複数回の場合は配列で
+  // 渡ってくるため、両方を受けられる型にしている（読み取りは必ずtoStringArray
+  // 経由。会話ログ「施設種別の複数選択検索」参照）。単一選択だった頃のURL
+  // （文字列1つ）もtoStringArrayが配列に正規化するため、そのまま動作する。
+  facShisetsu?: string | string[];
   ledgerBunya?: string; // 法令台帳タブの分野
   ledgerShisetsu?: string; // 法令台帳タブの施設名称
   // 法令台帳タブの名称検索（台帳（画像）のname・managementNo）。法令台帳タブは
@@ -189,7 +221,16 @@ function buildQuery(
   const merged: SearchParams = { ...params, ...options.overrides };
   for (const [key, value] of Object.entries(merged)) {
     if (options.remove?.includes(key)) continue;
-    if (value !== undefined) usp.set(key, value);
+    if (value === undefined) continue;
+    // facShisetsu（施設種別の複数選択）だけ配列になりうる。同じキーを複数回
+    // appendすることで、URL上は「facShisetsu=橋梁&facShisetsu=トンネル」の
+    // ように繰り返しキーとして表現する（Next.jsのsearchParamsはこの形式を
+    // 自動的に配列として渡してくれる）。
+    if (Array.isArray(value)) {
+      for (const v of value) usp.append(key, v);
+    } else {
+      usp.set(key, value);
+    }
   }
   return usp.toString();
 }
@@ -251,9 +292,12 @@ export default async function KarteListPage({
   const inspectionBunya = cat === "inspection" ? (params.inspBunya ?? "disaster") : "disaster";
   const inspectionShisetsu =
     cat === "inspection" && inspectionBunya !== "disaster" ? (params.inspShisetsu ?? null) : null;
-  // 施設台帳タブの分野・施設名称（未選択の場合はnull）。
+  // 施設台帳タブの分野・施設名称（未選択の場合はnull／空配列）。施設名称は
+  // 複数選択に対応するため配列で保持する（会話ログ「施設種別の複数選択検索」
+  // 参照。toStringArrayで単一値・複数値のどちらのURLも配列に正規化する）。
   const facilityBunya = cat === "facility" ? (params.facBunya ?? null) : null;
-  const facilityShisetsu = cat === "facility" && facilityBunya ? (params.facShisetsu ?? null) : null;
+  const facilityShisetsuList = cat === "facility" && facilityBunya ? toStringArray(params.facShisetsu) : [];
+  const facilityShisetsuAll = facilityShisetsuList.includes(FACILITY_SHISETSU_ALL);
   // 法令台帳タブの分野・施設名称。
   const ledgerBunya = cat === "ledger" ? (params.ledgerBunya ?? null) : null;
   const ledgerShisetsu = cat === "ledger" && ledgerBunya ? (params.ledgerShisetsu ?? null) : null;
@@ -319,19 +363,22 @@ export default async function KarteListPage({
     // 名称で見つけたい場合、細別を選び切っていなくても検索できるようにする）。
     facAndConditions.push({ facilityName: { contains: params.facName, mode: "insensitive" } });
   }
-  const facilityShisetsuDef =
-    facilityBunya && facilityShisetsu
-      ? FACILITY_LEDGER_ITEM_TYPES[facilityBunya]?.find((t) => t.label === facilityShisetsu)
-      : undefined;
-  if (facilityShisetsu && facilityShisetsuDef?.match) {
+  // 選択された施設名称（細別）の定義一式。「すべて」が選ばれている場合は、
+  // その分野で実装済み（match設定済み）の細別を全て対象にする（＝分野全体を
+  // OR検索する）。個別選択の場合は、選ばれたものだけを対象にする（会話ログ
+  // 「施設種別＝橋梁 OR トンネルとして検索する」参照）。
+  const availableFacilityTypes = facilityBunya ? (FACILITY_LEDGER_ITEM_TYPES[facilityBunya] ?? []) : [];
+  const selectedFacilityTypeDefs = facilityShisetsuAll
+    ? availableFacilityTypes.filter((t) => t.match)
+    : availableFacilityTypes.filter((t) => t.match && facilityShisetsuList.includes(t.label));
+  if (selectedFacilityTypeDefs.length > 0) {
     facAndConditions.push({
-      OR: facilityShisetsuDef.match.flatMap((kw) => [
-        { facilityType: { contains: kw } },
-        { facilitySubType: { contains: kw } },
-      ]),
+      OR: selectedFacilityTypeDefs.flatMap((t) =>
+        t.match!.flatMap((kw) => [{ facilityType: { contains: kw } }, { facilitySubType: { contains: kw } }])
+      ),
     });
   } else if (
-    (facilityShisetsu || facilityBunya) &&
+    (facilityShisetsuList.length > 0 || facilityBunya) &&
     !params.facName &&
     !params.fq &&
     !params.facRouteName &&
@@ -367,14 +414,18 @@ export default async function KarteListPage({
   // 点検調書タブには台帳（画像）に対応する分類が無いため、台帳は表示しない。
   const ledgerDocClass: FacilityLedgerDocClass | null =
     cat === "ledger" ? "LEGAL" : cat === "facility" ? "FACILITY" : null;
-  const ledgerShisetsuDef =
+  // 法令台帳タブは引き続き単一選択（1件のみ）、施設台帳タブは上で組み立てた
+  // 複数選択の結果（selectedFacilityTypeDefs）をそのまま流用する。
+  const ledgerShisetsuDefs: FacilityTypeDef[] =
     cat === "ledger"
       ? ledgerBunya && ledgerShisetsu
-        ? FACILITY_TYPES[ledgerBunya]?.find((t) => t.label === ledgerShisetsu)
-        : undefined
+        ? [FACILITY_TYPES[ledgerBunya]?.find((t) => t.label === ledgerShisetsu)].filter(
+            (t): t is FacilityTypeDef => !!t
+          )
+        : []
       : cat === "facility"
-        ? facilityShisetsuDef
-        : undefined;
+        ? selectedFacilityTypeDefs
+        : [];
   // 台帳の名称（name）・管理番号（managementNo）・路線名・所在地による検索。
   // タブごとに別パラメータ（法令台帳: ledgerName/ledgerRouteName/ledgerLocation／
   // 施設台帳: facName/facRouteName/facLocation）を使うが、対象はどちらも
@@ -392,12 +443,11 @@ export default async function KarteListPage({
   const ledgerRouteQuery = cat === "ledger" ? params.ledgerRouteName : cat === "facility" ? params.facRouteName : undefined;
   const ledgerLocationQuery = cat === "ledger" ? params.ledgerLocation : cat === "facility" ? params.facLocation : undefined;
   const ledgerOrConditions: Prisma.FacilityLedgerWhereInput[] = [];
-  if (ledgerShisetsuDef?.match) {
+  if (ledgerShisetsuDefs.length > 0) {
     ledgerOrConditions.push({
-      OR: ledgerShisetsuDef.match.flatMap((kw) => [
-        { facilityType: { contains: kw } },
-        { facilitySubType: { contains: kw } },
-      ]),
+      OR: ledgerShisetsuDefs.flatMap((t) =>
+        t.match!.flatMap((kw) => [{ facilityType: { contains: kw } }, { facilitySubType: { contains: kw } }])
+      ),
     });
   }
   if (ledgerNameQuery) {
@@ -478,16 +528,23 @@ export default async function KarteListPage({
     ledgerRouteNameOptions,
     gateSignInspectionsRaw,
     kartesBeforeLocationFilter,
+    karteTotalCount,
     facilityItems,
+    facilityItemsTotalCount,
   ] = await Promise.all([
     // 路線名・健全性区分の選択肢は検索するたびに変わるものではないため、
     // lib/reference-data.tsで短時間（30秒）キャッシュしている
     // （詳細は同ファイルのコメント参照。従来はここで毎回DISTINCT検索していた）。
     getKarteRouteNameOptions(),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
+    // 台帳（画像）・点検調書（門型標識）は現状データ量が少なく（それぞれ数件〜
+    // 数十件）、件数案内までは出していないが、上限自体は同じ考え方で一律に
+    // 掛けておく（会話ログ「検索結果が大量になった場合の件数制限・負荷対策」参照。
+    // 将来データが増えた場合の安全網）。
     prisma.facilityLedger.findMany({
       where: ledgerWhere,
       include: { images: { orderBy: { sortOrder: "asc" } } },
+      take: SEARCH_RESULT_LIMIT,
     }),
     getFacilityListRouteNameOptions(),
     getFacilityListSoundnessGradeOptions(),
@@ -502,6 +559,7 @@ export default async function KarteListPage({
         overviewPhotos: { orderBy: { sortOrder: "asc" } },
         facilityListItem: { select: { id: true } },
       },
+      take: SEARCH_RESULT_LIMIT,
     }),
     // 初期表示（まだ検索していない状態）では、検索クエリ自体を実行しない（データ件数が
     // 増えた場合のDB負荷・通信量・地図描画負荷を抑えるため。単にDBから全件取得して画面側
@@ -509,6 +567,11 @@ export default async function KarteListPage({
     // 以前はこの2クエリを上のPromise.allとは別に直列awaitしていたが、where/facWhereは
     // このPromise.all発行時点で既に確定しており、上記クエリ群の結果にも依存しないため、
     // ここに合流させてラウンドトリップを1段階減らしている（詳細は関数冒頭のコメント参照）。
+    //
+    // 会話ログ「検索結果が大量になった場合の件数制限・負荷対策」対応: findMany自体に
+    // take（上限）を付け、別途count()で実際の総件数も取得する（＝DB取得件数自体を
+    // 制限しつつ「◯件中△件を表示」の案内を出せるようにする。DBから全件取得してから
+    // 画面側だけで間引く、という方式は採らない）。
     hasSearched
       ? prisma.karte.findMany({
           where,
@@ -522,11 +585,14 @@ export default async function KarteListPage({
             },
             favorite: { select: { id: true } },
           },
+          take: SEARCH_RESULT_LIMIT,
         })
       : Promise.resolve([]),
+    hasSearched ? prisma.karte.count({ where }) : Promise.resolve(0),
     hasFacSearched
-      ? prisma.facilityListItem.findMany({ where: facWhere, orderBy: { managementNo: "asc" } })
+      ? prisma.facilityListItem.findMany({ where: facWhere, orderBy: { managementNo: "asc" }, take: SEARCH_RESULT_LIMIT })
       : Promise.resolve([]),
+    hasFacSearched ? prisma.facilityListItem.count({ where: facWhere }) : Promise.resolve(0),
   ]);
   // 路線名は共通フィールドとして1つの<select>にまとめるため、3系統の選択肢を
   // 合わせて（重複除去のうえ）1つのリストにする。
@@ -608,6 +674,10 @@ export default async function KarteListPage({
       : null,
   }));
   const withoutCoordsCount = kartes.length - mapKartes.length;
+  // SEARCH_RESULT_LIMITで打ち切られたかどうか（＝実際の総件数の方が多いか）。
+  // 「件数が多いため先頭N件のみ表示」の案内を出すかどうかの判定に使う
+  // （会話ログ「検索結果が大量になった場合の件数制限・負荷対策」参照）。
+  const karteTruncated = karteTotalCount > kartes.length;
 
   const facilityItemsWithCoords = facilityItems.filter((f) => f.latitude != null && f.longitude != null);
   const mapFacilityListItems: MapFacilityListItem[] = facilityItemsWithCoords.map((f) => ({
@@ -626,10 +696,16 @@ export default async function KarteListPage({
     remarks: f.remarks,
   }));
   const facWithoutCoordsCount = facilityItems.length - mapFacilityListItems.length;
+  const facTruncated = facilityItemsTotalCount > facilityItems.length;
 
   // 「最近の検索」（左パネル下部）に記録する内容。表示方法（view）は検索条件では
   // ないため、記録対象からは除外する（一覧⇔地図の切替だけでは履歴を増やさない）。
-  // 現状は防災カルテ側の検索のみを対象にしている（施設一覧側の履歴は今後の課題）。
+  // 以前は防災カルテ側（点検調書＞災害）の検索のみを対象にしており、施設台帳側は
+  // 「今後の課題」として未対応だったが、施設種別の複数選択検索を検索履歴から
+  // 復元できるようにする必要があるため、施設台帳側の条件も対象に加える
+  // （会話ログ「検索履歴から複数施設種別の検索条件を復元できるようにする」参照）。
+  // 施設台帳側はcat=facilityも明示的に含める（省略時の既定タブが"inspection"の
+  // ため、カルテ側と違い省略すると復元時に違うタブに着地してしまう）。
   const historyParams = new URLSearchParams();
   if (params.q) historyParams.set("q", params.q);
   if (params.routeName) historyParams.set("routeName", params.routeName);
@@ -638,6 +714,16 @@ export default async function KarteListPage({
   if (params.karteType) historyParams.set("karteType", params.karteType);
   if (params.responseCategory) historyParams.set("responseCategory", params.responseCategory);
   if (params.landmark) historyParams.set("landmark", params.landmark);
+  if (cat === "facility") {
+    historyParams.set("cat", "facility");
+    if (params.fq) historyParams.set("fq", params.fq);
+    if (params.facRouteName) historyParams.set("facRouteName", params.facRouteName);
+    if (params.facLocation) historyParams.set("facLocation", params.facLocation);
+    if (params.facName) historyParams.set("facName", params.facName);
+    if (facilityBunya) historyParams.set("facBunya", facilityBunya);
+    for (const v of facilityShisetsuList) historyParams.append("facShisetsu", v);
+    if (params.soundnessGrade) historyParams.set("soundnessGrade", params.soundnessGrade);
+  }
   const currentQueryString = historyParams.toString();
 
   const conditionLabels: string[] = [];
@@ -651,6 +737,18 @@ export default async function KarteListPage({
   }
   if (params.responseCategory && params.responseCategory in ResponseCategory) {
     conditionLabels.push(RESPONSE_META[params.responseCategory as ResponseCategory]?.label ?? params.responseCategory);
+  }
+  if (cat === "facility") {
+    if (params.fq) conditionLabels.push(`番号:${params.fq}`);
+    if (params.facRouteName) conditionLabels.push(`路線:${params.facRouteName}`);
+    if (params.facLocation) conditionLabels.push(`所在地:${params.facLocation}`);
+    if (params.facName) conditionLabels.push(`施設名称:${params.facName}`);
+    if (facilityShisetsuAll) {
+      conditionLabels.push("施設種別:すべて");
+    } else if (facilityShisetsuList.length > 0) {
+      conditionLabels.push(`施設種別:${facilityShisetsuList.join("・")}`);
+    }
+    if (params.soundnessGrade) conditionLabels.push(`健全度:${params.soundnessGrade}`);
   }
   const currentSearchLabel = conditionLabels.length > 0 ? conditionLabels.join(" ・ ") : null;
 
@@ -668,14 +766,15 @@ export default async function KarteListPage({
     overrides: { cat: "inspection", q: params.fq, routeName: params.facRouteName, location: params.facLocation },
   })}`;
 
-  // 分野・施設名称ボタンのリンク先。分野を切り替えたときは、別の分野の施設名称が
+  // 分野ボタンのリンク先。分野を切り替えたときは、別の分野の施設名称が
   // 残らないよう施設名称をクリアする（buildQueryはoverridesの値がundefinedの
   // キーをクエリから除外する）。タブごとに別のパラメータ名を使うことで、
   // 他タブのhasSearched判定に影響しないようにしている（上記コメント参照）。
+  // 施設名称（細別）側は複数選択になったため、単発リンクではなく
+  // components/FacilityShisetsuCheckboxes.tsx（チェックボックス＋検索ボタン）に
+  // なった（会話ログ「施設種別の複数選択検索」参照）。
   const facilityFieldHref = (fieldKey: string) =>
     `/karte?${buildQuery(params, { overrides: { cat: "facility", facBunya: fieldKey, facShisetsu: undefined } })}`;
-  const facilityShisetsuHref = (fieldKey: string, label: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "facility", facBunya: fieldKey, facShisetsu: label } })}`;
   const ledgerFieldHref = (fieldKey: string) =>
     `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: undefined } })}`;
   const ledgerShisetsuHref = (fieldKey: string, label: string) =>
@@ -832,18 +931,25 @@ export default async function KarteListPage({
                 場合は何も引き継がない＝相手側もhasXSearched=falseのまま維持される）。 */}
             {cat === "inspection" &&
               hasFacSearched &&
-              FACILITY_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
+              // facShisetsu（施設種別）は複数選択のため配列になりうる。1つのキーに
+              // つき複数のhidden inputを並べることで、同名キーの繰り返しとして
+              // 引き継ぐ（buildQueryのarray対応と同じ考え方）。
+              FACILITY_PARAM_KEYS.flatMap((k) =>
+                toStringArray(params[k]).length > 0
+                  ? toStringArray(params[k]).map((v, i) => <input key={`${k}-${i}`} type="hidden" name={k} defaultValue={v} />)
+                  : [<input key={k} type="hidden" name={k} defaultValue="" />]
+              )}
             {cat === "facility" &&
               hasSearched &&
               KARTE_PARAM_KEYS.map((k) => <input key={k} type="hidden" name={k} defaultValue={params[k] ?? ""} />)}
-            {/* 施設台帳タブの分野・施設名称は、リンク（ボタン）で切り替えるため通常の
-                フォーム項目ではない。この隠しinputで、フォーム送信（検索・条件変更）時にも
-                現在の選択を維持する。 */}
+            {/* 施設台帳タブの分野は、リンク（ボタン）で切り替えるため通常のフォーム項目
+                ではない。この隠しinputで、フォーム送信（検索・条件変更）時にも現在の
+                選択を維持する。施設名称（細別）は複数選択チェックボックス
+                （components/FacilityShisetsuCheckboxes.tsx）が自身のnameで直接
+                送信するため、ここでの引き継ぎは不要（以前はここにも隠しinputが
+                あったが、チェックボックスと二重に送信されてしまうため削除した）。 */}
             {cat === "facility" && facilityBunya && (
               <input type="hidden" name="facBunya" defaultValue={facilityBunya} />
-            )}
-            {cat === "facility" && facilityShisetsu && (
-              <input type="hidden" name="facShisetsu" defaultValue={facilityShisetsu} />
             )}
             {cat === "inspection" && <input type="hidden" name="inspBunya" defaultValue={inspectionBunya} />}
             {cat === "inspection" && inspectionShisetsu && (
@@ -1058,23 +1164,16 @@ export default async function KarteListPage({
                     ))}
                   </div>
                   {facilityBunya && (
-                    <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
-                      {FACILITY_LEDGER_ITEM_TYPES[facilityBunya]?.map((t) => (
-                        <PendingLink
-                          key={t.label}
-                          href={facilityShisetsuHref(facilityBunya, t.label)}
-                          className={`rounded-full border px-2 py-0.5 text-xs ${
-                            facilityShisetsu === t.label
-                              ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
-                              : t.match
-                                ? "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
-                                : "border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
-                          }`}
-                        >
-                          {t.label}
-                          {!t.match && "（準備中）"}
-                        </PendingLink>
-                      ))}
+                    <div className="border-l-2 border-gray-200 pl-2 dark:border-gray-700">
+                      {/* 施設種別は複数選択できる（会話ログ「施設種別の複数選択検索」
+                          参照）。分野切替のPendingLinkと違い、チェックボックスは
+                          「検索」ボタンを押すまで確定しない（他の入力欄と同じ挙動）。 */}
+                      <FacilityShisetsuCheckboxes
+                        key={facilityBunya}
+                        types={FACILITY_LEDGER_ITEM_TYPES[facilityBunya] ?? []}
+                        selected={facilityShisetsuList}
+                        allValue={FACILITY_SHISETSU_ALL}
+                      />
                     </div>
                   )}
                 </div>
@@ -1127,19 +1226,31 @@ export default async function KarteListPage({
             {!hasSearched
               ? "未検索"
               : hasCondition
-                ? `検索結果 ${kartes.length} 件`
-                : `全 ${kartes.length} 件を地図に表示中`}
+                ? `検索結果 ${karteTotalCount} 件`
+                : `全 ${karteTotalCount} 件`}
+            {hasSearched && karteTruncated && `（表示 ${kartes.length} 件）`}
             {hasSearched && withoutCoordsCount > 0 && `（座標未登録 ${withoutCoordsCount} 件を除く）`}
           </span>
+          {hasSearched && karteTruncated && (
+            <span className="block text-yellow-700 dark:text-yellow-500">
+              件数が多いため、先頭{kartes.length}件のみ表示しています。検索条件を追加すると、より絞り込めます。
+            </span>
+          )}
           <span className="block">
             施設台帳：
             {!hasFacSearched
               ? "未検索"
               : hasFacCondition
-                ? `検索結果 ${facilityItems.length} 件`
-                : `全 ${facilityItems.length} 件を地図に表示中`}
+                ? `検索結果 ${facilityItemsTotalCount} 件`
+                : `全 ${facilityItemsTotalCount} 件`}
+            {hasFacSearched && facTruncated && `（表示 ${facilityItems.length} 件）`}
             {hasFacSearched && facWithoutCoordsCount > 0 && `（座標未登録 ${facWithoutCoordsCount} 件を除く）`}
           </span>
+          {hasFacSearched && facTruncated && (
+            <span className="block text-yellow-700 dark:text-yellow-500">
+              件数が多いため、先頭{facilityItems.length}件のみ表示しています。検索条件を追加すると、より絞り込めます。
+            </span>
+          )}
           <span className="block">
             点検調書（門型標識）：
             {!gateSignReady
@@ -1150,7 +1261,12 @@ export default async function KarteListPage({
           </span>
         </p>
 
-        {cat === "inspection" && (
+        {/* 以前はcat==="inspection"のときだけ表示していた（施設台帳側の履歴が
+            historyParams/conditionLabelsで未対応だったため）。施設台帳側も
+            対応したので、施設台帳タブでも表示する（会話ログ「検索履歴から複数
+            施設種別の検索条件を復元できるようにする」参照。法令台帳タブは
+            対応する検索条件自体を持たないため引き続き対象外）。 */}
+        {(cat === "inspection" || cat === "facility") && (
           <SearchHistoryPanel currentQuery={currentQueryString} currentLabel={currentSearchLabel} />
         )}
       </aside>
