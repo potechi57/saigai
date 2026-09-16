@@ -992,3 +992,33 @@ model BridgeLedgerSheet {
 
   @@index([bridgeLedgerId])
 }
+
+// ── 路線の道路種別・手動分類（点検調書＝Karte用） ──────────────────────
+// 点検調書（防災＝Karte）の路線名（Karte.routeName）は、施設台帳
+// （FacilityListItem.routeType）のような信頼できる道路種別データを持たない
+// （路線名検索を道路種別＋路線名の2段階にする際に調査済み。施設台帳側の
+// 路線名と照合しても一致が0件だった＝同じ路線でも別の名称体系で管理されている）。
+// 「宮の原線のような、道路種別が決まっていない路線を手動で分類したい」との
+// 要望を受け、利用者が/settingsで任意に道路種別を割り当てられる、Karte本体とは
+// 独立した上書きテーブルとして追加した。
+//
+// Karte.routeNameを直接書き換えるのではなくこの別テーブルにする理由:
+//   - Excel再取込のたびにKarte本体は作り直される（karte-import.ts）ため、
+//     本体に書いてしまうと再取込で消える。
+//   - 「路線名」という自由記述文字列をキーにした単純なマッピングにすることで、
+//     同じ路線名を持つ複数のKarte行に一括で効かせられる。
+// 一度設定すると、検索画面の路線名2段階絞り込み（道路種別→路線名）・
+// 一覧表示・カルテ詳細画面で、路線名の前に道路種別の記号（例:「（町）」。
+// lib/road-type-groups.ts参照）を付けて表示する。
+model RouteRoadTypeOverride {
+  id        String @id @default(cuid())
+  routeName String @unique
+
+  // "national" | "prefectural" | "municipal" | "other"
+  // （lib/road-type-groups.tsのRoadTypeGroupKeyと一致させる。DB上はenumにせず
+  // 文字列のままにしている＝グループの追加・変更にスキーマ変更を要さない）。
+  roadTypeGroup String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
