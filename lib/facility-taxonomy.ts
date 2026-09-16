@@ -126,3 +126,46 @@ export function facilityTaxonomyEmoji(facilityType: string | null | undefined, f
   if (text.includes("法面")) return "⛰️";
   return "🛣️";
 }
+
+// facilityType/facilitySubType（自由記述文字列）から、【施設台帳一覧】
+// （FACILITY_LEDGER_ITEM_FIELDS/TYPES）上の分野・施設名称を逆引きする
+// （会話ログ「路線名をクリックして、その路線の関連施設を表示」参照）。
+// 検索側（app/karte/page.tsx）の「施設名称→facilityType/facilitySubTypeの
+// 部分一致」という順方向の判定を、同じmatchキーワード定義を使って逆向きに
+// 引くだけなので、新しい分類基準を作るのではなく既存の分類をそのまま再利用
+// している。該当が無ければnull（無理に「その他」等へ分類しない）。
+export function findFacilityLedgerItemType(
+  facilityType: string | null | undefined,
+  facilitySubType: string | null | undefined
+): { bunya: FieldKey; type: FacilityTypeDef } | null {
+  const text = `${facilityType ?? ""} ${facilitySubType ?? ""}`;
+  for (const field of FACILITY_LEDGER_ITEM_FIELDS) {
+    for (const type of FACILITY_LEDGER_ITEM_TYPES[field.key] ?? []) {
+      if (type.match?.some((kw) => text.includes(kw))) {
+        return { bunya: field.key, type };
+      }
+    }
+  }
+  return null;
+}
+
+// 施設台帳タブで「路線名＝routeName」かつ（分かれば）「施設種別＝そのページが
+// 表示している施設の種別」の検索結果へ遷移するURLを組み立てる（会話ログ
+// 「新しい独立した検索機能を作るのではなく、既存の検索機能へのコンテキスト
+// 検索として実装する」参照）。施設種別が特定できない場合は路線名だけで絞り込む
+// （施設台帳タブは「施設名称まで特定されるまでは何も表示しない」方針だが、
+// facRouteNameが指定されていれば例外的に横断検索できる。app/karte/page.tsxの
+// facAndConditions組み立てロジック参照）。
+export function buildFacilityRouteSearchHref(
+  routeName: string,
+  facilityType?: string | null,
+  facilitySubType?: string | null
+): string {
+  const usp = new URLSearchParams({ cat: "facility", facRouteName: routeName });
+  const match = findFacilityLedgerItemType(facilityType, facilitySubType);
+  if (match) {
+    usp.set("facBunya", match.bunya);
+    usp.set("facShisetsu", match.type.label);
+  }
+  return `/karte?${usp.toString()}`;
+}

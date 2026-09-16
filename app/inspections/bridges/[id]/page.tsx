@@ -7,6 +7,7 @@ import RecordViewHistory from "@/components/RecordViewHistory";
 import SheetTabs from "@/components/SheetTabs";
 import ExcelSheetGrid from "@/components/ExcelSheetGrid";
 import type { ExtractedGrid } from "@/lib/excel/excel-grid-extract";
+import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,13 @@ export default async function BridgeLedgerDetailPage({ params }: { params: Promi
             <Field label="橋名（フリガナ）" value={bridge.bridgeNameKana} />
             <Field label="橋名" value={bridge.bridgeName} />
             <Field label="事務所名" value={bridge.officeName} />
-            <Field label="路線名" value={bridge.routeName} />
+            <Field
+              label="路線名"
+              value={bridge.routeName}
+              // 橋梁台帳は常に施設種別＝橋梁として扱う（このページ自体が
+              // 橋梁台帳専用のため、facilityType/facilitySubTypeの逆引きは不要）。
+              href={bridge.routeName ? buildFacilityRouteSearchHref(bridge.routeName, "橋梁") : undefined}
+            />
             <Field label="径間数" value={bridge.spanCount != null ? String(bridge.spanCount) : null} />
             <Field label="架設年月日" value={bridge.constructedAt} />
             <div className="sm:col-span-2">
@@ -238,11 +245,29 @@ function decimalOrDash(value: { toString(): string } | null): string {
   return value == null ? "—" : String(value);
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+function Field({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value?: string | null;
+  // 値をクリック可能にする場合のリンク先（会話ログ「路線名をクリックして、
+  // その路線の関連施設を表示」参照。路線名Fieldにのみ渡す）。
+  href?: string;
+}) {
   return (
     <div>
       <dt className="text-xs text-gray-400 dark:text-gray-500">{label}</dt>
-      <dd className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">{value ?? "—"}</dd>
+      <dd className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">
+        {value && href ? (
+          <Link href={href} className="text-blue-600 dark:text-blue-400 hover:underline">
+            {value}
+          </Link>
+        ) : (
+          (value ?? "—")
+        )}
+      </dd>
     </div>
   );
 }
