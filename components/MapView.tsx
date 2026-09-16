@@ -164,6 +164,12 @@ export default function MapView({
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
+  // 取得した現在地の誤差半径(m)。PCではGPSではなくWi-Fi/IPベースで位置推定される
+  // ことがあり、精度が低いまま無条件に「現在地」として扱うと実際とずれた位置に
+  // なりうる（会話ログ「PCで取得する現在位置が誤る問題」参照）。スマホ版
+  // （components/NearbySearchButton.tsx）は既にaccuracyを取得・活用しているが、
+  // PC版のこのhandleLocateだけ未対応だったため、同じ考え方をこちらにも適用する。
+  const [locateAccuracyM, setLocateAccuracyM] = useState<number | null>(null);
   const [settingHome, setSettingHome] = useState(false);
   const [savingHome, setSavingHome] = useState(false);
   const [homeError, setHomeError] = useState<string | null>(null);
@@ -578,13 +584,16 @@ export default function MapView({
     }
     setLocating(true);
     setLocateError(null);
+    setLocateAccuracyM(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         currentLocationRef.current = { lat: latitude, lng: longitude };
+        setLocateAccuracyM(Math.round(accuracy));
         map.setView([latitude, longitude], 15);
+        const popupHtml = `現在地（誤差 約${Math.round(accuracy)}m）`;
         if (currentLocationMarkerRef.current) {
-          currentLocationMarkerRef.current.setLatLng([latitude, longitude]);
+          currentLocationMarkerRef.current.setLatLng([latitude, longitude]).setPopupContent(popupHtml);
         } else {
           currentLocationMarkerRef.current = L.circleMarker([latitude, longitude], {
             radius: 8,
@@ -594,16 +603,27 @@ export default function MapView({
             weight: 2,
           })
             .addTo(map)
-            .bindPopup("現在地");
+            .bindPopup(popupHtml);
         }
         setLocating(false);
       },
       (err) => {
         setLocateError(`現在地を取得できませんでした（${err.message}）`);
         setLocating(false);
-      }
+      },
+      // enableHighAccuracy: 未指定（既定false）だとPCではWi-Fi/IPベースの粗い
+      // 位置推定になりやすい。timeout/maximumAgeも合わせて明示指定する
+      // （components/NearbySearchButton.tsxと同じ設定値。会話ログ「PC側の実装
+      // からの改善点」参照。enableHighAccuracy:trueにしてもPC自体にGPSが無ければ
+      // 精度の上限はあるが、少なくとも「意図せず最も粗い方式に倒れる」ことは防げる）。
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }
+
+  // GPSの誤差が大きい場合（会話ログの100mという閾値は、app/m/page.tsxの
+  // 現在地検索での基準と同じものを流用し、精度に関する案内の考え方を
+  // PC版・スマホ版で揃えている。厳密な根拠のある閾値ではなく経験則）。
+  const locateAccuracyLow = locateAccuracyM != null && locateAccuracyM > 100;
 
   // 「○○小学校」のような地名・施設名から地図を移動する場所検索（ジオコーディング）。
   // カルテの属性検索（左の検索条件パネル）とは別物で、あくまで「地図上のこの辺りを
@@ -652,6 +672,16 @@ export default function MapView({
     } finally {
       setPlaceSearching(false);
     }
+  }
+
+  // 現在地の精度が低い・取得できない場合の代替手段（会話ログ「基準位置との併用」
+  // 参照）。ホーム位置を自動的に「現在地」として扱う（＝currentLocationRef等を
+  // 書き換える）ことはせず、あくまで地図の表示位置をホーム位置へ移すだけに
+  // とどめる（現在地とホーム位置を混同させないため）。
+  function handleGoHome() {
+    const map = mapRef.current;
+    if (!map || !home) return;
+    map.setView([home.latitude, home.longitude], 15);
   }
 
   function handleClearHome() {
@@ -758,6 +788,23 @@ export default function MapView({
         {savingHome && <span className="rounded bg-white/90 px-2 py-1 text-xs text-gray-500 shadow dark:bg-gray-900/90 dark:text-gray-400">保存中...</span>}
         {homeError && <span className="max-w-[14rem] rounded bg-white/90 px-2 py-1 text-right text-xs text-red-600 shadow dark:bg-gray-900/90 dark:text-red-400">{homeError}</span>}
         {locateError && <span className="max-w-[14rem] rounded bg-white/90 px-2 py-1 text-right text-xs text-red-600 shadow dark:bg-gray-900/90 dark:text-red-400">{locateError}</span>}
+        {/* 現在地の誤差が大きい場合の注意書き（app/m/page.tsxの100m閾値・文言と揃えている）。
+            取得できなかった場合（locateError）・精度が低い場合のどちらでも、ホーム位置が
+            設定済みなら代わりにそちらへ移動できる案内を出す。 */}
+        {locateAccuracyLow && (
+          <span className="max-w-[14rem] rounded bg-white/90 px-2 py-1 text-right text-xs text-yellow-700 shadow dark:bg-gray-900/90 dark:text-yellow-400">
+            ⚠ 現在地の取得精度が低い可能性があります（誤差 約{locateAccuracyM}m）。実際の位置とずれることがあります。
+          </span>
+        )}
+        {(locateError || locateAccuracyLow) && home && (
+          <button
+            type="button"
+            onClick={handleGoHome}
+            className="rounded border border-gray-300 bg-white px-3 py-1 text-xs shadow hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+          >
+            🏠 ホーム位置へ移動
+          </button>
+        )}
       </div>
     </div>
   );
