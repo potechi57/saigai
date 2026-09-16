@@ -637,14 +637,6 @@ export default async function KarteListPage({
       : Promise.resolve([]),
     hasFacSearched ? prisma.facilityListItem.count({ where: facWhere }) : Promise.resolve(0),
   ]);
-  // 路線名は共通フィールドとして1つの<select>にまとめるため、3系統の選択肢を
-  // 合わせて（重複除去のうえ）1つのリストにする（法令台帳タブの路線名検索で使う。
-  // 点検調書タブ・施設台帳タブは、それぞれ自系統専用の道路種別グルーピング付き
-  // 一覧（下記）を使うため、こちらは対象外）。
-  const combinedRouteNameOptions = Array.from(
-    new Set([...routeNameOptions, ...facRouteNameOptions, ...ledgerRouteNameOptions])
-  ).sort((a, b) => a.localeCompare(b, "ja"));
-
   // 施設台帳タブの路線名2段階検索（道路種別→路線名）用データ。全路線が
   // FacilityListItem.routeTypeという信頼できる実データを持つ（会話ログで確認済み）。
   const facilityRouteGroupOptions = facilityListRoutesWithType.map((r) => {
@@ -666,6 +658,22 @@ export default async function KarteListPage({
       displayName: karteRouteDisplayName(routeName, roadType) ?? routeName,
     };
   });
+
+  // 法令台帳タブの路線名検索用の共通<select>（点検調書タブ・施設台帳タブと違い
+  // 単一の<select>のため、道路種別による2段階絞り込みは持たず、3系統の選択肢を
+  // 合わせて（重複除去のうえ）1つのリストにするだけ）。表示名（記号付き）は、
+  // 施設台帳・点検調書タブで使っているのと同じ判定結果（facilityRouteGroupOptions・
+  // karteRouteGroupOptions）を再利用して組み立てる（会話ログ「法令台帳の路線名に
+  // ついては、(主)のような表記がされていないものが非常に多い」参照。送信される
+  // 値自体は記号を含まない元のrouteNameのまま＝検索・互換性に影響しない）。
+  const routeDisplayNameByName = new Map<string, string>();
+  for (const r of facilityRouteGroupOptions) routeDisplayNameByName.set(r.routeName, r.displayName);
+  for (const r of karteRouteGroupOptions) routeDisplayNameByName.set(r.routeName, r.displayName);
+  const combinedRouteNameOptions = Array.from(
+    new Set([...routeNameOptions, ...facRouteNameOptions, ...ledgerRouteNameOptions])
+  )
+    .map((routeName) => ({ routeName, displayName: routeDisplayNameByName.get(routeName) ?? routeName }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, "ja"));
 
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
     id: l.id,
@@ -937,9 +945,9 @@ export default async function KarteListPage({
                   className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                 >
                   <option value="">すべて</option>
-                  {combinedRouteNameOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
+                  {combinedRouteNameOptions.map((r) => (
+                    <option key={r.routeName} value={r.routeName}>
+                      {r.displayName}
                     </option>
                   ))}
                 </select>
