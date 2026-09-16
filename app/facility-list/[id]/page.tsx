@@ -29,6 +29,7 @@ export default async function FacilityListItemPage({ params }: { params: Promise
       // 本体へのリンクとして追加する。
       gateSignInspections: { orderBy: { inspectionDate: "desc" } },
       bridgeLedgers: { orderBy: { createdAt: "desc" } },
+      bridgeInspections: { orderBy: { inspectionDate: "desc" } },
     },
   });
   if (!item) notFound();
@@ -92,11 +93,11 @@ export default async function FacilityListItemPage({ params }: { params: Promise
           無かった）ため追加した。下の「点検記録」は簡易な点検履歴の一覧、
           こちらは1施設1件ずつの詳細な点検報告書（写真・部材ごとの損傷記録等を
           含む）という違いがある。 */}
-      {(item.gateSignInspections.length > 0 || item.bridgeLedgers.length > 0) && (
+      {(item.gateSignInspections.length > 0 || item.bridgeLedgers.length > 0 || item.bridgeInspections.length > 0) && (
         <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
           <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              詳細な点検調書（{item.gateSignInspections.length + item.bridgeLedgers.length}件）
+              詳細な点検調書（{item.gateSignInspections.length + item.bridgeLedgers.length + item.bridgeInspections.length}件）
             </h2>
           </div>
           <ul className="divide-y divide-gray-200 p-3 text-sm dark:divide-gray-700">
@@ -118,12 +119,30 @@ export default async function FacilityListItemPage({ params }: { params: Promise
                 )}
               </li>
             ))}
+            {item.bridgeInspections.map((insp) => (
+              <li key={insp.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  橋梁（点検調書）
+                </span>
+                <Link href={`/inspections/bridges/${insp.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {insp.bridgeName ?? insp.managementNo ?? "（橋梁名不明）"}
+                </Link>
+                {insp.overallJudgment && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">判定区分 {insp.overallJudgment}</span>
+                )}
+                {insp.inspectionDate && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    点検日: {new Date(insp.inspectionDate).toLocaleDateString("ja-JP")}
+                  </span>
+                )}
+              </li>
+            ))}
             {item.bridgeLedgers.map((bridge) => (
               <li key={bridge.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                   橋梁台帳
                 </span>
-                <Link href={`/inspections/bridges/${bridge.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                <Link href={`/bridge-ledgers/${bridge.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                   {bridge.bridgeName ?? bridge.managementNo ?? "（橋梁名不明）"}
                 </Link>
                 {bridge.managementNo && bridge.bridgeName && (

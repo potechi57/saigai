@@ -705,6 +705,7 @@ model FacilityListItem {
   inspections         FacilityInspectionRecord[]
   gateSignInspections GateSignInspection[]
   bridgeLedgers       BridgeLedger[]
+  bridgeInspections   BridgeInspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -859,6 +860,15 @@ model GateSignInspectionPhoto {
 // 密な構造設計・数量計算の帳票）、「画像」（位置図・工事費・維持管理表等）、
 // 「付属図」（平面図・側面図等の添付図面）、「IMS設定シート」（非表示）。
 //
+// 内容は橋梁の基本諸元・構造設計等の台帳（施設台帳の一種）であり、実際の
+// 点検記録（点検調書）ではないため、画面上の分類は「施設台帳」に置いている
+// （/import。以前は「点検調書」に誤って分類していた。会話ログ「橋梁台帳読み込みは
+// 点検調書ではなくても、施設台帳に分類すると思います。区分が違うので修正して
+// ください」参照）。ルートも/bridge-ledgers（「点検調書」を意味する/inspections
+// 配下から外した）。実際の定期点検報告書（別紙２　様式１様式２形式）は、
+// 下記の別モデルBridgeInspectionとして取り込む（会話ログ「過去の門型標識点検の
+// エクセルファイルを参考に橋梁の点検様式の取り込みもできるようにしてほしい」
+// 参照）。
 // 会話ログで、道路防災管理という本来の目的に対して使用頻度が低い「橋梁台帳」
 // 「画像」「付属図」シートまで点検調書と同じ「1項目=1DB列＋忠実なCSSレイアウト」
 // で作り込むのはコストに見合わないと判断し、以下のように使い分けている
@@ -991,6 +1001,112 @@ model BridgeLedgerSheet {
   createdAt DateTime @default(now())
 
   @@index([bridgeLedgerId])
+}
+
+// ── 点検調書（道路＞橋梁） ─────────────────────────────────────
+// 点検調書タブ＞道路＞橋梁＞エクセル読み込み（会話ログ「過去の門型標識点検の
+// エクセルファイルを参考に橋梁の点検様式の取り込みもできるようにしてほしい」
+// 参照。サンプルファイル「G57-AB-908913_01_富田橋.xlsx」で構造を確認済み）。
+// 「別紙２　様式１様式２」形式で、点検調書（門型標識＝GateSignInspection）と
+// 同じ発行元・同じ様式体系の橋梁版。1ファイル＝1橋の定期点検報告書。
+// Excelは32シート構成:
+//   - 道路橋様式１・様式２: 基本情報・部材単位の総括表（粗い情報）＋
+//     状況写真のハイライト（4枚程度）。
+//   - 定期点検調書（その１）: 橋梁諸元（BridgeLedgerの橋梁調書シートと
+//     ほぼ同じ項目。橋の基本諸元は既にBridgeLedgerで構造化済みのため、
+//     このモデルでは重複させず、識別・検索に要る範囲（橋梁名・路線名・
+//     所在地・事務所名・管理番号）＋点検固有の情報（点検日・点検者・
+//     責任者）だけを持つ）。
+//   - 定期点検調書（その２）: 橋梁一般図（位置図・平面図・側面図・断面図）。
+//   - 定期点検調書（その３）: 現地状況写真（起点→終点等）。
+//   - 定期点検調書（その４）径間N: 径間ごとの損傷評価の総括表（粗い情報。
+//     その５の詳細カードと内容が重なるため、GateSignInspectionの様式１
+//     総括表と同じ理由で取り込み対象外）。
+//   - 定期点検調書（その５）N_径間M: 径間ごとの損傷箇所別の写真付き詳細
+//     カード（部材名・部材番号・損傷種類・コメント・写真）。GateSignInspection
+//     の様式２カードに相当し、これをBridgeInspectionMemberとして取り込む。
+//   - 損傷評価のまとめ: 全径間の総括表（その４よりさらに粗い、派生データ）。
+//     取り込み対象外。
+//   - IMS設定シート（非表示）: 緯度経度（度分秒）等。
+model BridgeInspection {
+  id String @id @default(cuid())
+
+  facilityListItemId String?
+  facilityListItem   FacilityListItem? @relation(fields: [facilityListItemId], references: [id], onDelete: SetNull)
+  // 「定期点検調書（その１）」の「橋梁番号」欄（Excel内に実データあり。
+  // 門型標識と異なりファイル名からではなくExcel本体から取得できる）。
+  managementNo       String?
+
+  bridgeName     String? // 橋梁名
+  bridgeNameKana String? // フリガナ
+  routeName      String?
+  location       String?
+  officeName     String? // 事務所名
+  spanCount      Int? // 径間数
+
+  latitude  Decimal? @db.Decimal(9, 6) // IMS設定シートの緯度(度)(分)(秒)から10進度に変換
+  longitude Decimal? @db.Decimal(9, 6)
+
+  inspectionDate    DateTime? // 点検日
+  inspectorCompany  String? // 点検者（会社名）
+  responsiblePerson String? // 責任者
+
+  overallJudgment String? // 道路橋毎の健全性の診断（判定区分Ⅰ〜Ⅳ）
+  overallFindings String? // 所見等
+
+  sourceFileName String?
+
+  members BridgeInspectionMember[]
+  photos  BridgeInspectionPhoto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([managementNo])
+  @@index([facilityListItemId])
+}
+
+// 「定期点検調書（その５）N_径間M」の損傷箇所ごとの写真付き詳細カード
+// （GateSignInspectionMemberの橋梁版）。径間ごとにシートが分かれるため
+// spanNoを持つ（径間番号。「定期点検調書（その５）」内の「径間番号」欄）。
+model BridgeInspectionMember {
+  id           String           @id @default(cuid())
+  inspectionId String
+  inspection   BridgeInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  spanNo Int // 径間番号
+  // 同じ径間内で複数シート（その５1〜4等、損傷箇所の数に応じて複製される）に
+  // 分かれる場合の並び順（1始まり）。詳細画面でExcelのシート構成に合わせて
+  // 表示するため（GateSignInspectionMember.pageNoと同じ考え方）。
+  pageNo Int @default(1)
+
+  photoNo      Int? // 写真番号
+  memberName   String? // 部材名
+  memberDetail String? // 部材番号
+  damageType   String? // 損傷種類
+  findings     String? // コメント（所見）
+
+  photoUrl String? // 損傷状況写真（Vercel Blob）
+
+  sortOrder Int @default(0)
+
+  @@index([inspectionId])
+}
+
+// 「定期点検調書（その２）」（橋梁一般図: 位置図・平面図・側面図・断面図）・
+// 「定期点検調書（その３）」（現地状況写真）・道路橋様式２（状況写真の
+// ハイライト）等、個別の損傷カードには紐付かない全体写真・図面
+// （GateSignInspectionPhotoと同じ考え方）。
+model BridgeInspectionPhoto {
+  id           String           @id @default(cuid())
+  inspectionId String
+  inspection   BridgeInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  url       String
+  caption   String? // 例: 位置図、起点→終点
+  sortOrder Int     @default(0)
+
+  @@index([inspectionId])
 }
 
 // ── 路線の道路種別・手動分類（点検調書＝Karte用） ──────────────────────

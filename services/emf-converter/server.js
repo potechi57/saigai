@@ -334,6 +334,53 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
         [fullPagePath, "-crop", `${cropWidth}x${cropHeight}+${cropX}+${cropY}`, "+repage", resultPngPath],
         { timeout: CONVERT_RANGE_TIMEOUT_MS }
       );
+    } catch ({ error, stderr }) {
+      throw new HttpError(502, `画像の切り出しに失敗しました: ${stderr || error.message}`);
+    }
+
+    // 【切り出し結果が「ほぼ空白」でないかの自己検証】
+    // 縦方向の切り出し位置（cropY/cropHeight）は、POINTS_PER_COL_WIDTH_UNITという
+    // 実データ1件（269_B3274A090）から逆算した固定値に基づく計算で求めている
+    // （このファイル上部のコメント参照）。この定数はファイルが使うフォント・
+    // スタイルによって実際の値とズレることがあり、ズレが大きい場合、切り出し
+    // 位置が本来の内容から完全に外れ、ほぼ白紙の画像になってしまうことが実際に
+    // 確認された（会話ログ「いくつかのカルテの様式Aの画像取込みがおかしなこと
+    // になっている」参照。B3257A220で、内容が全く写っていない、下端に細い線が
+    // 1本あるだけの画像になる不具合を確認・再現した）。
+    // この不具合を個別ファイルごとに検知するのは困難なため、代わりに「切り出し
+    // 結果に実質的な内容（背景以外の画素）がほとんど無い」ことを直接検出する。
+    // 検出した場合はこの関数自体を失敗させ（呼び出し元のemf-convert.tsの
+    // convertSheetRangeToPngがnullを返す）、既存のフォールバック経路
+    // （karte-image-extract.tsのresolveFormAImages/resolveFormBImages。個別の
+    // 写真をそのまま取り込む従来方式）に自動的に切り替わるようにする。
+    // 「空白の画像が取り込まれる」よりは「合成せず個別の写真がそのまま
+    // 取り込まれる」方が実害が小さいという判断（ベストエフォート方針）。
+    let trimmedContentHeightPx = cropHeight;
+    try {
+      const { stdout } = await execFileAsync(
+        "convert",
+        [resultPngPath, "-fuzz", "3%", "-trim", "-format", "%h", "info:"],
+        { timeout: CONVERT_RANGE_TIMEOUT_MS }
+      );
+      const parsed = Number(stdout.trim());
+      if (Number.isFinite(parsed) && parsed > 0) trimmedContentHeightPx = parsed;
+    } catch {
+      // トリミング検出自体に失敗した場合（真っ白で-trim結果が空になる等）は、
+      // 「内容がほぼ無い」とみなして安全側（トリミング後の高さ0）に倒す。
+      trimmedContentHeightPx = 0;
+    }
+    // 実際に取り込まれた複数のスケッチ・図面で、内容がcrop領域の高さの
+    // 15%未満しか占めないケースは無かった（通常は大半を占める）ことを踏まえ、
+    // 「内容がほぼ無い＝失敗」とみなすしきい値として15%を採用している。
+    const MIN_CONTENT_HEIGHT_FRACTION = 0.15;
+    if (trimmedContentHeightPx < cropHeight * MIN_CONTENT_HEIGHT_FRACTION) {
+      throw new HttpError(
+        422,
+        `切り出し結果がほぼ空白のため中止しました（内容の高さ${trimmedContentHeightPx}px / 切り出し高さ${cropHeight}px）`
+      );
+    }
+
+    try {
       await execFileAsync(
         "convert",
         [fullPagePath, "-crop", `${cropWidth}x${cropHeight}+${cropX}+${cropY}`, "+repage", "-quality", "90", resultJpgPath],
