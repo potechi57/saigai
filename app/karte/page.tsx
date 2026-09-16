@@ -11,11 +11,11 @@ import { getStartEndRecordPhotos } from "@/lib/map-photos";
 import { buildInspectionCommonConditions } from "@/lib/inspection-search";
 import {
   getKarteRouteNameOptions,
+  getKarteRouteOptionsWithType,
   getFacilityListRouteNameOptions,
   getFacilityListRouteOptionsWithType,
   getFacilityListSoundnessGradeOptions,
   getFacilityLedgerRouteNameOptions,
-  getRouteRoadTypeOverrides,
 } from "@/lib/reference-data";
 import {
   FACILITY_FIELDS,
@@ -24,7 +24,8 @@ import {
   FACILITY_LEDGER_ITEM_TYPES,
   type FieldKey,
 } from "@/lib/facility-taxonomy";
-import { groupOfFacilityRouteType, roadTypeGroupPrefix, isRoadTypeGroupKey, type RoadTypeGroupKey } from "@/lib/road-type-groups";
+import { groupOfFacilityRouteType, facilityRouteDisplayName, type RoadTypeGroupKey } from "@/lib/road-type-groups";
+import { karteRouteGroup, karteRouteDisplayName } from "@/lib/karte-route-classification";
 import SearchSubmitButton from "@/components/SearchSubmitButton";
 import PendingLink from "@/components/PendingLink";
 import FacilityShisetsuCheckboxes from "@/components/FacilityShisetsuCheckboxes";
@@ -541,12 +542,12 @@ export default async function KarteListPage({
   // 後段で別途awaitする（＝直列3段階だったものを直列2段階に削減）。
   const [
     routeNameOptions,
+    karteRouteOptionsWithType,
     settings,
     facilityLedgersRaw,
     ledgerTotalCount,
     facRouteNameOptions,
     facilityListRoutesWithType,
-    routeRoadTypeOverrides,
     soundnessGradeOptions,
     ledgerRouteNameOptions,
     gateSignInspectionsRaw,
@@ -559,6 +560,10 @@ export default async function KarteListPage({
     // lib/reference-data.tsで短時間（30秒）キャッシュしている
     // （詳細は同ファイルのコメント参照。従来はここで毎回DISTINCT検索していた）。
     getKarteRouteNameOptions(),
+    // 点検調書（防災）タブの路線名2段階検索（道路種別→路線名）用（会話ログ
+    // 「主要地方道を(主)、一般県道を(一)と表示するようにしてください」参照。
+    // lib/karte-route-classification.ts）。
+    getKarteRouteOptionsWithType(),
     prisma.appSettings.findUnique({ where: { id: "singleton" } }),
     // 台帳（画像）・点検調書（門型標識）は現状データ量が少なく（それぞれ数件〜
     // 数十件）、件数案内までは出していないが、上限自体は同じ考え方で一律に
@@ -577,9 +582,6 @@ export default async function KarteListPage({
     // 施設台帳タブの路線名2段階検索（道路種別→路線名）用（会話ログ「路線名検索を
     // 道路種別＋路線名の2段階にする」参照。components/RouteNameField.tsx）。
     getFacilityListRouteOptionsWithType(),
-    // 点検調書（防災）タブの路線名2段階検索用の手動分類一覧（会話ログ「道路種別が
-    // 決まっていない道路を手動で分類できる仕様」参照。/settingsで編集する）。
-    getRouteRoadTypeOverrides(),
     getFacilityListSoundnessGradeOptions(),
     getFacilityLedgerRouteNameOptions(),
     prisma.gateSignInspection.findMany({
@@ -637,29 +639,25 @@ export default async function KarteListPage({
 
   // 施設台帳タブの路線名2段階検索（道路種別→路線名）用データ。全路線が
   // FacilityListItem.routeTypeという信頼できる実データを持つ（会話ログで確認済み）。
-  const facilityRouteGroupOptions = facilityListRoutesWithType.map((r) => ({
-    routeName: r.routeName,
-    group: groupOfFacilityRouteType(r.routeType) as RoadTypeGroupKey | null,
-  }));
+  const facilityRouteGroupOptions = facilityListRoutesWithType.map((r) => {
+    const group = groupOfFacilityRouteType(r.routeType) as RoadTypeGroupKey | null;
+    return { routeName: r.routeName, group, displayName: facilityRouteDisplayName(r.routeName, group) };
+  });
 
-  // 点検調書（防災）タブの路線名2段階検索用データ。道路種別を示す実データが
-  // 無いため、/settingsで手動設定された分（routeRoadTypeOverrides）だけを
-  // グループとして扱い、それ以外は「未分類」（group: null）のままにする
-  // （会話ログ「道路種別が決まっていない道路を手動で分類できる仕様」参照。
-  // 推測でグループ分けはしない）。
-  const karteRouteOverrideMap = new Map<string, RoadTypeGroupKey>(
-    routeRoadTypeOverrides
-      .filter((o) => isRoadTypeGroupKey(o.roadTypeGroup))
-      .map((o) => [o.routeName, o.roadTypeGroup as RoadTypeGroupKey])
-  );
-  const karteRouteGroupOptions = routeNameOptions.map((routeName) => ({
-    routeName,
-    group: karteRouteOverrideMap.get(routeName) ?? null,
-  }));
-  // 点検調書の一覧・詳細画面での表示用（路線名の前に道路種別の記号を付ける。
-  // 会話ログ「名前の前にも(町)のようにつけるようにしたいです」参照）。
-  const karteRouteDisplayName = (routeName: string | null) =>
-    routeName ? `${roadTypeGroupPrefix(karteRouteOverrideMap.get(routeName) ?? null)}${routeName}` : routeName;
+  // 点検調書（防災）タブの路線名2段階検索用データ。Karte.roadType（Excel
+  // 「Listシート」由来の実データ。全件に設定済み）から機械的に判定する
+  // （会話ログ「先ほど分類されていなかったのは、すべて県道でした」を受けて
+  // 調査し直し、施設台帳と同じ実データベースの判定方式に切り替えた。
+  // lib/karte-route-classification.ts参照）。
+  const karteRouteOverrideByName = new Map(karteRouteOptionsWithType.map((r) => [r.routeName, r.roadType]));
+  const karteRouteGroupOptions = routeNameOptions.map((routeName) => {
+    const roadType = karteRouteOverrideByName.get(routeName) ?? null;
+    return {
+      routeName,
+      group: karteRouteGroup(roadType),
+      displayName: karteRouteDisplayName(routeName, roadType) ?? routeName,
+    };
+  });
 
   const mapLedgers: MapLedger[] = facilityLedgersRaw.map((l) => ({
     id: l.id,
@@ -721,9 +719,9 @@ export default async function KarteListPage({
   const mapKartes: MapKarte[] = kartesWithCoords.map((k) => ({
     id: k.id,
     facilityNo: k.facilityNo,
-    // 道路種別が手動設定されていれば「（町）」等の記号を前置する
+    // 道路種別（Karte.roadType）が分かっていれば「（町）」等の記号を前置する
     // （会話ログ「名前の前にも(町)のようにつけるようにしたいです」参照）。
-    routeName: karteRouteDisplayName(k.routeName) ?? k.routeName,
+    routeName: karteRouteDisplayName(k.routeName, k.roadType) ?? k.routeName,
     karteTypeLabel: KARTE_TYPE_LABEL[k.karteType] ?? k.karteType,
     responseCategory: k.responseCategory,
     latitude: Number(k.latitude),
@@ -1043,10 +1041,10 @@ export default async function KarteListPage({
                 filterPlaceholder="路線名を絞り込む（例：国道9号）"
               />
             ) : (
-              // 点検調書（防災）タブ: 道路種別を示す実データが無いため、
-              // /settingsで手動設定された分だけをグループとして使い、それ以外は
-              // 「未分類」ピルにまとめる（会話ログ「道路種別が決まっていない道路を
-              // 手動で分類できる仕様」参照。推測でのグループ分けは行わない）。
+              // 点検調書（防災）タブ: Karte.roadTypeという実データからグループを
+              // 判定する（lib/karte-route-classification.ts参照。理論上roadTypeが
+              // 未設定の行があれば「未分類」ピルにまとめる。推測でのグループ分けは
+              // 行わない）。
               <RouteNameField
                 key={`route-${cat}-${params.routeName ?? ""}`}
                 name="routeName"
@@ -1432,7 +1430,7 @@ export default async function KarteListPage({
                             </Link>
                           </td>
                           <td className="px-3 py-2">{KARTE_TYPE_LABEL[k.karteType] ?? k.karteType}</td>
-                          <td className="px-3 py-2">{karteRouteDisplayName(k.routeName)}</td>
+                          <td className="px-3 py-2">{karteRouteDisplayName(k.routeName, k.roadType)}</td>
                           <td className="px-3 py-2">
                             {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
                           </td>

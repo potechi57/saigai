@@ -998,27 +998,12 @@ model BridgeLedgerSheet {
 // （FacilityListItem.routeType）のような信頼できる道路種別データを持たない
 // （路線名検索を道路種別＋路線名の2段階にする際に調査済み。施設台帳側の
 // 路線名と照合しても一致が0件だった＝同じ路線でも別の名称体系で管理されている）。
-// 「宮の原線のような、道路種別が決まっていない路線を手動で分類したい」との
-// 要望を受け、利用者が/settingsで任意に道路種別を割り当てられる、Karte本体とは
-// 独立した上書きテーブルとして追加した。
 //
-// Karte.routeNameを直接書き換えるのではなくこの別テーブルにする理由:
-//   - Excel再取込のたびにKarte本体は作り直される（karte-import.ts）ため、
-//     本体に書いてしまうと再取込で消える。
-//   - 「路線名」という自由記述文字列をキーにした単純なマッピングにすることで、
-//     同じ路線名を持つ複数のKarte行に一括で効かせられる。
-// 一度設定すると、検索画面の路線名2段階絞り込み（道路種別→路線名）・
-// 一覧表示・カルテ詳細画面で、路線名の前に道路種別の記号（例:「（町）」。
-// lib/road-type-groups.ts参照）を付けて表示する。
-model RouteRoadTypeOverride {
-  id        String @id @default(cuid())
-  routeName String @unique
-
-  // "national" | "prefectural" | "municipal" | "other"
-  // （lib/road-type-groups.tsのRoadTypeGroupKeyと一致させる。DB上はenumにせず
-  // 文字列のままにしている＝グループの追加・変更にスキーマ変更を要さない）。
-  roadTypeGroup String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// 以前はここに、利用者が/settingsで任意に道路種別を割り当てられる、Karte本体
+// とは独立した上書きテーブル（RouteRoadTypeOverride）があったが廃止した。
+// 未分類だった路線を確認したところ全て島根県道だったことが判明し（会話ログ
+// 「先ほど分類されていなかったのは、すべて県道でした」参照）調査し直した
+// ところ、Karte自体に元々roadType列（冒頭のRoadType enum。Excel「Listシート」
+// の道路種別。全件に設定済み）という信頼できる実データが既に存在していたため、専用の
+// 設定画面・上書きテーブルは不要と判断した。現在はKarte.roadTypeから
+// lib/karte-route-classification.tsが機械的に判定する。
