@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatFacilityType } from "@/lib/labels";
+import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 import RecordViewHistory from "@/components/RecordViewHistory";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,15 @@ export default async function FacilityListItemPage({ params }: { params: Promise
           <Field label="管轄事務所" value={item.officeName} />
           <Field label="施設分野" value={item.facilityField} />
           <Field label="路線種別" value={item.routeType} />
-          <Field label="路線名" value={item.routeName} />
+          <Field
+            label="路線名"
+            value={item.routeName}
+            href={
+              item.routeName
+                ? buildFacilityRouteSearchHref(item.routeName, item.facilityType, item.facilitySubType)
+                : undefined
+            }
+          />
           <Field label="施設種別" value={facilityTypeLabel} />
           <Field label="施設名称" value={item.facilityName} />
           <Field label="所在地" value={item.location} />
@@ -111,11 +120,29 @@ export default async function FacilityListItemPage({ params }: { params: Promise
   );
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+function Field({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value?: string | null;
+  // 値をクリック可能にする場合のリンク先（会話ログ「路線名をクリックして、
+  // その路線の関連施設を表示」参照。路線名Fieldにのみ渡す）。
+  href?: string;
+}) {
   return (
     <div>
       <dt className="text-xs text-gray-400 dark:text-gray-500">{label}</dt>
-      <dd className="text-gray-800 dark:text-gray-100">{value ?? "—"}</dd>
+      <dd className="text-gray-800 dark:text-gray-100">
+        {value && href ? (
+          <Link href={href} className="text-blue-600 dark:text-blue-400 hover:underline">
+            {value}
+          </Link>
+        ) : (
+          (value ?? "—")
+        )}
+      </dd>
     </div>
   );
 }

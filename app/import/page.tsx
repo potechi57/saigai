@@ -60,7 +60,9 @@ const CATS: { key: CatKey; label: string }[] = [
 // （検索・地図画面のINSPECTION_FIELDSと同じ分野名を使うが、あちらは検索条件、
 // こちらは取込窓口という別の用途のため、あえて定義は独立させている）。
 const EXCEL_INSPECTION_FORMS: { key: string; label: string }[] = [
-  { key: "disaster", label: "災害" },
+  // 表示名は「防災」（会話ログ「「点検調書（災害）」を「点検調書（防災）」へ
+  // 変更する」参照。keyは内部識別子のままdisasterで維持する）。
+  { key: "disaster", label: "防災" },
   { key: "road", label: "道路" },
   { key: "river_coast", label: "河川・海岸" },
   { key: "airport", label: "空港" },
@@ -340,7 +342,7 @@ export default async function ImportHubPage({
             施設台帳を見る →
           </Link>
           <Link href="/karte/import" className="text-blue-600 dark:text-blue-400 hover:underline">
-            点検調書（災害）の取込履歴を見る →
+            点検調書（防災）の取込履歴を見る →
           </Link>
           <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
             点検調書（門型標識）を見る →

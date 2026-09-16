@@ -42,6 +42,26 @@ export const getFacilityListRouteNameOptions = unstable_cache(
   CACHE_OPTIONS
 );
 
+// 施設台帳タブの「路線名」を道路種別（国道／県道／市町村道等）で2段階に絞り込む
+// ための、路線名＋道路種別のペア一覧（会話ログ「路線名検索を道路種別＋路線名の
+// 2段階にする」参照）。FacilityListItem.routeTypeは実データ由来の信頼できる
+// 値（国道・主要地方道・一般県道・1級町道・2級町道・その他市道・その他町道）を
+// 持っているため、これをそのまま使う（他のroutedName源＝Karte・FacilityLedgerには
+// 道路種別を示す列が無く、実データで突き合わせても一致が無かったため、2段階化の
+// 対象は施設台帳タブのみに限定している。app/karte/page.tsxのROAD_TYPE_GROUPS参照）。
+export const getFacilityListRouteOptionsWithType = unstable_cache(
+  async (): Promise<{ routeName: string; routeType: string | null }[]> => {
+    const rows = await prisma.facilityListItem.findMany({
+      distinct: ["routeName"],
+      select: { routeName: true, routeType: true },
+      orderBy: { routeName: "asc" },
+    });
+    return rows.filter((r): r is { routeName: string; routeType: string | null } => !!r.routeName);
+  },
+  ["reference-data:facility-list-route-with-type"],
+  CACHE_OPTIONS
+);
+
 export const getFacilityListSoundnessGradeOptions = unstable_cache(
   async (): Promise<string[]> => {
     const rows = await prisma.facilityListItem.findMany({

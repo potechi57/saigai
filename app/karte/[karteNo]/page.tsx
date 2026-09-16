@@ -114,7 +114,21 @@ export default async function KarteDetailPage({
         <HeaderItem label="管理機関コード">{karte.manageOrgCode || "—"}</HeaderItem>
         <HeaderItem label="施設管理番号">{karte.facilityNo}</HeaderItem>
         <HeaderItem label="災害区分">{KARTE_TYPE_LABEL[karte.karteType] ?? karte.karteType}</HeaderItem>
-        <HeaderItem label="路線名">{karte.routeName}</HeaderItem>
+        <HeaderItem label="路線名">
+          {/* 会話ログ「路線名をクリックして、その路線の関連施設を表示」参照。
+              カルテ（点検調書＞防災）は施設台帳の分類体系に属さないため、
+              施設種別は引き継がず、点検調書タブの路線名検索へ遷移する。 */}
+          {karte.routeName ? (
+            <Link
+              href={`/karte?cat=inspection&routeName=${encodeURIComponent(karte.routeName)}`}
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {karte.routeName}
+            </Link>
+          ) : (
+            "—"
+          )}
+        </HeaderItem>
         <HeaderItem label="台帳番号">{karte.ledgerNo || "—"}</HeaderItem>
         <HeaderItem label="距離標">
           自 {karte.distanceMarkerFromKm?.toString() ?? "—"} km 〜 至 {karte.distanceMarkerToKm?.toString() ?? "—"} km

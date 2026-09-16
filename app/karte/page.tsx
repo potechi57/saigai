@@ -12,6 +12,7 @@ import { buildInspectionCommonConditions } from "@/lib/inspection-search";
 import {
   getKarteRouteNameOptions,
   getFacilityListRouteNameOptions,
+  getFacilityListRouteOptionsWithType,
   getFacilityListSoundnessGradeOptions,
   getFacilityLedgerRouteNameOptions,
 } from "@/lib/reference-data";
@@ -25,6 +26,7 @@ import {
 import SearchSubmitButton from "@/components/SearchSubmitButton";
 import PendingLink from "@/components/PendingLink";
 import FacilityShisetsuCheckboxes from "@/components/FacilityShisetsuCheckboxes";
+import FacilityRouteNameField from "@/components/FacilityRouteNameField";
 
 // 点検記録は随時更新されるため静的プリレンダリングはせず、常に最新をDBから取得する
 // （ビルド時にDBへ接続できない環境でもビルドが通るようにする副次効果もある）。
@@ -128,7 +130,11 @@ type FacilityTypeDef = { label: string; match?: string[] };
 // 中身は別データという方針で使い回さない。会話ログ「法令台帳と施設台帳が
 // ごっちゃになっていますね」参照）。
 const INSPECTION_FIELDS: FieldDef[] = [
-  { key: "disaster", label: "災害" },
+  // 表示名は「防災」（会話ログ「「点検調書（災害）」を「点検調書（防災）」へ
+  // 変更する」参照。扱っているのは災害そのものの発生記録ではなく、道路防災
+  // カルテの点検・防災情報であるため。keyは内部識別子のままdisasterで維持し、
+  // データ互換性（URLのinspBunya=disaster等）を変えない）。
+  { key: "disaster", label: "防災" },
   { key: "road", label: "道路" },
   { key: "river_coast", label: "河川・海岸" },
   { key: "port", label: "港湾" },
@@ -167,7 +173,7 @@ type SearchParams = {
   location?: string;
   karteType?: string; // 災害区分
   responseCategory?: string;
-  // 点検調書（災害）には施設台帳のような「施設名称」列が無いため、代わりに
+  // 点検調書（防災）には施設台帳のような「施設名称」列が無いため、代わりに
   // 位置目印（landmark）を名前検索の対象にする（会話ログ「いずれも名前による
   // 検索ができません」参照。Karteに施設名称に相当する列が無いため、最も近い
   // 概念として位置目印を採用した）。
@@ -402,6 +408,11 @@ export default async function KarteListPage({
   const facWhere: Prisma.FacilityListItemWhereInput = facAndConditions.length > 0 ? { AND: facAndConditions } : {};
   const hasFacCondition = FACILITY_PARAM_KEYS.some((k) => params[k]);
   const hasFacSearched = FACILITY_PARAM_KEYS.some((k) => k in params);
+  // 法令台帳タブの検索結果表示（会話ログ「法令台帳にも検索結果を表示」参照）。
+  // 施設台帳・点検調書と同じ「キーがURLに存在するかどうか」で判定する方式
+  // （値が空でもフォーム送信時はname付きの全フィールドが送られるため）。
+  const hasLedgerCondition = cat === "ledger" && LEDGER_PARAM_KEYS.some((k) => params[k]);
+  const hasLedgerSearched = cat === "ledger" && LEDGER_PARAM_KEYS.some((k) => k in params);
 
   // 台帳（画像。FacilityLedger）の地図表示も、施設台帳と同じ「施設名称（細別）まで
   // 特定されるまでは何も表示しない」方針に統一する。以前はdocClass・分野・施設名称を
@@ -523,7 +534,9 @@ export default async function KarteListPage({
     routeNameOptions,
     settings,
     facilityLedgersRaw,
+    ledgerTotalCount,
     facRouteNameOptions,
+    facilityListRoutesWithType,
     soundnessGradeOptions,
     ledgerRouteNameOptions,
     gateSignInspectionsRaw,
@@ -546,7 +559,14 @@ export default async function KarteListPage({
       include: { images: { orderBy: { sortOrder: "asc" } } },
       take: SEARCH_RESULT_LIMIT,
     }),
+    // 法令台帳タブの検索結果表示用の総件数（会話ログ「法令台帳にも検索結果を表示」
+    // 参照）。ledgerWhereは条件が無いと自動的に0件になるsentinel（__no_data_yet__）
+    // になるため、常時実行しても無条件の全件カウントにはならない。
+    prisma.facilityLedger.count({ where: ledgerWhere }),
     getFacilityListRouteNameOptions(),
+    // 施設台帳タブの路線名2段階検索（道路種別→路線名）用（会話ログ「路線名検索を
+    // 道路種別＋路線名の2段階にする」参照。components/FacilityRouteNameField.tsx）。
+    getFacilityListRouteOptionsWithType(),
     getFacilityListSoundnessGradeOptions(),
     getFacilityLedgerRouteNameOptions(),
     prisma.gateSignInspection.findMany({
@@ -616,6 +636,7 @@ export default async function KarteListPage({
     imageCount: l.images.length,
     note: l.note,
   }));
+  const ledgerTruncated = ledgerTotalCount > facilityLedgersRaw.length;
 
   const mapGateSignInspections: MapGateSignInspection[] = gateSignInspectionsRaw.map((g) => ({
     id: g.id,
@@ -849,6 +870,7 @@ export default async function KarteListPage({
                 name="ledgerName"
                 label="名称（台帳名・管理番号）"
                 defaultValue={params.ledgerName}
+                placeholder="例：魚瀬トンネル"
               />
               <div>
                 <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
@@ -871,6 +893,7 @@ export default async function KarteListPage({
                 name="ledgerLocation"
                 label="所在地"
                 defaultValue={params.ledgerLocation}
+                placeholder="例：松江市"
               />
               <div className="flex items-center gap-3">
                 <SearchSubmitButton
@@ -964,32 +987,49 @@ export default async function KarteListPage({
               name={cat === "inspection" ? "q" : "fq"}
               label="管理番号"
               defaultValue={cat === "inspection" ? params.q : params.fq}
+              placeholder={cat === "inspection" ? "例：SAMPLE-0001" : "例：A01-AE-010474"}
             />
-            <div>
-              <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
-              {/* keyにdefaultValueを含めることで、リンク経由の遷移（タブ切替・条件クリア・
-                  最近の検索等）でこのフィールドの値が変わった時にDOMごと作り直させ、
-                  defaultValueが再適用されるようにしている（uncontrolledな要素は
-                  マウント時にしかdefaultValueが効かないため）。 */}
-              <select
-                key={`route-${cat}-${(cat === "inspection" ? params.routeName : params.facRouteName) ?? ""}`}
-                name={cat === "inspection" ? "routeName" : "facRouteName"}
-                defaultValue={(cat === "inspection" ? params.routeName : params.facRouteName) ?? ""}
-                className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-              >
-                <option value="">すべて</option>
-                {combinedRouteNameOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {cat === "facility" ? (
+              // 施設台帳タブのみ、道路種別→路線名の2段階検索にする（会話ログ
+              // 「路線名検索を道路種別＋路線名の2段階にする」参照）。
+              // FacilityListItem.routeTypeという信頼できる実データがあるため
+              // （lib/reference-data.tsのgetFacilityListRouteOptionsWithType参照）。
+              // 点検調書（災害＝Karte）・法令台帳（FacilityLedger）の路線名には
+              // 道路種別を示す列が無く、実データで突き合わせても一致が無かった
+              // ため、2段階化はこのタブに限定している（会話ログで確認・合意済み）。
+              <FacilityRouteNameField
+                key={`facroute-${params.facRouteName ?? ""}`}
+                routes={facilityListRoutesWithType}
+                defaultValue={params.facRouteName}
+              />
+            ) : (
+              <div>
+                <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">路線名</label>
+                {/* keyにdefaultValueを含めることで、リンク経由の遷移（タブ切替・条件クリア・
+                    最近の検索等）でこのフィールドの値が変わった時にDOMごと作り直させ、
+                    defaultValueが再適用されるようにしている（uncontrolledな要素は
+                    マウント時にしかdefaultValueが効かないため）。 */}
+                <select
+                  key={`route-${cat}-${params.routeName ?? ""}`}
+                  name="routeName"
+                  defaultValue={params.routeName ?? ""}
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="">すべて</option>
+                  {combinedRouteNameOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <SearchField
               key={`loc-${cat}-${(cat === "inspection" ? params.location : params.facLocation) ?? ""}`}
               name={cat === "inspection" ? "location" : "facLocation"}
               label="所在地"
               defaultValue={cat === "inspection" ? params.location : params.facLocation}
+              placeholder="例：松江市"
             />
             {cat === "facility" && (
               // 施設名称（facilityName列。管理番号とは別物）による検索
@@ -1000,6 +1040,7 @@ export default async function KarteListPage({
                 name="facName"
                 label="施設名称"
                 defaultValue={params.facName}
+                placeholder="例：藤谷島橋"
               />
             )}
 
@@ -1028,6 +1069,7 @@ export default async function KarteListPage({
                       name="routeNo"
                       label="路線番号"
                       defaultValue={params.routeNo}
+                      placeholder="例：9"
                     />
                     {/* 点検調書（災害＝Karte）には施設台帳のような「施設名称」列が
                         無いため、代わりに位置目印（landmark。現場の目印になる地名等）を
@@ -1038,6 +1080,7 @@ export default async function KarteListPage({
                       name="landmark"
                       label="位置目印"
                       defaultValue={params.landmark}
+                      placeholder="例：松江大橋北詰"
                     />
                     <div>
                       <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">災害区分</label>
@@ -1222,7 +1265,21 @@ export default async function KarteListPage({
             ようにここで両系統の状況を常に表示する。 */}
         <p className="mt-2 space-y-0.5 text-xs text-gray-400 dark:text-gray-500">
           <span className="block">
-            点検調書（災害）：
+            法令台帳：
+            {!hasLedgerSearched
+              ? "未検索"
+              : hasLedgerCondition
+                ? `検索結果 ${ledgerTotalCount} 件`
+                : `全 ${ledgerTotalCount} 件`}
+            {hasLedgerSearched && ledgerTruncated && `（表示 ${facilityLedgersRaw.length} 件）`}
+          </span>
+          {hasLedgerSearched && ledgerTruncated && (
+            <span className="block text-yellow-700 dark:text-yellow-500">
+              件数が多いため、先頭{facilityLedgersRaw.length}件のみ表示しています。検索条件を追加すると、より絞り込めます。
+            </span>
+          )}
+          <span className="block">
+            点検調書（防災）：
             {!hasSearched
               ? "未検索"
               : hasCondition
@@ -1275,7 +1332,55 @@ export default async function KarteListPage({
         {view === "list" ? (
           <div className="h-full space-y-6 overflow-y-auto p-4">
             <div>
-              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">点検調書（災害）検索結果</h2>
+              {/* 法令台帳の検索結果一覧（会話ログ「法令台帳にも検索結果を表示」参照）。
+                  既存のFacilityLedgerモデル・/ledgers/[id]詳細画面・ledgerWhereの
+                  検索処理をそのまま再利用し、新しいモデル・詳細画面は作らない。
+                  mapLedgersは既にledgerWhereで絞り込み・SEARCH_RESULT_LIMIT適用済みの
+                  データ（地図表示と共通）。 */}
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">法令台帳 検索結果</h2>
+              <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2">分類</th>
+                      <th className="px-3 py-2">管理番号</th>
+                      <th className="px-3 py-2">台帳名</th>
+                      <th className="px-3 py-2">施設種別</th>
+                      <th className="px-3 py-2">路線名</th>
+                      <th className="px-3 py-2">所在地</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mapLedgers.map((l) => (
+                      <tr key={l.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2">{l.docClassLabel}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/ledgers/${l.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {l.managementNo ?? l.name ?? "—"}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">{l.name ?? "—"}</td>
+                        <td className="px-3 py-2">{l.facilityTypeLabel ?? "—"}</td>
+                        <td className="px-3 py-2">{l.routeName ?? "—"}</td>
+                        <td className="px-3 py-2">{l.location ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {mapLedgers.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                          {!hasLedgerSearched
+                            ? "検索条件を指定して「検索」を押してください。"
+                            : "条件に一致する台帳がありません。"}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">点検調書（防災）検索結果</h2>
               <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
@@ -1476,7 +1581,21 @@ function FieldDrilldown({
   );
 }
 
-function SearchField({ name, label, defaultValue }: { name: string; label: string; defaultValue?: string }) {
+function SearchField({
+  name,
+  label,
+  defaultValue,
+  placeholder,
+}: {
+  name: string;
+  label: string;
+  defaultValue?: string;
+  // 何を入力すればよいか分かる具体例（会話ログ「検索項目にプレースホルダーを
+  // 追加」参照）。ラベルは変えず、入力欄が空のときだけ薄いグレーで表示される
+  // ブラウザ標準のplaceholder属性を使う（検索ロジックには一切影響しない。
+  // 値として送信されるのは実際に入力された文字列のみ）。
+  placeholder?: string;
+}) {
   return (
     <div>
       <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">{label}</label>
@@ -1484,7 +1603,8 @@ function SearchField({ name, label, defaultValue }: { name: string; label: strin
         type="text"
         name={name}
         defaultValue={defaultValue}
-        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+        placeholder={placeholder}
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500"
       />
     </div>
   );

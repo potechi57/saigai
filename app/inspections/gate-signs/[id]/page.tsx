@@ -7,6 +7,7 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import SheetTabs from "@/components/SheetTabs";
+import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,13 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
         <Field label="施設名" value={insp.facilityName} />
         <Field label="形式" value={insp.facilityForm} />
-        <Field label="路線名" value={insp.routeName} />
+        <Field
+          label="路線名"
+          value={insp.routeName}
+          // 門型標識は施設台帳タブ上「道路標識」に分類される
+          // （lib/facility-taxonomy.tsのFACILITY_LEDGER_ITEM_TYPES.road参照）。
+          href={insp.routeName ? buildFacilityRouteSearchHref(insp.routeName, "道路標識") : undefined}
+        />
         <Field label="所在地" value={insp.location} />
         <Field
           label="緯度経度"
@@ -186,11 +193,29 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   );
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+function Field({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value?: string | null;
+  // 値をクリック可能にする場合のリンク先（会話ログ「路線名をクリックして、
+  // その路線の関連施設を表示」参照。路線名Fieldにのみ渡す）。
+  href?: string;
+}) {
   return (
     <div>
       <dt className="text-xs text-gray-400 dark:text-gray-500">{label}</dt>
-      <dd className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">{value ?? "—"}</dd>
+      <dd className="whitespace-pre-wrap text-gray-800 dark:text-gray-100">
+        {value && href ? (
+          <Link href={href} className="text-blue-600 dark:text-blue-400 hover:underline">
+            {value}
+          </Link>
+        ) : (
+          (value ?? "—")
+        )}
+      </dd>
     </div>
   );
 }
@@ -230,7 +255,11 @@ function GateSignMemberPage({
               : inspection.facilityName
           }
         />
-        <Field label="路線名" value={inspection.routeName} />
+        <Field
+          label="路線名"
+          value={inspection.routeName}
+          href={inspection.routeName ? buildFacilityRouteSearchHref(inspection.routeName, "道路標識") : undefined}
+        />
         <Field label="定期点検者" value={inspection.inspectorCompany} />
         <Field
           label="点検年月日"
