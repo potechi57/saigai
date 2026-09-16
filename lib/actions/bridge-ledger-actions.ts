@@ -134,10 +134,10 @@ export async function importBridgeLedgerExcel(
     action: "CREATE",
     entityType: "橋梁台帳",
     summary: `${data.managementNo ?? file.name}（${data.bridgeName ?? "橋名不明"}）の橋梁台帳を取込`,
-    linkHref: `/inspections/bridges/${created.id}`,
+    linkHref: `/bridge-ledgers/${created.id}`,
   });
 
-  revalidatePath("/inspections/bridges");
+  revalidatePath("/bridge-ledgers");
   revalidatePath("/karte");
 
   return { ok: true, id: created.id, managementNo: data.managementNo, matchedFacility: !!facility };
@@ -152,6 +152,6 @@ export async function deleteBridgeLedger(id: string): Promise<void> {
     entityType: "橋梁台帳",
     summary: `${existing.managementNo ?? existing.sourceFileName ?? "橋梁台帳"}を削除`,
   });
-  revalidatePath("/inspections/bridges");
+  revalidatePath("/bridge-ledgers");
   revalidatePath("/karte");
 }

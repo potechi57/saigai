@@ -21,10 +21,10 @@ export const dynamic = "force-dynamic";
 //   2. 一覧表：1つのExcelに多数の資料が一覧で並ぶ形式を、まとめて取り込む
 //      （現状は施設台帳＝「施設一覧」形式のみ実装）。
 //   3. エクセル読み込み：1件の資料について、様式に沿った詳細な項目を持つ
-//      専用Excelを取り込む（現状は点検調書＞災害＝防災カルテ様式のみ実装）。
-//      エクセル読み込みは将来的に様式（分野）ごとに取込欄を分ける必要があるため
-//      （橋梁定期点検調書等）、分類を選んだ後にもう1段、様式（分野）を選ぶ
-//      構成にしている（現状「災害」以外は準備中）。
+//      専用Excelを取り込む（点検調書＞防災＝防災カルテ様式、点検調書＞道路＞
+//      門型標識・橋梁＝各定期点検調書様式、施設台帳＞橋梁台帳が実装済み）。
+//      点検調書は将来的にも様式（分野）ごとに取込欄を分ける必要があるため、
+//      分類を選んだ後にもう1段、様式（分野）を選ぶ構成にしている。
 // 実装が無い組み合わせ（例: 一覧表×法令台帳）は「準備中」と案内するのみ
 // （ユーザー指示: 「とりあえずは、表示画面のみで内容はなくて構いません」の
 // 方針を踏襲）。
@@ -119,7 +119,22 @@ const COMBOS: Record<MethodKey, Record<CatKey, Combo>> = {
   },
   excel: {
     ledger: { kind: "pending" },
-    facility: { kind: "pending" },
+    // 橋梁台帳（BridgeLedger。橋梁調書・橋梁台帳・画像・付属図の4シート構成）は、
+    // 以前「点検調書」分類に置いていたが、内容は実際には点検記録ではなく橋梁の
+    // 基本諸元・構造設計等の台帳（施設台帳の一種）であるため、分類を「施設台帳」
+    // に訂正した（会話ログ「橋梁台帳読み込みは点検調書ではなくても、施設台帳に
+    // 分類すると思います。区分が違うので修正してください」参照）。合わせて
+    // ルートも/inspections/bridgesから/bridge-ledgersへ変更し（「点検調書」を
+    // 意味する/inspections配下から外した）、点検調書＞道路＞橋梁には別途、
+    // 実際の定期点検報告書（BridgeInspection）の取込を新設した（下記参照）。
+    facility: {
+      kind: "ready",
+      title: "橋梁台帳の取込",
+      description:
+        "「橋梁調書・橋梁台帳・画像・付属図」の4シート構成の橋梁台帳Excelを取り込みます。Excel内の管理番号（例:「P72-AB-911702」）で、施設台帳（橋梁）と自動的に紐付きます。基本諸元（橋梁調書）は項目ごとに、構造設計・数量計算等の密な帳票（橋梁台帳）は元Excelの見た目のまま取り込まれます。",
+      example: "「P72-AB-911702_01_藤谷島橋.xlsx」のような、橋梁1橋ごとの橋梁台帳ファイル。複数ファイルをまとめて取り込めます。",
+      href: "/bridge-ledgers/import",
+    },
     inspection: { kind: "excel_inspection_forms" },
   },
 };
@@ -308,13 +323,13 @@ export default async function ImportHubPage({
                   className="block rounded border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
                 >
                   <div className="px-4 py-3">
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">橋梁台帳の取込</h3>
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">橋梁定期点検調書の取込</h3>
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                      「橋梁調書・橋梁台帳・画像・付属図」の4シート構成の橋梁台帳Excelを取り込みます。Excel内の管理番号（例:「P72-AB-911702」）で、施設台帳（橋梁）と自動的に紐付きます。基本諸元（橋梁調書）は項目ごとに、構造設計・数量計算等の密な帳票（橋梁台帳）は元Excelの見た目のまま取り込まれます。
+                      「別紙２　様式１様式２」形式の橋梁定期点検調書Excelを取り込みます。Excel内の橋梁番号（管理番号）で、施設台帳（橋梁）と自動的に紐付きます。損傷箇所ごとの写真・所見も自動で取り込まれます。
                     </p>
                     <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
                       <span className="font-medium text-gray-500 dark:text-gray-400">対象例：</span>
-                      「P72-AB-911702_01_藤谷島橋.xlsx」のような、橋梁1橋ごとの橋梁台帳ファイル。複数ファイルをまとめて取り込めます。
+                      「G57-AB-908913_01_富田橋.xlsx」のような、橋梁1橋ごとの定期点検調書ファイル。複数ファイルをまとめて取り込めます。
                     </p>
                   </div>
                 </Link>
@@ -341,6 +356,9 @@ export default async function ImportHubPage({
           <Link href="/facility-list" className="text-blue-600 dark:text-blue-400 hover:underline">
             施設台帳を見る →
           </Link>
+          <Link href="/bridge-ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
+            橋梁台帳を見る →
+          </Link>
           <Link href="/karte/import" className="text-blue-600 dark:text-blue-400 hover:underline">
             点検調書（防災）の取込履歴を見る →
           </Link>
@@ -348,7 +366,7 @@ export default async function ImportHubPage({
             点検調書（門型標識）を見る →
           </Link>
           <Link href="/inspections/bridges" className="text-blue-600 dark:text-blue-400 hover:underline">
-            橋梁台帳を見る →
+            点検調書（橋梁）を見る →
           </Link>
         </div>
       </div>

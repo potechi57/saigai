@@ -3,11 +3,11 @@
 import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { importBridgeLedgerExcel } from "@/lib/actions/bridge-ledger-actions";
+import { importBridgeInspectionExcel } from "@/lib/actions/bridge-inspection-actions";
 
-// 橋梁台帳Excelの取込フォーム。components/GateSignInspectionImportForm.tsxと
-// 同じUI・同じ「1件ずつ順番に処理し、1件失敗しても他は続行する」方針
-// （会話ログ「点検調書やカルテ点検の表示形式のような形」参照）。
+// 橋梁定期点検調書Excelの取込フォーム（components/GateSignInspectionImportForm.tsx
+// と同じ方針。1ファイル＝1橋の詳細報告書のため、複数ファイルをまとめて選んで
+// 1件ずつ順番に取り込めるようにしている）。
 
 type FileStatus = "waiting" | "processing" | "success" | "error";
 
@@ -27,7 +27,7 @@ const STATUS_LABEL: Record<FileStatus, { label: string; className: string }> = {
   error: { label: "失敗", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
 };
 
-export default function BridgeLedgerImportForm() {
+export default function BridgeInspectionImportForm() {
   const router = useRouter();
   const [files, setFiles] = useState<FileState[]>([]);
   const [running, setRunning] = useState(false);
@@ -43,7 +43,7 @@ export default function BridgeLedgerImportForm() {
       setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "processing", detail: "解析・登録中..." } : f)));
       const fd = new FormData();
       fd.append("file", files[i].file);
-      const result = await importBridgeLedgerExcel(null, fd);
+      const result = await importBridgeInspectionExcel(null, fd);
       setFiles((prev) =>
         prev.map((f, idx) =>
           idx === i
@@ -71,12 +71,12 @@ export default function BridgeLedgerImportForm() {
 
   return (
     <div className="space-y-3 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">橋梁台帳Excelを取り込む</h2>
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">橋梁定期点検調書Excelを取り込む</h2>
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        複数のExcelファイルを選択すると、1件ずつ順番に取り込みます。同じ管理番号のファイルを再度取り込むと、内容を差し替えます。途中で1件失敗しても他のファイルの取込は続行します。
+        複数のExcelファイルを選択すると、1件ずつ順番に取り込みます。同じ管理番号（橋梁番号）のファイルを再度取り込むと、内容を差し替えます（写真も含めて作り直します）。途中で1件失敗しても他のファイルの取込は続行します。
       </p>
       <label className="block text-sm">
-        <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">橋梁台帳Excelファイル（複数選択可・.xlsx）</span>
+        <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">橋梁定期点検調書Excelファイル（複数選択可・.xlsx）</span>
         <input
           type="file"
           accept=".xlsx"
@@ -126,7 +126,7 @@ export default function BridgeLedgerImportForm() {
                       </td>
                       <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
                         {f.status === "success" && f.id ? (
-                          <Link href={`/bridge-ledgers/${f.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                          <Link href={`/inspections/bridges/${f.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                             {f.detail} →
                           </Link>
                         ) : (
