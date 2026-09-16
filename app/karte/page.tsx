@@ -131,6 +131,14 @@ type FacilityTypeDef = { label: string; match?: string[] };
 // 分野・施設名称の内訳が異なるため、同じ「道路」「河川・海岸」という名前でも
 // 中身は別データという方針で使い回さない。会話ログ「法令台帳と施設台帳が
 // ごっちゃになっていますね」参照）。
+// 点検調書タブの分野ボタンを「何も選ばない」状態にするための特別な値
+// （会話ログ「防災を押して、それを消したいと思ったときに表示を消す機能が
+// ない...もう一度押して、何も表示しないというようにしたい」参照）。
+// URLにinspBunyaパラメータが無い場合は従来通り既定の"disaster"（防災）を
+// 表示するが、一度選んだ分野ボタンをもう一度押したときだけこの値を明示的に
+// URLへ入れ、「未選択」であることをパラメータ不在（＝既定の防災）と区別する。
+const INSPECTION_BUNYA_NONE = "__none__";
+
 const INSPECTION_FIELDS: FieldDef[] = [
   // 表示名は「防災」（会話ログ「「点検調書（災害）」を「点検調書（防災）」へ
   // 変更する」参照。扱っているのは災害そのものの発生記録ではなく、道路防災
@@ -839,8 +847,17 @@ export default async function KarteListPage({
     `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: undefined } })}`;
   const ledgerShisetsuHref = (fieldKey: string, label: string) =>
     `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: label } })}`;
+  // 既に選択中の分野ボタンをもう一度押した場合は、選択を解除する
+  // （INSPECTION_BUNYA_NONEへ切り替える。会話ログ「もう一度押して、何も
+  // 表示しないというようにしたい」参照）。
   const inspectionFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey, inspShisetsu: undefined } })}`;
+    `/karte?${buildQuery(params, {
+      overrides: {
+        cat: "inspection",
+        inspBunya: inspectionBunya === fieldKey ? INSPECTION_BUNYA_NONE : fieldKey,
+        inspShisetsu: undefined,
+      },
+    })}`;
   const inspectionShisetsuHref = (fieldKey: string, label: string) =>
     `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey, inspShisetsu: label } })}`;
 
@@ -1051,7 +1068,7 @@ export default async function KarteListPage({
                 routes={karteRouteGroupOptions}
                 defaultValue={params.routeName}
                 showUnclassified
-                filterPlaceholder="路線名を絞り込む（例：宮の原線）"
+                filterPlaceholder="路線名を絞り込む（例：国道432号）"
               />
             )}
             <SearchField
@@ -1070,7 +1087,7 @@ export default async function KarteListPage({
                 name="facName"
                 label="施設名称"
                 defaultValue={params.facName}
-                placeholder="例：藤谷島橋"
+                placeholder="例：富田橋"
               />
             )}
 
@@ -1092,7 +1109,15 @@ export default async function KarteListPage({
                     </PendingLink>
                   ))}
                 </div>
-                {inspectionBunya === "disaster" ? (
+                {inspectionBunya === INSPECTION_BUNYA_NONE ? (
+                  // 分野ボタンをもう一度押して選択解除した状態（会話ログ「もう一度
+                  // 押して、何も表示しないというようにしたい」参照）。検索条件・
+                  // 検索結果のどちらも出さない（下のhasSearched判定もfalseになる
+                  // ため、地図・一覧も自動的に空になる）。
+                  <p className="rounded border border-dashed border-gray-300 p-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                    分野を選択すると、その分野の点検調書を検索できます。
+                  </p>
+                ) : inspectionBunya === "disaster" ? (
                   <>
                     {/* 点検調書（防災＝Karte）には施設台帳のような「施設名称」列が
                         無いため、代わりに位置目印（landmark。現場の目印になる地名等）を

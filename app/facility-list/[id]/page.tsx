@@ -19,7 +19,17 @@ export default async function FacilityListItemPage({ params }: { params: Promise
   const { id } = await params;
   const item = await prisma.facilityListItem.findUnique({
     where: { id },
-    include: { inspections: { orderBy: { inspectionDate: "desc" } } },
+    include: {
+      inspections: { orderBy: { inspectionDate: "desc" } },
+      // 門型標識点検調書（GateSignInspection）・橋梁台帳（BridgeLedger）は管理番号で
+      // 紐付いている場合がある（prisma/schema.prismaのGateSignInspection/BridgeLedger
+      // コメント参照）。紐付いていても、これまでこの画面には一切表示されていなかった
+      // ため（会話ログ「点検調書と施設台帳が組み合わさっていない状態です」参照）、
+      // 上のFacilityInspectionRecord（簡易な点検記録の履歴）とは別に、詳細な点検調書
+      // 本体へのリンクとして追加する。
+      gateSignInspections: { orderBy: { inspectionDate: "desc" } },
+      bridgeLedgers: { orderBy: { createdAt: "desc" } },
+    },
   });
   if (!item) notFound();
 
@@ -74,6 +84,56 @@ export default async function FacilityListItemPage({ params }: { params: Promise
           </div>
         </dl>
       </section>
+
+      {/* 詳細な点検調書（門型標識・橋梁台帳）への導線（会話ログ「点検調書と
+          施設台帳が組み合わさっていない状態です」参照）。管理番号で紐付いて
+          いても、これまでこの画面からは一切見えなかった（/inspections/gate-signs
+          からはこの施設への逆リンクが出ていたが、こちら側からの順リンクが
+          無かった）ため追加した。下の「点検記録」は簡易な点検履歴の一覧、
+          こちらは1施設1件ずつの詳細な点検報告書（写真・部材ごとの損傷記録等を
+          含む）という違いがある。 */}
+      {(item.gateSignInspections.length > 0 || item.bridgeLedgers.length > 0) && (
+        <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              詳細な点検調書（{item.gateSignInspections.length + item.bridgeLedgers.length}件）
+            </h2>
+          </div>
+          <ul className="divide-y divide-gray-200 p-3 text-sm dark:divide-gray-700">
+            {item.gateSignInspections.map((insp) => (
+              <li key={insp.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  門型標識
+                </span>
+                <Link href={`/inspections/gate-signs/${insp.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {insp.managementNo ?? insp.sourceFileName ?? "（管理番号不明）"}
+                </Link>
+                {insp.overallJudgment && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">判定区分 {insp.overallJudgment}</span>
+                )}
+                {insp.inspectionDate && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    点検日: {new Date(insp.inspectionDate).toLocaleDateString("ja-JP")}
+                  </span>
+                )}
+              </li>
+            ))}
+            {item.bridgeLedgers.map((bridge) => (
+              <li key={bridge.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  橋梁台帳
+                </span>
+                <Link href={`/inspections/bridges/${bridge.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {bridge.bridgeName ?? bridge.managementNo ?? "（橋梁名不明）"}
+                </Link>
+                {bridge.managementNo && bridge.bridgeName && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{bridge.managementNo}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
