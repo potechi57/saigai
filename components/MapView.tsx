@@ -119,6 +119,7 @@ export default function MapView({
   kartes,
   home,
   allowSetHome = false,
+  autoStartSettingHome = false,
   ledgers = [],
   facilityListItems = [],
   gateSignInspections = [],
@@ -126,6 +127,11 @@ export default function MapView({
   kartes: MapKarte[];
   home?: HomeLocation;
   allowSetHome?: boolean;
+  // /settingsの「地図で設定する」リンク（?setHome=1）から遷移した直後、最初から
+  // 「地図をクリックして設定」モードで開始する（会話ログ「ホーム位置の設定や
+  // ダークモードなどの設定も設定に加えてください」参照。設定画面からの導線として、
+  // 地図を開いてからさらにボタンを押す手間を省く）。
+  autoStartSettingHome?: boolean;
   ledgers?: MapLedger[];
   facilityListItems?: MapFacilityListItem[];
   gateSignInspections?: MapGateSignInspection[];
@@ -170,7 +176,7 @@ export default function MapView({
   // （components/NearbySearchButton.tsx）は既にaccuracyを取得・活用しているが、
   // PC版のこのhandleLocateだけ未対応だったため、同じ考え方をこちらにも適用する。
   const [locateAccuracyM, setLocateAccuracyM] = useState<number | null>(null);
-  const [settingHome, setSettingHome] = useState(false);
+  const [settingHome, setSettingHome] = useState(allowSetHome && autoStartSettingHome);
   const [savingHome, setSavingHome] = useState(false);
   const [homeError, setHomeError] = useState<string | null>(null);
   const placeMarkerRef = useRef<L.CircleMarker | null>(null);

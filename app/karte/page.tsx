@@ -214,6 +214,10 @@ type SearchParams = {
   gsJudgment?: string;
   cat?: string; // 最上位タブ: "ledger"（法令台帳）|"facility"（施設台帳）|"inspection"（点検調書。既定）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
+  // "1"のとき、地図を「地図をクリックしてホーム位置を設定」モードで開始する
+  // （/settingsの「地図で設定する」リンクから使う。会話ログ「ホーム位置の設定や
+  // ダークモードなどの設定も設定に加えてください」参照）。
+  setHome?: string;
 };
 
 // 現在のsearchParamsから、指定したキー群を除いた（またはoverridesで上書きした）
@@ -1521,6 +1525,7 @@ export default async function KarteListPage({
             kartes={mapKartes}
             home={home}
             allowSetHome
+            autoStartSettingHome={params.setHome === "1"}
             ledgers={mapLedgers}
             facilityListItems={mapFacilityListItems}
             gateSignInspections={mapGateSignInspections}
