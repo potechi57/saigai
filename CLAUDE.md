@@ -577,3 +577,84 @@ If a technology exploration phase was performed, also record:
 - Important rejected alternatives
 - PoC results, if any
 - Remaining uncertainty
+
+<!--
+以下（24章）は上記PDF原文には含まれない、本プロジェクトでの実際の調査経験
+（2026-09-17、様式Ａ画像の白紙化不具合の根本原因調査）を踏まえて追加した
+プロジェクト固有のルールです。他章と文体・規範レベルを揃えるため英語で
+記述しています。
+-->
+
+## 24. Diagnosing Pipeline / Conversion Bugs
+
+This section applies when a bug occurs inside a multi-stage pipeline that converts, renders, or
+transforms data through one or more external tools or libraries (for example: Excel → PDF → image
+conversion, document rendering, format conversion, or any pipeline built on LibreOffice, ImageMagick,
+a headless browser, or a similar external binary).
+
+Signals that this section applies:
+
+- The bug affects only some inputs and not others, with no obvious difference in the request itself.
+- The bug is inside a pipeline with multiple sequential stages (e.g. convert → rasterize → crop).
+- The suspected cause is an external tool or library rather than this project's own code.
+- A plausible-sounding explanation exists but has not been tested causally.
+
+Do not jump directly to a fix based on a plausible-sounding theory. A theory that merely correlates with
+the symptom (e.g. "this file uses a different font" or "this value differs between the working and broken
+file") is not sufficient. Follow this process instead:
+
+### Step 1: Separate the pipeline into stages
+
+Identify every stage the data passes through, and capture the intermediate output at each stage
+boundary (not just the final output). Determine at which specific stage the bug first appears by
+inspecting the intermediate output directly, rather than inferring it from the final result.
+
+### Step 2: Compare a known-good input against a known-bad input, stage by stage
+
+Compare the two inputs' structure and the intermediate output they produce at each stage. Do not stop
+at the first difference found — record every difference, and do not assume the first or most visible
+difference is the cause.
+
+### Step 3: Build a minimal reproduction
+
+Starting from the broken input, remove or simplify one element at a time (content, formatting, objects,
+settings) while re-testing after each change, to isolate the smallest change that still reproduces the bug.
+Prefer this over reasoning about the full, complex real-world file.
+
+### Step 4: Treat each candidate cause as a hypothesis to be falsified, not confirmed
+
+A difference between the good and bad input is not, by itself, evidence that it is the cause. Only a
+controlled experiment counts as evidence: change one candidate factor, re-run the pipeline, and observe
+whether the symptom changes.
+
+- If changing the candidate factor does not change the symptom, record this explicitly as a refutation.
+  Do not treat a lack of change as an inconclusive result to be quietly dropped — state it as a ruled-out
+  cause and move to the next candidate.
+- If changing the candidate factor does change the symptom, treat it as a confirmed causal factor, not
+  merely a correlated one.
+- Do not declare an external tool or library itself as the root cause until configuration-level and
+  data-level causes have been ruled out through this same process. Once an external tool is suspected,
+  confirm it causally (for example: does the bug reproduce across multiple versions of the tool, or only
+  specific ones?) before attributing the bug to the tool.
+
+### Step 5: Fix the confirmed root cause
+
+Do not make large code changes while the root cause is still unconfirmed. Keep investigation changes
+local and reversible (a local branch, a scratch script, a local copy of the file) until the cause is confirmed.
+
+If a symptom-level safety net (a fallback path, a detection-and-retry mechanism) already exists, keep it in
+place even after the root cause is fixed, unless the user explicitly asks to remove it — it remains useful
+protection against inputs not covered by the fix.
+
+### Step 6: Regression-test against real project data
+
+After implementing the fix, verify it against:
+
+- The originally-broken case(s), confirming the bug no longer occurs.
+- Previously-working cases, confirming no regression was introduced.
+- Where practical, the exact binary/library version used in production (not just a similar or newer local
+  version), since some bugs are specific to a particular version.
+
+Prefer verifying end-to-end through the actual production code path (e.g. running the real service and
+sending it a real request) over a standalone reproduction script, once the fix is ready to be considered
+complete.
