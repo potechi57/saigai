@@ -78,11 +78,13 @@ export default async function EditInspectionTargetPage({
         </table>
 
         <div className="grid grid-cols-1 divide-y divide-gray-400 dark:divide-gray-600 border-t border-gray-400 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
-          {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
+          {/* 左: <詳細スケッチ欄>（合成画像1枚）。PhotoSlotの既定aspectClass（aspect-video）
+              は横長すぎるため、実際の縦横比（app/karte/[karteNo]/page.tsxの同箇所の
+              コメント参照。幅501pt÷高さ540pt≒0.93）に合わせて指定している。 */}
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
             <div className="mx-auto w-full">
-              <PhotoSlot photo={sketchPhoto} />
+              <PhotoSlot photo={sketchPhoto} aspectClass="aspect-[501/540]" />
             </div>
           </div>
 

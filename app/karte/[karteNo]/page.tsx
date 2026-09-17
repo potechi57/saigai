@@ -450,8 +450,14 @@ export default async function KarteDetailPage({
                     {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
+                      {/* PhotoSlotの既定aspectClass（aspect-video=16:9）は横長で、この
+                          合成画像の実際の縦横比（列幅B:AS・行高7〜42行から算出: 幅501pt÷
+                          高さ540pt≒0.93、ほぼ正方形でわずかに縦長）よりかなり扁平なため、
+                          右列（写真2枚＋着目すべき点／チェック項目で縦に長くなりがち）に
+                          比べて下に余白が残っていた。実際の縦横比に合わせて指定し、
+                          その分大きく表示する。 */}
                       <div className="mx-auto w-full">
-                        <PhotoSlot photo={sketchPhoto} />
+                        <PhotoSlot photo={sketchPhoto} aspectClass="aspect-[501/540]" />
                       </div>
                     </div>
                     {/* 右: <写真張付欄>（個別抽出した写真。0枚以上）＋着目すべき点／チェック項目 */}
