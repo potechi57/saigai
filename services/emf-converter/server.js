@@ -30,7 +30,7 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
-const { computeRangeCropInfo } = require("./printArea");
+const { computeRangeCropInfo, patchWorkbookForFitToPage } = require("./printArea");
 
 const PORT = process.env.PORT || 8080;
 const API_KEY = process.env.API_KEY; // 未設定の場合は認証チェックをスキップ（ローカル動作確認用）
@@ -167,12 +167,22 @@ const RANGE_RENDER_DPI = 300;
 // 赤枠・注記テキスト・矢印・写真がグループ化されて重ねて配置されており、
 // 画像を個別に抜き出すだけではこれらの重なりが失われる（実データで確認済み）。
 //
-// 【方式】xlsxファイル自体は書き換えず、calc_pdf_Exportの`SinglePageSheets`
-// オプションでシート全体を1ページのPDFとして出力し、対象範囲がシート全体の
-// 中で占める位置・大きさの比率（printArea.js参照）をもとにImageMagickの
-// `-crop`で切り出す。Print_Area・pageSetup（scale/fitToWidth等）をxlsx側で
-// 書き換える方式も試したが、LibreOfficeのヘッドレス変換ではこれらが
-// 反映されない（実機検証で確認済み）ため、この比率ベースの切り出し方式にした。
+// 【方式】変換前に、対象xlsxの可視シート全員へfitToWidth/fitToHeight（＝
+// Excel本来の「印刷範囲を1ページに収める」設定）を適用するパッチを当ててから
+// （patchWorkbookForFitToPage）、素の`--convert-to pdf`で変換する。対象範囲が
+// 印刷範囲全体の中で占める位置・大きさの比率（printArea.js参照）をもとに
+// ImageMagickの`-crop`で切り出す。
+//
+// 【経緯】以前はxlsxを一切書き換えず、calc_pdf_Exportの`SinglePageSheets`
+// オプション（各シートを強制的にPDF1ページへ収めるLibreOffice独自機能）で
+// シート全体を1ページ化していたが、この機能自体にLibreOffice 7.4以降
+// （本番含む）で発生する不具合があり、一部のカルテ（様式Ａ）でPDF変換結果の
+// 上半分が白紙になることが判明した。調査の結果、fitToWidth/fitToHeightは
+// `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>`を追加しないと無視される
+// というOOXML仕様上の見落としが過去にあっただけで、これを正しく設定すれば
+// SinglePageSheetsを使わずとも「印刷範囲を1ページに収める」変換ができ、かつ
+// 白紙不具合も発生しないことを確認したため、この方式に切り替えた
+// （詳細はプロジェクトルートREADME.md・printArea.js冒頭のコメント参照）。
 async function convertRangeToPng(xlsxBuffer, sheetName, range) {
   const workDir = path.join(os.tmpdir(), `range-convert-${randomUUID()}`);
   const profileDir = path.join(workDir, "profile");
@@ -182,7 +192,8 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
 
   try {
     const cropInfo = await computeRangeCropInfo(xlsxBuffer, sheetName, range);
-    await fs.writeFile(inputPath, xlsxBuffer);
+    const patchedXlsxBuffer = await patchWorkbookForFitToPage(xlsxBuffer);
+    await fs.writeFile(inputPath, patchedXlsxBuffer);
 
     try {
       await execFileAsync(
@@ -194,7 +205,7 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
           "--nofirststartwizard",
           `-env:UserInstallation=file://${profileDir}`,
           "--convert-to",
-          'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}',
+          "pdf",
           "--outdir",
           workDir,
           inputPath,
@@ -225,15 +236,12 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     }
 
     // 【なぜページ全体を実際にラスタライズして内容領域を検出するか（横方向）】
-    // 当初はPDFページのサイズ（pt）とシートのページ余白（pageMargins）から
-    // 内容領域を計算していたが、実機検証の結果、SinglePageSheetsは宣言された
-    // pageMargins以外に、独自の「1ページに収める」フィット処理で非対称な余白
-    // （例: あるファイルでは右側にだけ約6%の余白）を追加することがあり、
-    // これは計算では予測できないことが分かった。そこで、ページ全体を実際に
-    // ラスタライズしたうえでImageMagickの内容領域検出（-format "%@"）を使い、
-    // 実際に描画された内容の範囲を直接測定する方式にした。横方向はこれで
-    // 安定して正しく検出できることを実データ複数件で確認済み（罫線が印刷範囲の
-    // 左右端まで一貫して描かれているため）。
+    // ページ全体を実際にラスタライズしたうえでImageMagickの内容領域検出
+    // （-format "%@"）を使い、実際に描画された内容の範囲を直接測定する方式に
+    // している（PDFページのサイズとpageMarginsから計算だけで求める方式も
+    // 検討したが、罫線が印刷範囲の左右端まで一貫して描かれている実データの
+    // 特性を活かせるこちらの方が確実）。横方向はこれで安定して正しく検出
+    // できることを実データ複数件で確認済み。
     let contentOffsetXPx;
     let contentWidthPx;
     try {
@@ -269,16 +277,23 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     // （printArea.jsのコメント参照）。かわりに、「同じ印刷範囲・列幅・行高を
     // 持つファイルなら内容領域の縦横比は共通のはず」という考えに基づき、横方向の
     // 検出結果（信頼できる）と、行の高さ（pt単位で正確）・列幅（文字幅単位）の
-    // 比から計算する。POINTS_PER_COL_WIDTH_UNITは、実データ（269_B3274A090。
+    // 比から高さを計算する。POINTS_PER_COL_WIDTH_UNITは、実データ（269_B3274A090。
     // 目視で正しく切り出せることを確認済み）から逆算した値
     // （縦横比が正しく再現される列幅⇔pt換算係数。フォントのMaximum Digit Widthに
     // 相当し、同じテンプレート・同じフォントを使うファイル間では共通のはず）。
-    // 内容領域は下端がページの下端（下余白はこのテンプレートで一貫して0）に
-    // 揃うことを実データ複数件で確認済みのため、下端を基準に配置する。
+    //
+    // 縦方向の原点（上端）は、宣言された<pageMargins top=…>をそのままDPI換算した
+    // 値を使う（cropInfo.topMarginInches。printArea.jsのcomputeRangeCropInfoの
+    // コメント参照）。fitToPage（Excel本来の「印刷範囲を1ページに収める」機能）は
+    // 宣言されたpageMarginsをそのまま尊重することを実データ複数件・本番と同一の
+    // LibreOfficeバイナリで確認済み。以前（SinglePageSheets使用時）はこれが
+    // 使えず、「内容は下端がページ下端に揃う」という別の経験則を使っていたが、
+    // レンダリング方式の変更に伴いこの経験則は成り立たなくなったため、
+    // pageMargins基準の計算に置き換えた。
     const POINTS_PER_COL_WIDTH_UNIT = 7.007;
     const nativeWidthPt = cropInfo.totalWidth * POINTS_PER_COL_WIDTH_UNIT;
     const contentHeightPx = contentWidthPx * (cropInfo.totalHeight / nativeWidthPt);
-    const contentOffsetYPx = pageHeightPx - contentHeightPx;
+    const contentOffsetYPx = cropInfo.topMarginInches * RANGE_RENDER_DPI;
 
     // 列幅・行高が印刷範囲内で一様な（防災カルテのExcelで確認済み）場合、
     // printArea.jsの比率計算は理論上ぴったり一致するはずだが、浮動小数点の
@@ -339,17 +354,14 @@ async function convertRangeToPng(xlsxBuffer, sheetName, range) {
     }
 
     // 【切り出し結果が「ほぼ空白」でないかの自己検証】
-    // 縦方向の切り出し位置（cropY/cropHeight）は、POINTS_PER_COL_WIDTH_UNITという
-    // 実データ1件（269_B3274A090）から逆算した固定値に基づく計算で求めている
-    // （このファイル上部のコメント参照）。この定数はファイルが使うフォント・
-    // スタイルによって実際の値とズレることがあり、ズレが大きい場合、切り出し
-    // 位置が本来の内容から完全に外れ、ほぼ白紙の画像になってしまうことが実際に
-    // 確認された（会話ログ「いくつかのカルテの様式Aの画像取込みがおかしなこと
-    // になっている」参照。B3257A220で、内容が全く写っていない、下端に細い線が
-    // 1本あるだけの画像になる不具合を確認・再現した）。
-    // この不具合を個別ファイルごとに検知するのは困難なため、代わりに「切り出し
-    // 結果に実質的な内容（背景以外の画素）がほとんど無い」ことを直接検出する。
-    // 検出した場合はこの関数自体を失敗させ（呼び出し元のemf-convert.tsの
+    // 過去にSinglePageSheets使用時、一部のカルテ（例: B3257A220）でPDF変換結果
+    // 自体の上半分が白紙になり、内容が全く写っていないほぼ空白の画像になる不具合が
+    // あった（真因はSinglePageSheets自体の描画不具合。詳細は本ファイル上部・
+    // printArea.js冒頭のコメント参照）。fitToPage方式への切り替えによりこの不具合は
+    // 解消したが、想定外の入力（極端な書式・破損ファイル等）による切り出し失敗の
+    // 可能性は引き続きあるため、安全策としてこの自己検証は残している。
+    // 「切り出し結果に実質的な内容（背景以外の画素）がほとんど無い」ことを直接
+    // 検出し、検出した場合はこの関数自体を失敗させ（呼び出し元のemf-convert.tsの
     // convertSheetRangeToPngがnullを返す）、既存のフォールバック経路
     // （karte-image-extract.tsのresolveFormAImages/resolveFormBImages。個別の
     // 写真をそのまま取り込む従来方式）に自動的に切り替わるようにする。

@@ -17,27 +17,42 @@ HTTPサーバー。防災カルテWebアプリ（`../../`、Next.js／Vercel）�
   `extractFormRangeImage`から呼ばれる）。`/convert`よりファイルサイズが大きく処理も
   重いため、別途タイムアウト・上限（`MAX_XLSX_BODY_BYTES`・`CONVERT_RANGE_TIMEOUT_MS`。
   `server.js`参照）を設けている。
-  - 内部では、xlsxファイル自体は書き換えず、LibreOfficeの`calc_pdf_Export`フィルタの
-    `SinglePageSheets`オプションでシート全体を1ページのPDFとして出力した上で、対象範囲が
-    シート全体に対して占める位置・大きさの比率（列幅・行の高さ・ページ余白から算出。
-    `printArea.js`参照）をもとにImageMagickの`-crop`で切り出している。当初はxlsx側の
-    `Print_Area`や`pageSetup`（scale/fitToWidth等）を書き換えて「印刷範囲だけを1ページに
-    収める」方式を試みたが、LibreOfficeのヘッドレス変換ではこれらの設定が反映されない
-    ことを実機検証で確認したため、この比率ベースの切り出し方式にしている。
-  - 縦方向の切り出し位置は、列幅（文字幅単位）→pt換算の固定係数
-    （`POINTS_PER_COL_WIDTH_UNIT`。実データ1件から逆算した値）を使った計算で求めている
-    ため、ファイルが使うフォント・スタイルによっては実際の位置とズレることがある
-    （2026-09-17の会話ログ「いくつかのカルテの様式Aの画像取込みがおかしなことになって
-    いる」で、内容が全く写らずほぼ白紙になる不具合を確認・再現した）。これを検知する
-    ため、`server.js`は切り出し結果に実質的な内容（背景以外の画素）がほとんど無い場合
-    （切り出し高さの15%未満しか占めない場合）、422を返して失敗として扱う。呼び出し元
+  - 内部では、変換前に対象xlsxの可視シート全員へ`fitToWidth`/`fitToHeight`（Excel本来の
+    「印刷範囲を1ページに収める」設定。`printArea.js`の`patchWorkbookForFitToPage`が
+    最小限のXMLパッチを当てる）を適用してから、素の`--convert-to pdf`で変換している。
+    対象範囲が印刷範囲全体に対して占める位置・大きさの比率（列幅・行の高さ・ページ余白
+    から算出。`printArea.js`参照）をもとにImageMagickの`-crop`で切り出す。
+  - **経緯（2026-09-17）**: 当初はxlsxを一切書き換えず、`calc_pdf_Export`フィルタの
+    `SinglePageSheets`オプション（各シートを強制的にPDF1ページへ収めるLibreOffice独自
+    機能）でシート全体を1ページ化していた。ところが一部のカルテ（様式Ａ）でこの
+    オプション使用時、PDF変換結果の上半分が白紙になる不具合が発生した
+    （会話ログ「いくつかのカルテの様式Aの画像取込みがおかしなことになっている」）。
+    当初は「縦方向の切り出し位置計算に使っているフォント依存の固定係数
+    （`POINTS_PER_COL_WIDTH_UNIT`）のズレが原因」と推測していたが、これは誤りだった。
+    複数バージョンのLibreOffice（7.0.4〜24.2.7、本番の7.4.7.2含む）での比較実験・
+    `styles.xml`/`cellXfs`の切り分け実験の結果、**SinglePageSheets機能自体が
+    LibreOffice 7.4以降で持つ、特定の様式・内容に依存した描画不具合**であることが
+    判明した（fitToWidth/fitToHeightが有効なSinglePageSheets非対応の旧バージョンでは
+    同じファイルが問題なく描画されることを確認）。
+    調査の過程で、「`pageSetup`のfitToWidth/fitToHeightを書き換えても反映されない」
+    という、SinglePageSheets方式へ切り替えた際の過去の検証結果も誤りだったと判明した。
+    OOXMLの仕様上、`fitToWidth`/`fitToHeight`は`<sheetPr><pageSetUpPr fitToPage="1"/>
+    </sheetPr>`という別要素を追加しないと無視される（`pageSetup`側の属性だけ書き換えても
+    scaleが使われ続ける）ことを見落としていたのが原因で、これを正しく設定すれば
+    SinglePageSheetsを使わずとも「印刷範囲を1ページに収める」変換ができ、かつ白紙不具合も
+    再現しないことを実データ複数件・本番と同一のLibreOfficeバイナリ（digest指定でpull
+    して確認）で検証した上で、現在の方式に切り替えた。
+  - 縦方向の切り出し位置は、宣言された`<pageMargins top=…>`をそのままDPI換算した値を
+    原点として使う（`fitToWidth`/`fitToHeight`はExcel本来の印刷機能であり、宣言された
+    pageMarginsをそのまま尊重することを確認済み）。高さ自体は、列幅（文字幅単位）→pt
+    換算の固定係数（`POINTS_PER_COL_WIDTH_UNIT`。実データ1件から逆算した値）を使った
+    計算で求めている。
+  - 上記の白紙不具合はレンダリング方式の変更により解消したが、想定外の入力（極端な
+    書式・破損ファイル等）による切り出し失敗の可能性は引き続きあるため、`server.js`は
+    切り出し結果に実質的な内容（背景以外の画素）がほとんど無い場合（切り出し高さの15%
+    未満しか占めない場合）、422を返して失敗として扱う安全策を維持している。呼び出し元
     （`lib/excel/karte-image-extract.ts`の`resolveFormAImages`/`resolveFormBImages`）は
-    これをnullとして受け取り、個別画像抽出（`extractSheetImages`）にフォールバックする
-    ため、空白の合成画像が取り込まれることは無くなるが、根本原因（縦方向の位置計算が
-    フォント依存で不正確なこと）自体は未解決。抜本的な対策には、列幅→pt換算をファイル
-    ごとの実際のフォント情報（`xl/styles.xml`）から求める、または縦方向も横方向と同様に
-    ページ全体から内容領域を検出する方式へ切り替える等の再設計が必要（本README作成時点
-    では未着手）。
+    これをnullとして受け取り、個別画像抽出（`extractSheetImages`）にフォールバックする。
 
 ## なぜこのサーバーが別コンポーネントとして存在するか
 
