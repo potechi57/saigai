@@ -81,21 +81,22 @@ export default async function EditInspectionTargetPage({
           {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
-            {/* 個別写真だった頃は「様式Ｂの写真が大きすぎる」という指摘を受けw-2/3に
-                縮小していたが、新方式では元々2枚だった写真を1枚の合成画像にまとめている
-                分、内容が詰まって見づらくなるため、列幅いっぱい（w-full）に戻して
-                大きく表示する。 */}
             <div className="mx-auto w-full">
               <PhotoSlot photo={sketchPhoto} />
             </div>
           </div>
 
-          {/* 右: <写真張付欄>（個別抽出した写真。0枚以上）＋着目すべき点／チェック項目 */}
+          {/* 右: <写真張付欄>（個別抽出した写真。0枚以上）＋着目すべき点／チェック項目。
+              列自体は既にmd:grid-cols-2（実際のExcelの列幅比率＝ほぼ1:1に合わせた等分。
+              app/karte/[karteNo]/page.tsxの同箇所のコメント参照）だが、この中の写真は
+              w-2/3でさらに縮小されており、実際のExcelでは<写真張付欄>がその列の幅
+              いっぱいに写真を配置していることと合っていなかった（会話ログ「様式Bの
+              写真張付欄の写真が非常に小さい」参照）ため、w-fullに変更している。 */}
           <div className="p-3">
             <form action={updateAction} className="space-y-3 text-sm">
               <div>
                 <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h2>
-                <div className="mx-auto w-2/3 space-y-3">
+                <div className="mx-auto w-full space-y-3">
                   {pastePhotos.length > 0 ? (
                     pastePhotos.map((p) => <PhotoSlot key={p.id} photo={p} />)
                   ) : (

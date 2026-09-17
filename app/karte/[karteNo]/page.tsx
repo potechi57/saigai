@@ -439,17 +439,17 @@ export default async function KarteDetailPage({
                       </tr>
                     </tbody>
                   </table>
-                  <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-[3fr_1fr] md:divide-x md:divide-y-0">
+                  {/* 列幅比率は実際のExcel（様式Ｂ）の列幅から算出した値に合わせている:
+                      <詳細スケッチ欄>=B:AS列、<写真張付欄>=AT:CJ列（印刷範囲$B$2:$CJ$43の
+                      残り）の列幅合計はほぼ1:1（実データ4件で50.6%:49.4%を確認済み）のため、
+                      grid-cols-2（等分）にしている。以前はここを3fr:1fr（左を1.5倍）にした上、
+                      写真自体もw-2/3で追加で縮小しており、実際のExcelの配分（ほぼ半々）から
+                      大きく外れて写真張付欄の写真が非常に小さく表示されていた
+                      （会話ログ「様式Bの写真張付欄の写真が非常に小さい」参照）。 */}
+                  <div className="grid grid-cols-1 divide-y divide-gray-400 border-t border-gray-400 dark:divide-gray-600 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
                     {/* 左: <詳細スケッチ欄>（合成画像1枚） */}
                     <div className="p-3">
                       <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h3>
-                      {/* 個別写真だった頃は「様式Ｂの写真が大きすぎる」という指摘を受け
-                          w-2/3に縮小していたが、新方式では元々2枚だった写真を1枚の合成
-                          画像にまとめている分、内容が詰まって見づらくなるため、列幅
-                          いっぱい（w-full）に戻して大きく表示する。さらに、列自体の幅も
-                          左右等分（1fr:1fr）から3fr:1fr（左が現状の1.5倍）に広げ、
-                          写真自体をさらに大きく見せている。右列（写真張付欄・着目すべき点等の
-                          テキスト）が狭くなる分、文章は折り返しで対応する。 */}
                       <div className="mx-auto w-full">
                         <PhotoSlot photo={sketchPhoto} />
                       </div>
@@ -458,7 +458,7 @@ export default async function KarteDetailPage({
                     <div className="space-y-3 p-3 text-sm">
                       <div>
                         <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;写真張付欄&gt;</h3>
-                        <div className="mx-auto w-2/3 space-y-3">
+                        <div className="mx-auto w-full space-y-3">
                           {pastePhotos.length > 0 ? (
                             pastePhotos.map((p) => <PhotoSlot key={p.id} photo={p} />)
                           ) : (
