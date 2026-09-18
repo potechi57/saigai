@@ -3,6 +3,7 @@ import "./globals.css";
 import ViewHistoryButton from "@/components/ViewHistoryButton";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import HeaderHomeLink from "@/components/HeaderHomeLink";
+import MobileHeaderMenu from "@/components/MobileHeaderMenu";
 
 export const metadata: Metadata = {
   title: "道路施設管理 Web GIS (MVP)",
@@ -95,43 +96,13 @@ export default function RootLayout({
             {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
                 ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
                 /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
-                （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。 */}
-            {/* sm未満（スマホ幅）でのみ表示する、現場向け簡易画面（/m）への入口。
-                PC幅では/karte以下がメインのため不要（優先事項10 Phase 5）。 */}
-            <a
-              href="/m"
-              className="sm:hidden shrink-0 whitespace-nowrap rounded bg-gray-800 px-2 py-1.5 text-xs text-white dark:bg-gray-700"
-            >
-              📱 現場用
-            </a>
-            {/* お気に入り・閲覧履歴も、スマホ幅では上記と同じ理由でPC向けnavごと
-                隠れてしまっていたが、会話ログ「ヘッダーにお気に入り・閲覧履歴が
-                あると、一度戻ってしまった際にすぐに戻れてよい」との要望を受け、
-                スマホ幅専用にアイコンのみのコンパクト版を追加した（文字入りだと
-                他の項目と合わせて折り返してしまうため）。リンク先は/karte/favorites
-                ではなく/m/favoritesにする（PC向け画面は崩れるため）。 */}
-            <a
-              href="/m/favorites"
-              aria-label="お気に入り"
-              className="sm:hidden shrink-0 text-base text-gray-600 dark:text-gray-300"
-            >
-              ★
-            </a>
-            <span className="sm:hidden">
-              <ViewHistoryButton compact />
-            </span>
-            {/* 会話ログ「スマホ用画面では、ダークモードライトモードの切り替えは
-                不要かもしれない。設定ボタンを追加して、そこで切り替えられるように
-                してください」より、スマホ幅ではライト/ダーク切替をヘッダー直接では
-                なく設定画面（/m/settings）にまとめた。PC幅は従来通りThemeToggleを
-                直接ヘッダーに置く（下記参照）。 */}
-            <a
-              href="/m/settings"
-              aria-label="設定"
-              className="sm:hidden shrink-0 text-base text-gray-600 dark:text-gray-300"
-            >
-              ⚙️
-            </a>
+                （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。
+                以前は📱現場用・★お気に入り・🕘閲覧履歴・⚙️設定をアイコンのみの
+                個別リンクとして横並びに置いていたが、スマホでは小さすぎて押しにくい
+                という指摘を受け（会話ログ「スマホ画面ではボタンが小さすぎて操作
+                しにくい」参照）、ハンバーガーメニュー1つにまとめた
+                （components/MobileHeaderMenu.tsx参照。PC向けnavは変更なし）。 */}
+            <MobileHeaderMenu />
             <nav className="hidden items-center gap-4 sm:flex">
               <a href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                 ★ お気に入り

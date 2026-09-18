@@ -61,7 +61,16 @@ export function pushViewHistory(entry: Omit<ViewHistoryEntry, "viewedAt">) {
   }
 }
 
-export default function ViewHistoryButton({ compact }: { compact?: boolean }) {
+export default function ViewHistoryButton({
+  compact,
+  className,
+}: {
+  compact?: boolean;
+  // ハンバーガーメニュー（components/MobileHeaderMenu.tsx）内など、タップしやすい
+  // 大きめの行として組み込みたい場合に、既定のスタイル（インラインリンク風）を
+  // 上書きするために使う。省略時は従来どおりcompactに応じた既定スタイルのまま。
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState<ViewHistoryEntry[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +95,7 @@ export default function ViewHistoryButton({ compact }: { compact?: boolean }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="閲覧履歴"
-        className={compact ? "text-base" : "hover:text-gray-900 hover:underline dark:hover:text-gray-100"}
+        className={className ?? (compact ? "text-base" : "hover:text-gray-900 hover:underline dark:hover:text-gray-100")}
       >
         {compact ? "🕘" : "🕘 閲覧履歴"}
       </button>
