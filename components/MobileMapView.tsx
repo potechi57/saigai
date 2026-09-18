@@ -33,6 +33,27 @@ function buildResultIcon(kind: MobileSearchResult["kind"]): L.DivIcon {
   });
 }
 
+// 起点／終点の参考写真を、ポップアップ内の小さなサムネイルとして組み立てる
+// （PC版地図 components/MapView.tsx の buildStartEndPhotosHtml と同じデータ・
+// 同じ考え方。会話ログ「スマホでも、ポイントをタップした際に関連する画像を
+// 表示してください」「起点・終点の両方を表示対象としてください」参照）。
+// PC版は横450px×2枚だが、スマホは画面幅が狭く地図の操作を妨げないよう、
+// 1枚あたり幅100px（16:9）に抑え、2枚を横並びにする。どちらも無ければ
+// 何も表示しない（kind==="karte"以外はstartPhotoUrl/endPhotoUrlが元々
+// 付与されない）。
+function buildStartEndPhotosHtml(r: MobileSearchResult): string {
+  if (!r.startPhotoUrl && !r.endPhotoUrl) return "";
+  const thumb = (url: string, label: string) => `
+    <a href="${url}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;flex-shrink:0;">
+      <img src="${url}" style="width:100px;max-width:100px;height:56px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      <span style="font-size:10px;color:#6b7280;">${label}</span>
+    </a>`;
+  return `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:nowrap;">
+      ${r.startPhotoUrl ? thumb(r.startPhotoUrl, "起点") : ""}
+      ${r.endPhotoUrl ? thumb(r.endPhotoUrl, "終点") : ""}
+    </div>`;
+}
+
 const CURRENT_LOCATION_ICON = L.divIcon({
   className: "",
   html: `<div style="
@@ -195,7 +216,15 @@ export default function MobileMapView({
            <div style="font-size:10px;color:#6b7280;margin-bottom:2px;">${MOBILE_RESULT_KIND_LABEL[r.kind]}</div>
            <a href="${r.href}" style="font-weight:600;color:#2563eb;">${r.title}</a>
            ${r.subtitle ? `<div style="font-size:12px;color:#6b7280;">${r.subtitle}</div>` : ""}
-         </div>`
+           ${buildStartEndPhotosHtml(r)}
+         </div>`,
+        // PC版（MapView.tsx）はポップアップ幅を1000pxまで広げて起点・終点写真を
+        // 横450pxで並べているが、スマホは画面幅自体が狭く、地図の閲覧・操作を
+        // 妨げないサイズに収める必要があるため（会話ログ「スマホの画面サイズを
+        // 考慮して、画像が操作や地図閲覧を妨げないUIにしてください」参照）、
+        // ポップアップ最大幅は画面幅のうち十分operable領域を残す260pxに抑える
+        // （写真自体もbuildStartEndPhotosHtml側で小さめのサイズにしている）。
+        { maxWidth: 260 }
       );
     });
 
