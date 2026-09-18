@@ -1,5 +1,5 @@
-import Link from "next/link";
 import FacilityListImportForm from "@/components/FacilityListImportForm";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 export default function FacilityListImportPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
-      <Link href="/import" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/import">
         ← 資料読み込みに戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">施設一覧Excelから取り込む</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
         島根県の点検業務で貸与される「施設一覧」形式のExcel（管理番号・路線名・所在地・緯度経度・直近点検の健全度等が一覧で並ぶ表）を取り込みます。管理番号ごとにDBへ登録し、緯度経度が入っている行は地図（検索・一覧画面）にもピンで表示されます。同じ管理番号の行は、再度取り込むと内容が上書き更新されます。

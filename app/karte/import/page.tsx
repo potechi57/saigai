@@ -3,6 +3,7 @@ import ExcelImportForm from "@/components/ExcelImportForm";
 import BulkExcelImportForm from "@/components/BulkExcelImportForm";
 import { prisma } from "@/lib/prisma";
 import { formatJstDateTime } from "@/lib/format";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,9 @@ export default async function ImportKartePage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href="/import" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/import">
         ← 資料読み込みに戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Excelから取り込む</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
         防災カルテ様式のExcelファイル（様式Ａ・様式Ｂ・様式Ｃを含むxls/xlsx）をアップロードすると、

@@ -1,8 +1,8 @@
-import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import FontSizeToggle from "@/components/FontSizeToggle";
 import NearbyRadiusSetting from "@/components/NearbyRadiusSetting";
 import AppVersionSection from "@/components/AppVersionSection";
+import BackLink from "@/components/BackLink";
 
 // 現場向け画面（/m）の設定画面。
 //
@@ -14,9 +14,9 @@ import AppVersionSection from "@/components/AppVersionSection";
 export default function MobileSettingsPage() {
   return (
     <div className="mx-auto max-w-md space-y-4 p-4">
-      <Link href="/m" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/m">
         ← 検索に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">⚙️ 設定</h1>
 
       <section className="rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { PhotoSourceForm } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +11,7 @@ import RecordViewHistory from "@/components/RecordViewHistory";
 import { createQuickInspectionEvent } from "@/lib/actions/karte-actions";
 import { DateField, SelectField, TextAreaField } from "@/components/FormFields";
 import SubmitButton from "@/components/SubmitButton";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -210,9 +210,9 @@ export default async function MobilePhotoPage({
         subtitle={karte.routeName}
         href={`/m/${karte.facilityNo}`}
       />
-      <Link href="/m" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/m">
         ← 検索に戻る
-      </Link>
+      </BackLink>
       <div className="space-y-1.5">
         <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">{karte.facilityNo}</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">

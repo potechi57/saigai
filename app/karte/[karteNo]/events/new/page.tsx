@@ -5,6 +5,7 @@ import { createInspectionEvent } from "@/lib/actions/karte-actions";
 import { TextField, NumberField, DateField, TextAreaField, SelectField } from "@/components/FormFields";
 import SubmitButton from "@/components/SubmitButton";
 import { RESPONSE_META } from "@/lib/labels";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +34,9 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref={`/karte/${karte.facilityNo}`}>
         ← カルテ詳細に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">点検記録の登録: {karte.routeName}</h1>
 
       {karte.targets.length === 0 && (

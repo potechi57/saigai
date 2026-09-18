@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatJstDateTime } from "@/lib/format";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,9 @@ export default async function AuditHistoryPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/karte">
         ← 地図に戻る
-      </Link>
+      </BackLink>
       <div>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">編集履歴</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">

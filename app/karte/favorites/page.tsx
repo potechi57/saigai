@@ -9,6 +9,7 @@ import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { deleteFavoriteGroup } from "@/lib/actions/favorite-actions";
 import { getStartEndRecordPhotos } from "@/lib/map-photos";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -80,9 +81,9 @@ export default async function FavoritesPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/karte">
         ← 地図に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">★ お気に入り</h1>
 
       <section className="space-y-3 rounded border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import BridgeInspectionImportForm from "@/components/BridgeInspectionImportForm";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 export default function BridgeInspectionImportPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
-      <Link href="/inspections/bridges" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/inspections/bridges">
         ← 点検調書（橋梁）一覧に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">点検調書（橋梁）の取込</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
         「別紙２　様式１様式２」形式の橋梁定期点検調書Excelを取り込みます。Excel内の橋梁番号（管理番号）で、施設台帳（橋梁）の該当行と自動的に紐付きます。

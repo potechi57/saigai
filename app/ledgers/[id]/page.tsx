@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { FACILITY_LEDGER_DOC_CLASS_LABEL, facilityLedgerDisplayName, formatFacilityType } from "@/lib/labels";
@@ -7,6 +6,7 @@ import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import FacilityLedgerImageManager from "@/components/FacilityLedgerImageManager";
 import FacilityLedgerEditForm from "@/components/FacilityLedgerEditForm";
 import RecordViewHistory from "@/components/RecordViewHistory";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +39,9 @@ export default async function FacilityLedgerDetailPage({ params }: { params: Pro
         subtitle={facilityTypeLabel ?? undefined}
         href={`/ledgers/${ledger.id}`}
       />
-      <Link href="/ledgers" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/ledgers">
         ← 台帳一覧に戻る
-      </Link>
+      </BackLink>
 
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{displayName}</h1>

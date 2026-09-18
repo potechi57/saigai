@@ -10,6 +10,7 @@ import SheetTabs from "@/components/SheetTabs";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
 import { karteRouteDisplayName } from "@/lib/karte-route-classification";
+import BackLink from "@/components/BackLink";
 
 // 一覧画面と同じ理由で静的プリレンダリングを無効化する。
 export const dynamic = "force-dynamic";
@@ -26,6 +27,11 @@ const RESPONSE_CHOICES: { value: string; no: string; label: string }[] = [
   { value: "NO_COUNTERMEASURE_NEEDED", no: "③", label: "対策不要" },
   { value: "COUNTERMEASURE_COMPLETED", no: "④", label: "対策完了" },
 ];
+// 様式Ａの点検地点位置図・現況写真欄は「合成画像1枚＋現況写真1枚以上」という構成が
+// 通常だが、Excelに現況写真が1枚も貼られていないカルテでは合成画像だけの1枚になる。
+// この最低枠数を下回る場合、不足分を空枠（写真なし）で埋めることで、実際の写真枚数が
+// 少ないときも通常時と同じ見た目の大きさに保つ（formAPhotosの描画箇所のコメント参照）。
+const FORM_A_MIN_PHOTO_SLOTS = 2;
 
 // カルテ詳細画面。
 // 「Excelとしてある防災カルテをWeb上で見るためのツール」という位置づけのため、
@@ -221,7 +227,15 @@ export default async function KarteDetailPage({
                       横幅は広くても見た目の縦の大きさで現況写真に負けて「合成画像の方が
                       小さく見える」という指摘を受けたため、比率をさらに引き上げて
                       対応した（このコンテナは現況写真1枚あたりflex-1のため、現況写真が
-                      1枚なら合成画像はおよそ現在の1.3倍程度の見た目の大きさになる）。 */}
+                      1枚なら合成画像はおよそ現在の1.3倍程度の見た目の大きさになる）。
+                      【最低枠数の確保】Excelに現況写真が1枚も貼られていないカルテでは
+                      formAPhotos（=合成画像1枚のみ）の枚数だけでflex比を組むと、その1枚が
+                      コンテナ幅いっぱい（flex-[3.5]が唯一のflexアイテムになるため事実上
+                      w-full）まで間延びしてしまう。実際に存在する写真の枚数だけでなく、
+                      「通常構成（合成画像1枚＋現況写真1枚以上）」を前提にした最低枠数
+                      （FORM_A_MIN_PHOTO_SLOTS）を確保し、不足分は画像もクリックも無い
+                      空枠（写真なし）で埋めることで、写真が少ないときも通常時と同じ見た目の
+                      大きさに保つ。 */}
                   <div className="flex gap-3">
                     {formAPhotos.map((p, i) => (
                       <PhotoLightboxThumbnail
@@ -237,6 +251,14 @@ export default async function KarteDetailPage({
                           className="h-auto w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
                         />
                       </PhotoLightboxThumbnail>
+                    ))}
+                    {Array.from({ length: Math.max(0, FORM_A_MIN_PHOTO_SLOTS - formAPhotos.length) }).map((_, i) => (
+                      <div
+                        key={`empty-${i}`}
+                        className="flex h-24 min-w-0 flex-1 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500"
+                      >
+                        写真なし
+                      </div>
                     ))}
                   </div>
                 </PhotoLightboxGroup>
@@ -991,9 +1013,9 @@ export default async function KarteDetailPage({
         href={`/karte/${karte.facilityNo}`}
       />
       <div className="flex items-center justify-between">
-        <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+        <BackLink fallbackHref="/karte">
           ← 検索・一覧に戻る
-        </Link>
+      </BackLink>
         <div className="flex items-center gap-2">
           <FavoriteToggleButton
             karteId={karte.id}

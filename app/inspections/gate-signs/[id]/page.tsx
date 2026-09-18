@@ -8,6 +8,7 @@ import RecordViewHistory from "@/components/RecordViewHistory";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import SheetTabs from "@/components/SheetTabs";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -142,9 +143,9 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         subtitle={insp.routeName ?? undefined}
         href={`/inspections/gate-signs/${insp.id}`}
       />
-      <Link href="/inspections/gate-signs" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/inspections/gate-signs">
         ← 点検調書（門型標識）一覧に戻る
-      </Link>
+      </BackLink>
 
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h1>

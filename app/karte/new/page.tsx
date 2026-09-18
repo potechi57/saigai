@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { createKarte } from "@/lib/actions/karte-actions";
 import KarteForm from "@/components/KarteForm";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 export default function NewKartePage() {
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/karte">
         ← 検索・一覧に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">新規カルテ登録</h1>
       <KarteForm action={createKarte} submitLabel="登録する" />
     </div>

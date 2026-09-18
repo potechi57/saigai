@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL } from "@/lib/labels";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +33,9 @@ export default async function MobileFavoritesPage() {
 
   return (
     <div className="mx-auto max-w-md space-y-4 p-4">
-      <Link href="/m" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/m">
         ← 検索に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">★ お気に入り</h1>
 
       {favorites.length === 0 ? (
