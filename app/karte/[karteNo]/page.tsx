@@ -986,7 +986,17 @@ export default async function KarteDetailPage({
         <ul className="space-y-1 p-3 text-sm">
           {karte.attachments.map((a) => (
             <li key={a.id}>
-              <a href={a.url} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+              {/* Blobの実URL（a.url）へ直接リンクすると、ダウンロード時にブラウザが
+                  提案するファイル名がBlobの保存パス（アップロード経路によっては
+                  タイムスタンプ・ランダムな接尾辞混じり）になってしまうため、
+                  施設管理番号ベースのファイル名を付け直すダウンロード専用ルート
+                  （app/api/attachments/[id]/download）を経由させる
+                  （会話ログ「点検調書及び施設台帳がエクセルのものを出力するときに、
+                  施設管理番号でファイル名を付けてほしい」参照）。 */}
+              <a
+                href={`/api/attachments/${a.id}/download`}
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
                 {a.title}
               </a>
               <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
