@@ -959,7 +959,7 @@ export default async function KarteDetailPage({
                         />
                       </PhotoLightboxThumbnail>
                       {p.caption && (
-                        <p className="mt-1 truncate text-right text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
+                        <p className="mt-1 truncate text-center text-xs text-gray-600 dark:text-gray-300" title={p.caption}>
                           {p.caption}
                         </p>
                       )}
