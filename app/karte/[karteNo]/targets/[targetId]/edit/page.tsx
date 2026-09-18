@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { updateInspectionTarget, setInspectionTargetActive } from "@/lib/actions/karte-actions";
@@ -8,6 +7,7 @@ import SubmitButton from "@/components/SubmitButton";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
 import { KARTE_TYPE_LABEL, WEATHER_LABEL } from "@/lib/labels";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -54,9 +54,9 @@ export default async function EditInspectionTargetPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href={`/karte/${karteNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref={`/karte/${karteNo}`}>
         ← カルテ詳細に戻る
-      </Link>
+      </BackLink>
 
       <section className="overflow-x-auto rounded border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900">
         <div className="border-b border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2">

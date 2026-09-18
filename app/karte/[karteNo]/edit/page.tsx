@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { updateKarte, deleteKarte } from "@/lib/actions/karte-actions";
@@ -6,6 +5,7 @@ import KarteForm, { type KarteFormValues } from "@/components/KarteForm";
 import PhotoUploadForm from "@/components/PhotoUploadForm";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -68,9 +68,9 @@ export default async function EditKartePage({ params }: { params: Promise<{ kart
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href={`/karte/${karte.facilityNo}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref={`/karte/${karte.facilityNo}`}>
         ← カルテ詳細に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">カルテ編集: {karte.routeName}</h1>
 
       <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">

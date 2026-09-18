@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatFacilityType } from "@/lib/labels";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 import RecordViewHistory from "@/components/RecordViewHistory";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -45,9 +46,9 @@ export default async function FacilityListItemPage({ params }: { params: Promise
         subtitle={facilityTypeLabel ?? undefined}
         href={`/facility-list/${item.id}`}
       />
-      <Link href="/facility-list" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/facility-list">
         ← 施設一覧に戻る
-      </Link>
+      </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{item.managementNo}</h1>
 
       <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">

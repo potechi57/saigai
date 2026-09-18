@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -158,9 +159,9 @@ export default async function ImportHubPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/karte">
         ← 検索・一覧に戻る
-      </Link>
+      </BackLink>
       <div className="space-y-1">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">資料読み込み</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">

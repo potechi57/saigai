@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { deleteFacilityListItem } from "@/lib/actions/facility-list-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import { formatFacilityType } from "@/lib/labels";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,9 @@ export default async function FacilityListPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
-      <Link href="/import" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/import">
         ← 資料読み込みに戻る
-      </Link>
+      </BackLink>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">施設一覧（{items.length}件）</h1>

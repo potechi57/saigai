@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { FACILITY_LEDGER_DOC_CLASS_LABEL, facilityLedgerDisplayName, formatFacilityType } from "@/lib/labels";
 import { deleteFacilityLedger } from "@/lib/actions/facility-ledger-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,9 @@ export default async function LedgersPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/karte">
         ← 地図に戻る
-      </Link>
+      </BackLink>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">台帳（画像）一覧</h1>
         {/* 分類（法令台帳／施設台帳）を指定せずに登録画面へ渡すと、フォーム側が

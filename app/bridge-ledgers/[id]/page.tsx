@@ -8,6 +8,7 @@ import SheetTabs from "@/components/SheetTabs";
 import ExcelSheetGrid from "@/components/ExcelSheetGrid";
 import type { ExtractedGrid } from "@/lib/excel/excel-grid-extract";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -177,9 +178,9 @@ export default async function BridgeLedgerDetailPage({ params }: { params: Promi
         subtitle={bridge.routeName ?? undefined}
         href={`/bridge-ledgers/${bridge.id}`}
       />
-      <Link href="/bridge-ledgers" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/bridge-ledgers">
         ← 橋梁台帳一覧に戻る
-      </Link>
+      </BackLink>
 
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h1>

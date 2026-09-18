@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { deleteBridgeLedger } from "@/lib/actions/bridge-ledger-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
+import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,9 @@ export default async function BridgeLedgerListPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <Link href="/karte" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+      <BackLink fallbackHref="/karte">
         ← 地図に戻る
-      </Link>
+      </BackLink>
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">橋梁台帳一覧</h1>
         <Link
