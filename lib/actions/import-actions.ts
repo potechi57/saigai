@@ -32,6 +32,7 @@ import {
 } from "@/lib/excel/karte-import";
 import { extractSheetImages, extractFormAImages, extractFormBImages } from "@/lib/excel/karte-image-extract";
 import type { ExtractedImage } from "@/lib/excel/karte-image-extract";
+import { FORM_B_SKETCH_RANGE_END_COL_0INDEXED } from "@/lib/excel/emf-convert";
 import { ROAD_TYPE_LABEL, RESPONSE_META } from "@/lib/labels";
 
 // 島根県では防災カルテ点検を「落石・斜面」（落石・崩壊）でのみ運用しているため、
@@ -168,10 +169,30 @@ async function resolveFormAImages(sourceBuffer: Buffer): Promise<ExtractedImage[
 // （ほとんどの場合、図形・注記テキストが重ねられていないことを実データで確認済み）
 // は従来どおり個別抽出のまま組み合わせる（karte-image-extract.tsのextractFormBImages
 // 参照）。フォールバック方針はresolveFormAImagesと同じ。
+//
+// 【フォールバック時の列位置による分類】Cloud Run変換が未設定・失敗した場合、
+// 以前は単純にextractSheetImagesの結果をそのまま返し、呼び出し元
+// （app/karte/[karteNo]/page.tsxの`const [sketchPhoto, ...pastePhotos] = t.photos`）が
+// 「先頭1枚＝詳細スケッチ欄、残り全部＝写真張付欄」と決め打ちしていた。しかし
+// 詳細スケッチ欄には実データで2枚の写真が縦に並ぶ構成があり（B1432A070で確認。
+// 会話ログ「様式Bの①露岩の詳細スケッチ欄の写真がおかしくなっています」参照）、
+// この場合2枚目の詳細スケッチ欄写真が誤って写真張付欄側に混入し、詳細スケッチ欄
+// には1枚目しか表示されない（＝本来あるべき内容が欠けて見える）不具合になって
+// いた。extractFormBImages（Cloud Run成功時）と同じ列位置判定
+// （FORM_B_SKETCH_RANGE_END_COL_0INDEXED）をフォールバック時にも適用し、
+// 詳細スケッチ欄の列範囲に複数枚あった場合でも、少なくとも写真張付欄への
+// 誤混入は防ぐ（Cloud Run成功時と同様、詳細スケッチ欄側は先頭の1枚のみを
+// 採用する。2枚を1枚の表示欄にまとめて見せられないのはCloud Run成功時の
+// 合成画像方式と同じ制約のため、フォールバック時だけ複数見せる非対称な
+// 表示にはしない）。
 async function resolveFormBImages(sourceBuffer: Buffer, sheetName: string): Promise<ExtractedImage[]> {
   const combined = await extractFormBImages(sourceBuffer, sheetName);
   if (combined) return combined;
-  return extractSheetImages(sourceBuffer, sheetName);
+  const all = await extractSheetImages(sourceBuffer, sheetName);
+  const sketchAreaImages = all.filter((img) => img.fromCol <= FORM_B_SKETCH_RANGE_END_COL_0INDEXED);
+  const pasteAreaImages = all.filter((img) => img.fromCol > FORM_B_SKETCH_RANGE_END_COL_0INDEXED);
+  if (sketchAreaImages.length === 0) return all; // 想定外の配置。従来どおり先頭を仮のスケッチ欄扱いにする
+  return [sketchAreaImages[0], ...pasteAreaImages];
 }
 
 // ── Excel取込履歴 ───────────────────────────────────────────
