@@ -287,15 +287,20 @@ export default function MapView({
       // いたものを1行（statusLineId）にまとめている。
       const statusLineId = `status-line-${k.id}`;
       marker.bindPopup(
+        // メインは施設管理番号（この地点を特定する一意なID）であり、路線名は
+        // 数ある付随情報の一つに過ぎないため、見出し（タイトル）は施設管理番号に
+        // した（会話ログ「メインは、管理施設になりますので、例えば、B2045A040
+        // のようにある管理番号をタイトルにして下さい」参照）。路線名・防災種別は
+        // その下にラベル付きで表示する。
         `<div style="font-size:13px;min-width:180px;">
            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
-             <div style="font-weight:600;">${escapeHtml(k.routeName)}</div>
+             <div style="font-weight:600;">${escapeHtml(k.facilityNo)}</div>
              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                <span id="${favSlotId}"></span>
                <a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
              </div>
            </div>
-           <div style="color:#666;">${escapeHtml(k.facilityNo)} ・ ${escapeHtml(k.karteTypeLabel)}</div>
+           <div style="color:#374151;">路線名: ${escapeHtml(k.routeName)} ・ 防災種別: ${escapeHtml(k.karteTypeLabel)}</div>
            <div style="margin-top:6px;color:#374151;">所在地: ${escapeHtml(k.location || "—")}（${k.latitude}, ${k.longitude}）</div>
            <div style="margin-top:4px;color:#374151;">延長: ${k.extensionLengthM != null ? `${k.extensionLengthM} m` : "—"} ・ 対応区分: ${escapeHtml(meta.label)} ・ 最終点検日時: ${escapeHtml(k.lastInspectionDateLabel || "—")}</div>
            ${buildKartePhotosHtml(k)}
@@ -537,8 +542,18 @@ export default function MapView({
       }).addTo(layer);
       const detailHref = `/inspections/gate-signs/${g.id}`;
       marker.bindPopup(
+        // 防災カルテのポップアップ（見出し＝管理番号、その右に「詳細を見る」を
+        // 並べる配置）と統一するため、同じレイアウトにしている（会話ログ
+        // 「別の門型標識の表示を確認しましたが、これはカルテと同じようになって
+        // いないようです...詳細を見るは上に持ってきたり...同じような配置に
+        // することはできませんか」参照）。ただし、お気に入り機能は現状カルテ
+        // （FavoriteモデルがkarteId専属）専用のため、門型標識には追加していない
+        // （追加する場合はデータモデルの変更が必要になる別対応）。
         `<div style="font-size:13px;min-width:180px;">
-           <div style="font-weight:600;">${escapeHtml(g.title)}</div>
+           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+             <div style="font-weight:600;">${escapeHtml(g.title)}</div>
+             <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;flex-shrink:0;">詳細を見る →</a>
+           </div>
            ${g.judgment ? `<div style="color:#666;">判定区分 ${escapeHtml(g.judgment)}</div>` : ""}
            ${g.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(g.routeName)}</div>` : ""}
            ${g.location ? `<div style="color:#374151;">所在地: ${escapeHtml(g.location)}</div>` : ""}
@@ -549,7 +564,6 @@ export default function MapView({
                ? `<div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(g.facilityListItemId)}" style="color:#2563eb;">施設台帳を見る →</a></div>`
                : ""
            }
-           <div style="margin-top:2px;"><a href="${escapeHtml(detailHref)}" style="color:#2563eb;">点検調書の詳細を見る →</a></div>
          </div>`,
         // 起点・終点の写真（buildGateSignOverviewPhotosHtml、各450px）を2枚横に
         // 並べるため、カルテの起点/終点サムネイル（buildStartEndPhotosHtml）と
