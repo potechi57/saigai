@@ -37,3 +37,35 @@ export async function getStartEndRecordPhotos(karteIds: string[]): Promise<Map<s
   }
   return result;
 }
+
+// 様式Ａ（点検地点位置図欄）の合成画像を、地図ピンのポップアップ用に取得する。
+// 起点・終点の写真だけでは「どういう箇所か」が分かりにくいという指摘を受け
+// （会話ログ「起点終点のみでは、どういう箇所なのかわからない」参照）、
+// 様式Ａの点検地点位置図（スケッチ・地図の合成画像）も合わせて表示できるようにした。
+//
+// app/karte/[karteNo]/page.tsxのformAPhotos（sourceForm!==GENERAL_RECORDのカルテ
+// 本体写真）と同じ考え方で、最初の1枚（＝合成画像。lib/excel/karte-image-extract.ts
+// のextractFormAImagesがsketchImageを常に先頭に置くため）だけを採用する。
+// takenAtはExcel取込写真では常にnullのため、createdAt（挿入順）で確定させる
+// （app/karte/[karteNo]/page.tsxのphotos取得と同じorderBy）。
+export async function getFormAThumbnails(karteIds: string[]): Promise<Map<string, string>> {
+  if (karteIds.length === 0) return new Map();
+
+  const photos = await prisma.photo.findMany({
+    where: {
+      karteId: { in: karteIds },
+      targetId: null,
+      eventId: null,
+      disasterEventId: null,
+      sourceForm: { not: PhotoSourceForm.GENERAL_RECORD },
+    },
+    orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }],
+    select: { karteId: true, url: true },
+  });
+
+  const result = new Map<string, string>();
+  for (const p of photos) {
+    if (!result.has(p.karteId)) result.set(p.karteId, p.url);
+  }
+  return result;
+}
