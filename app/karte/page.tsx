@@ -601,6 +601,10 @@ export default async function KarteListPage({
         // 終点側の両方を表示してください」参照）。
         overviewPhotos: { orderBy: { sortOrder: "asc" } },
         facilityListItem: { select: { id: true } },
+        // お気に入り機能を防災カルテ以外にも一般化したことに伴う追加
+        // （下のmapKartesと同じ考え方。lib/actions/favorite-actions.tsの
+        // FavoriteTarget参照）。
+        favorite: { select: { id: true } },
       },
       take: SEARCH_RESULT_LIMIT,
     }),
@@ -704,6 +708,7 @@ export default async function KarteListPage({
     longitude: Number(g.longitude),
     overviewPhotos: g.overviewPhotos.map((p) => ({ url: p.url, caption: p.caption })),
     facilityListItemId: g.facilityListItem?.id ?? null,
+    isFavorite: g.favorite != null,
   }));
 
   const home: HomeLocation =

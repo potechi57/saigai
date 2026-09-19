@@ -8,25 +8,39 @@ import { prisma } from "@/lib/prisma";
 
 export type FavoriteActionResult = { ok: true } | { ok: false; error: string };
 
+// お気に入りの対象。当初はKarte（防災カルテ）専用だったが、「お気に入り追加は
+// カルテのみでは意味がありません。点検調書の項目すべてに適用できるように
+// してください」との指摘を受け、対象種別を区別できるdiscriminated unionにした
+// （prisma/schema.prismaのFavoriteモデルのコメント参照）。今後、他の点検調書
+// 種別（橋梁等）が地図・検索に組み込まれた際は、この union に type を追加し、
+// 下記の分岐にケースを1つ足す形で対応する。
+export type FavoriteTarget =
+  | { type: "karte"; id: string; facilityNo: string }
+  | { type: "gateSignInspection"; id: string };
+
 // カルテ詳細画面・地図のポップアップ・検索結果一覧など、複数箇所にある
 // ☆/★ボタンから直接呼ばれる（フォーム経由ではなく、クライアント側でawaitして
 // 結果に応じて表示を更新する）。現在の状態を見て追加/解除を切り替えるのではなく、
 // 呼び出し側が次の状態を明示的に指定する方式にして、連打による状態のズレを防ぐ。
-export async function setFavorite(
-  karteId: string,
-  karteFacilityNo: string,
-  shouldBeFavorite: boolean
-): Promise<FavoriteActionResult> {
+export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: boolean): Promise<FavoriteActionResult> {
   try {
-    if (shouldBeFavorite) {
-      await prisma.favorite.upsert({
-        where: { karteId },
-        create: { karteId },
-        update: {},
-      });
+    if (target.type === "karte") {
+      if (shouldBeFavorite) {
+        await prisma.favorite.upsert({ where: { karteId: target.id }, create: { karteId: target.id }, update: {} });
+      } else {
+        // 存在しない場合にdeleteするとPrismaがエラーを投げるため、deleteManyで無害化する
+        await prisma.favorite.deleteMany({ where: { karteId: target.id } });
+      }
     } else {
-      // 存在しない場合にdeleteするとPrismaがエラーを投げるため、deleteManyで無害化する
-      await prisma.favorite.deleteMany({ where: { karteId } });
+      if (shouldBeFavorite) {
+        await prisma.favorite.upsert({
+          where: { gateSignInspectionId: target.id },
+          create: { gateSignInspectionId: target.id },
+          update: {},
+        });
+      } else {
+        await prisma.favorite.deleteMany({ where: { gateSignInspectionId: target.id } });
+      }
     }
   } catch (e) {
     return {
@@ -34,11 +48,18 @@ export async function setFavorite(
       error: `お気に入りの更新に失敗しました（詳細: ${e instanceof Error ? e.message : String(e)}）`,
     };
   }
-  revalidatePath(`/karte/${karteFacilityNo}`);
-  revalidatePath("/karte");
-  revalidatePath("/karte/favorites");
-  revalidatePath(`/m/${karteFacilityNo}`); // 現場向け画面（/m）の★ボタンからも呼ばれるため
-  revalidatePath("/m/favorites");
+  if (target.type === "karte") {
+    revalidatePath(`/karte/${target.facilityNo}`);
+    revalidatePath("/karte");
+    revalidatePath("/karte/favorites");
+    revalidatePath(`/m/${target.facilityNo}`); // 現場向け画面（/m）の★ボタンからも呼ばれるため
+    revalidatePath("/m/favorites");
+  } else {
+    revalidatePath(`/inspections/gate-signs/${target.id}`);
+    revalidatePath("/karte"); // 地図（点検調書＞道路＞門型標識）のポップアップの★表示を更新するため
+    revalidatePath("/karte/favorites");
+    revalidatePath("/m/favorites");
+  }
   return { ok: true };
 }
 

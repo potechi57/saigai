@@ -1,20 +1,22 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setFavorite } from "@/lib/actions/favorite-actions";
+import { setFavorite, type FavoriteTarget } from "@/lib/actions/favorite-actions";
 
-// カルテ詳細画面のヘッダー等に置く☆/★お気に入りボタン。フォームを介さず、
-// クリックで直接Server Action（setFavorite）を呼び、結果を見て表示を更新する
-// （お気に入りは軽い操作なので、ページ遷移やフォーム送信を伴わせたくないため）。
-// 楽観的にまず見た目を切り替え、失敗時のみ元に戻す（isPendingでボタンは無効化し
-// 連打による状態のズレを防ぐ）。
+// カルテ詳細画面・門型標識点検調書詳細画面のヘッダー等に置く☆/★お気に入り
+// ボタン。フォームを介さず、クリックで直接Server Action（setFavorite）を呼び、
+// 結果を見て表示を更新する（お気に入りは軽い操作なので、ページ遷移やフォーム
+// 送信を伴わせたくないため）。楽観的にまず見た目を切り替え、失敗時のみ元に戻す
+// （isPendingでボタンは無効化し連打による状態のズレを防ぐ）。
+// 当初はカルテ専用（karteId/karteFacilityNo）だったが、「お気に入り追加は
+// カルテのみでは意味がありません。点検調書の項目すべてに適用できるように
+// してください」との指摘を受け、対象種別を問わないtarget: FavoriteTargetを
+// 受け取る形に一般化した（lib/actions/favorite-actions.ts参照）。
 export default function FavoriteToggleButton({
-  karteId,
-  karteFacilityNo,
+  target,
   initialIsFavorite,
 }: {
-  karteId: string;
-  karteFacilityNo: string;
+  target: FavoriteTarget;
   initialIsFavorite: boolean;
 }) {
   const [isFavorite, setIsFavorite] = useState(initialIsFavorite);
@@ -26,7 +28,7 @@ export default function FavoriteToggleButton({
     setIsFavorite(next); // 楽観的更新
     setError(null);
     startTransition(async () => {
-      const result = await setFavorite(karteId, karteFacilityNo, next);
+      const result = await setFavorite(target, next);
       if (!result.ok) {
         setIsFavorite(!next); // 失敗したら元に戻す
         setError(result.error);

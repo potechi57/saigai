@@ -423,17 +423,35 @@ model AppSettings {
 // ログイン機能が無いMVPのため、ホーム位置（AppSettings）同様、事務所全体で1つを
 // 共有するお気に入りリストとして実装する（ユーザーごとの分離は将来ログイン機能が
 // 入ってから対応する）。
-// カルテ1件につきお気に入りは高々1件（Favorite.karteIdをunique）とし、
+// 対象1件につきお気に入りは高々1件（各対象IDをunique）とし、
 // グルーピングは別テーブルFavoriteGroupへの多対多とすることで、
 // 「1件のお気に入りを複数のグループ（例:『今年の点検場所』『要注意箇所』）に
 // 同時に所属させる」を許容しつつ、グループ無し（未分類）のお気に入りも表現できる。
 // 中間テーブルはPrismaの暗黙的m:n（生成されるテーブル名・カラム名が推測しづらく、
 // 手書きマイグレーションと相性が悪い）ではなく、明示的なFavoriteGroupItemとして持つ
 // （InspectionResult等、このプロジェクトの他のm:nも同じ方針で明示テーブル化している）。
+//
+// 【karteId専属からの一般化】当初は防災カルテ（Karte）専用だったが、
+// 「お気に入り追加はカルテのみでは意味がありません。点検調書の項目すべてに
+// 適用できるようにしてください」との指摘を受け、他の点検調書種別（まずは
+// 門型標識＝GateSignInspection）にも対応できるよう一般化した。Prismaは
+// 真の多態関連（1つの外部キー列が複数モデルのいずれかを指す）を型安全には
+// サポートしないため、対象種別ごとに「nullableな専用外部キー列」を1つずつ
+// 追加する方式にした（entityType文字列＋entityId文字列だけを持つ汎用テーブルに
+// する案も検討したが、それだと結局アプリケーション側でentityTypeによる分岐が
+// 必要になる点は変わらず、かつ外部キー制約による整合性保証・カスケード削除を
+// 失うため不採用）。アプリケーション側（lib/actions/favorite-actions.ts）で
+// 「作成時は必ずどちらか一方だけを設定する」という不変条件を守る。
+// 橋梁点検調書（BridgeInspection）等、まだ地図・検索に組み込まれていない
+// 点検調書種別は、実際にその画面が使えるようになったタイミングで、同じ要領で
+// 専用の外部キー列を追加すればよい。
 model Favorite {
-  id      String @id @default(cuid())
-  karteId String @unique
-  karte   Karte  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+  id      String  @id @default(cuid())
+  karteId String? @unique
+  karte   Karte?  @relation(fields: [karteId], references: [id], onDelete: Cascade)
+
+  gateSignInspectionId String?             @unique
+  gateSignInspection   GateSignInspection? @relation(fields: [gateSignInspectionId], references: [id], onDelete: Cascade)
 
   note String? // お気に入りに追加した際の任意メモ
 
@@ -796,6 +814,7 @@ model GateSignInspection {
 
   members        GateSignInspectionMember[]
   overviewPhotos GateSignInspectionPhoto[]
+  favorite       Favorite? // Karteのfavoriteフィールドと同じ考え方（Favoriteモデルのコメント参照）
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

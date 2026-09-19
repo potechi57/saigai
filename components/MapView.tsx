@@ -108,6 +108,9 @@ export type MapGateSignInspection = {
   // （会話ログ「マップ上にも起点側と終点側の両方を表示してください」参照）。
   overviewPhotos: { url: string; caption: string | null }[];
   facilityListItemId?: string | null; // 施設台帳の該当行（紐付いていればリンクを出す）
+  // MapKarte.isFavoriteと同じ理由（お気に入り機能を防災カルテ以外の点検調書にも
+  // 一般化した。lib/actions/favorite-actions.tsのFavoriteTarget参照）。
+  isFavorite?: boolean;
 };
 
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
@@ -200,6 +203,13 @@ export default function MapView({
   // お気に入り状態も同様の理由でrefに持つ（初期値はサーバーから渡されたkartes、
   // 以降はポップアップ内の☆/★ボタンでの切り替えをその場で反映する）。
   const favoriteIdsRef = useRef<Set<string>>(new Set(kartes.filter((k) => k.isFavorite).map((k) => k.id)));
+  // 門型標識点検調書のお気に入り状態も同じ理由でrefに持つ（お気に入り機能を
+  // 防災カルテ以外にも一般化したことに伴う追加。kartesと別のSetにしているのは、
+  // 他のlast*IdsKeyRef同様、カルテ・台帳・施設一覧・門型標識をそれぞれ独立した
+  // レイヤー・状態として扱う、このファイル既存の方針に合わせるため）。
+  const gateSignFavoriteIdsRef = useRef<Set<string>>(
+    new Set(gateSignInspections.filter((g) => g.isFavorite).map((g) => g.id))
+  );
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -399,7 +409,7 @@ export default function MapView({
           const next = !favoriteIdsRef.current.has(k.id);
           btn.disabled = true;
           btn.textContent = "処理中...";
-          setFavorite(k.id, k.facilityNo, next).then((result) => {
+          setFavorite({ type: "karte", id: k.id, facilityNo: k.facilityNo }, next).then((result) => {
             if (!result.ok) {
               btn.disabled = false;
               btn.textContent = `失敗（${result.error}）`;
@@ -535,24 +545,33 @@ export default function MapView({
     lastGateSignIdsKeyRef.current = idsKey;
 
     layer.clearLayers();
+    // カルテ（favoriteIdsRef）と同じ理由（呼び出し元の最新データを信頼する）。
+    gateSignFavoriteIdsRef.current = new Set(gateSignInspections.filter((g) => g.isFavorite).map((g) => g.id));
 
     for (const g of gateSignInspections) {
       const marker = L.marker([g.latitude, g.longitude], {
-        icon: buildGateSignMarkerIcon(g.judgment),
+        icon: buildGateSignMarkerIcon(g.judgment, gateSignFavoriteIdsRef.current.has(g.id)),
       }).addTo(layer);
       const detailHref = `/inspections/gate-signs/${g.id}`;
+      const favSlotId = `gate-fav-slot-${g.id}`;
       marker.bindPopup(
-        // 防災カルテのポップアップ（見出し＝管理番号、その右に「詳細を見る」を
-        // 並べる配置）と統一するため、同じレイアウトにしている（会話ログ
-        // 「別の門型標識の表示を確認しましたが、これはカルテと同じようになって
-        // いないようです...詳細を見るは上に持ってきたり...同じような配置に
-        // することはできませんか」参照）。ただし、お気に入り機能は現状カルテ
-        // （FavoriteモデルがkarteId専属）専用のため、門型標識には追加していない
-        // （追加する場合はデータモデルの変更が必要になる別対応）。
+        // 防災カルテのポップアップ（見出し＝管理番号、その右にお気に入り・
+        // 「詳細を見る」を並べる配置）と統一するため、同じレイアウトにしている
+        // （会話ログ「別の門型標識の表示を確認しましたが、これはカルテと同じ
+        // ようになっていないようです...詳細を見るは上に持ってきたり、隣に
+        // お気に入り追加を置いたりといった具合です」参照）。お気に入り機能は
+        // 当初カルテ専用（FavoriteモデルがkarteId専属）だったが、「お気に入り
+        // 追加はカルテのみでは意味がありません。点検調書の項目すべてに適用
+        // できるようにしてください」との指摘を受け、Favoriteモデルに
+        // gateSignInspectionIdを追加して一般化した
+        // （lib/actions/favorite-actions.tsのFavoriteTarget参照）。
         `<div style="font-size:13px;min-width:180px;">
            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
              <div style="font-weight:600;">${escapeHtml(g.title)}</div>
-             <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;flex-shrink:0;">詳細を見る →</a>
+             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+               <span id="${favSlotId}"></span>
+               <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
+             </div>
            </div>
            ${g.judgment ? `<div style="color:#666;">判定区分 ${escapeHtml(g.judgment)}</div>` : ""}
            ${g.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(g.routeName)}</div>` : ""}
@@ -570,6 +589,44 @@ export default function MapView({
         // 同じ1000pxまでポップアップ幅を広げる（会話ログ「防災カルテ点検で表示する
         // 起点終点写真と同じ大きさで表示してください」参照）。
         { maxWidth: 1000 }
+      );
+
+      marker.on("popupopen", () => renderGateSignFavSlot(favSlotId, g, marker));
+    }
+
+    // ポップアップ内の☆/★お気に入りボタンの中身を、現在の状態
+    // （gateSignFavoriteIdsRef）に合わせて描画し直す。renderFavSlot（防災カルテ側）
+    // と同じ考え方（会話ログ参照）。
+    function renderGateSignFavSlot(slotId: string, g: MapGateSignInspection, marker: L.Marker) {
+      const slot = document.getElementById(slotId);
+      if (!slot) return;
+      const isFav = gateSignFavoriteIdsRef.current.has(g.id);
+      const btnId = `gate-fav-toggle-${g.id}`;
+      slot.innerHTML = isFav
+        ? `<span style="font-size:12px;color:#a16207;">★ お気に入り済み</span> <button type="button" id="${btnId}" style="margin-left:6px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">外す</button>`
+        : `<button type="button" id="${btnId}" style="font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">☆ お気に入りに追加</button>`;
+      const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+      btn?.addEventListener(
+        "click",
+        () => {
+          const next = !gateSignFavoriteIdsRef.current.has(g.id);
+          btn.disabled = true;
+          btn.textContent = "処理中...";
+          setFavorite({ type: "gateSignInspection", id: g.id }, next).then((result) => {
+            if (!result.ok) {
+              btn.disabled = false;
+              btn.textContent = `失敗（${result.error}）`;
+              return;
+            }
+            if (next) gateSignFavoriteIdsRef.current.add(g.id);
+            else gateSignFavoriteIdsRef.current.delete(g.id);
+            marker.setIcon(buildGateSignMarkerIcon(g.judgment, next));
+            renderGateSignFavSlot(slotId, g, marker);
+            // router.refresh()を呼ばない理由はrenderFavSlot（防災カルテ側）の
+            // コメントと同じ。
+          });
+        },
+        { once: true }
       );
     }
   }, [gateSignInspections]);
@@ -958,18 +1015,23 @@ const GATE_SIGN_JUDGMENT_COLOR: Record<string, string> = {
 // 点検調書（門型標識）のマーカーアイコン。台帳（画像。丸型・紫）・施設一覧
 // （正方形・オレンジ）とも見た目を変え、標識をそのまま連想できる🪧を使う。
 // 判定区分が分かる場合は背景色で重大度を示す（不明な場合はグレー）。
-function buildGateSignMarkerIcon(judgment: string | null | undefined): L.DivIcon {
+// お気に入り済みかどうかで右肩に★を重ねる（buildMarkerIcon＝防災カルテの
+// マーカーと同じ表現。お気に入り機能を一般化したことに伴う追加）。
+function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite: boolean): L.DivIcon {
   const color = (judgment && GATE_SIGN_JUDGMENT_COLOR[judgment]) || "#6b7280";
   return L.divIcon({
     className: "",
     html: `<div style="
+        position:relative;
         background:${color};
         width:26px;height:26px;border-radius:6px;
         border:2px solid white;
         box-shadow:0 1px 3px rgba(0,0,0,0.4);
         display:flex;align-items:center;justify-content:center;
         font-size:14px;
-      ">🪧</div>`,
+      ">🪧${
+        isFavorite ? '<span style="position:absolute;top:-8px;right:-6px;font-size:13px;">★</span>' : ""
+      }</div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
     popupAnchor: [0, -13],
