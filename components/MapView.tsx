@@ -228,6 +228,19 @@ export default function MapView({
       ledgerLayerRef.current = null;
       facilityListLayerRef.current = null;
       gateSignLayerRef.current = null;
+      // レイヤーグループを作り直す（＝上のkarteLayerRef等が新しい空のグループに
+      // 差し替わる）ため、「前回どのID集合を描画したか」を覚えているこれらのrefも
+      // 一緒にリセットする。リセットしないと、直後の各マーカー構築effectが
+      // 「IDの集合は前回と同じだから作り直し不要」と誤判定し、新しい（空の）
+      // レイヤーにマーカーを一切追加しないまま終わってしまう
+      // （開発時、React Strict Modeがこの初期化effectをマウント直後に一度
+      // 意図的にクリーンアップ→再実行するため、この不整合が毎回発生しうる。
+      // 本番ビルドではStrict Modeの二重実行が起きないため表面化しないが、
+      // 開発中の動作確認に支障が出るため修正する）。
+      lastKarteIdsKeyRef.current = null;
+      lastLedgerIdsKeyRef.current = null;
+      lastFacilityListIdsKeyRef.current = null;
+      lastGateSignIdsKeyRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -284,8 +297,8 @@ export default function MapView({
            </button>
            <div style="margin-top:6px;"><a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;">詳細を見る →</a></div>
          </div>`,
-        // 起点/終点サムネイル（下記buildKartePhotosHtml、各540px＝450*1.2）を
-        // 2枚横に並べられるだけの幅を確保している（540*2+間隔+余白）。
+        // maxWidthは、起点/終点サムネイル（下記buildKartePhotosHtml、各
+        // START_END_WIDTH_PX）を2枚横に並べても余裕がある幅にしている。
         // maxHeightは、写真（様式Ａ＋起点＋終点）とテキスト情報を全部足すと
         // ポップアップがかなり縦長になり、画面の高さより高くなる場合に
         // ボックスが画面からはみ出して見切れてしまう不具合があったため設定した
@@ -295,8 +308,10 @@ export default function MapView({
         // （.leaflet-popup-content-wrapper側でoverflow-y:autoが効く）ため、
         // 画面からはみ出す代わりに、ポップアップ内をスクロールして続きを
         // 見られるようになる。画面の高さそのものに追従させるため、
-        // ウィンドウ高さから見出し等の余白を引いた値にする。
-        { maxWidth: 1200, maxHeight: Math.max(300, window.innerHeight - 160) }
+        // ウィンドウ高さから見出し等の余白を引いた値にする。写真サイズを
+        // 縮小した後は通常このスクロールが発生しない想定だが、テキスト情報が
+        // 多いカルテ等、念のためのフォールバックとして残す。
+        { maxWidth: 900, maxHeight: Math.max(300, window.innerHeight - 160) }
       );
 
       // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離・
@@ -976,18 +991,22 @@ async function fetchRoadRouteDistance(
 // 【経緯】当初は起点・終点の2枚（各450×253px）だけを横並びにしていたが、
 // 「起点終点のみでは、どういう箇所なのかわからない」との指摘を受け
 // （会話ログ参照。スマホ版と同じ理由）、様式Ａの合成画像を起点・終点の
-// 上に追加した。あわせて、ボックス全体を1.2倍（450→540px・253→304px）に
-// 拡大した（会話ログ「このボックスを横幅は1.2倍程度大きくして」参照）。
-// 様式Ａは起点・終点と違い単独（ペアがない）ため、幅は起点・終点の1枚と
-// 揃えて540px（2枚並べた合計幅まで広げると612px分の縦幅を取り過ぎるため）。
-const THUMB_WIDTH_PX = 540; // 450 * 1.2
-const THUMB_HEIGHT_PX = 304; // 253 * 1.2（16:9を維持）
+// 上に追加した。一度は全体を1.2倍（450→540px・253→304px）に拡大したが、
+// 「思いのほか大きくなっている・縦スクロールバーが出ないサイズにしたい」
+// との指摘を受け、様式Ａより優先して起点・終点側を縮小した
+// （会話ログ「どちらかといえば、起終点写真を小さくしてください」参照）。
+// 様式Ａ（メインの参考画像）は情報量を保つためやや大きめのまま残し、
+// 起点・終点（あくまで補助的な参考写真）はサムネイル程度まで縮小している。
+const FORM_A_WIDTH_PX = 400;
+const FORM_A_HEIGHT_PX = 225; // 16:9
+const START_END_WIDTH_PX = 160;
+const START_END_HEIGHT_PX = 90; // 16:9
 
 function buildKartePhotosHtml(k: MapKarte): string {
   if (!k.startPhotoUrl && !k.endPhotoUrl && !k.formAPhotoUrl) return "";
-  const thumb = (url: string, label: string) => `
+  const thumb = (url: string, label: string, widthPx: number, heightPx: number) => `
     <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;flex-shrink:0;">
-      <img src="${escapeHtml(url)}" style="width:${THUMB_WIDTH_PX}px;max-width:${THUMB_WIDTH_PX}px;height:${THUMB_HEIGHT_PX}px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      <img src="${escapeHtml(url)}" style="width:${widthPx}px;max-width:${widthPx}px;height:${heightPx}px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
       <span style="font-size:12px;color:#6b7280;">${escapeHtml(label)}</span>
     </a>`;
   // flex-wrapを付けると、Leafletがポップアップ幅を決める際の計測パスで
@@ -995,10 +1014,10 @@ function buildKartePhotosHtml(k: MapKarte): string {
   // 明示的にnowrapにして横並びを強制する（画面が狭い場合はポップアップが
   // 画面からはみ出す方向になるが、Leafletが地図を自動でパンして対応する）。
   return `<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">
-      ${k.formAPhotoUrl ? thumb(k.formAPhotoUrl, "点検地点位置図（様式Ａ）") : ""}
+      ${k.formAPhotoUrl ? thumb(k.formAPhotoUrl, "点検地点位置図（様式Ａ）", FORM_A_WIDTH_PX, FORM_A_HEIGHT_PX) : ""}
       <div style="display:flex;gap:8px;flex-wrap:nowrap;">
-        ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
-        ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
+        ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点", START_END_WIDTH_PX, START_END_HEIGHT_PX) : ""}
+        ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点", START_END_WIDTH_PX, START_END_HEIGHT_PX) : ""}
       </div>
     </div>`;
 }
