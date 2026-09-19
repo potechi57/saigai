@@ -33,24 +33,29 @@ function buildResultIcon(kind: MobileSearchResult["kind"]): L.DivIcon {
   });
 }
 
-// 起点／終点の参考写真を、ポップアップ内の小さなサムネイルとして組み立てる
-// （PC版地図 components/MapView.tsx の buildStartEndPhotosHtml と同じデータ・
-// 同じ考え方。会話ログ「スマホでも、ポイントをタップした際に関連する画像を
-// 表示してください」「起点・終点の両方を表示対象としてください」参照）。
-// PC版は横450px×2枚だが、スマホは画面幅が狭く地図の操作を妨げないよう、
-// 1枚あたり幅100px（16:9）に抑え、2枚を横並びにする。どちらも無ければ
-// 何も表示しない（kind==="karte"以外はstartPhotoUrl/endPhotoUrlが元々
-// 付与されない）。
-function buildStartEndPhotosHtml(r: MobileSearchResult): string {
-  if (!r.startPhotoUrl && !r.endPhotoUrl) return "";
-  const thumb = (url: string, label: string) => `
-    <a href="${url}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;flex-shrink:0;">
-      <img src="${url}" style="width:100px;max-width:100px;height:56px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
-      <span style="font-size:10px;color:#6b7280;">${label}</span>
+// 起点／終点／様式Ａ（点検地点位置図）の参考写真を、ポップアップ内に縦積みの
+// サムネイルとして組み立てる（PC版地図 components/MapView.tsx の
+// buildStartEndPhotosHtml と同じデータ・同じ考え方。会話ログ「スマホでも、
+// ポイントをタップした際に関連する画像を表示してください」参照）。
+//
+// 【経緯】当初は起点・終点の2枚を幅100pxで横並びにしていたが、「小さすぎる」
+// 「起点終点のみでは、どういう箇所なのかわからない」との指摘を受け
+// （会話ログ参照）、様式Ａの合成画像（現地の状況がまとまって分かる）も加えた
+// 上で、3枚とも横並びではなく縦に並べ、それぞれポップアップの横幅いっぱいに
+// 広げる方式に変更した（横並びのままだと3枚では1枚あたりの幅がさらに
+// 狭くなってしまうため）。どれも無ければ何も表示しない（kind==="karte"以外は
+// これらのURLが元々付与されない）。
+function buildKartePhotosHtml(r: MobileSearchResult): string {
+  if (!r.startPhotoUrl && !r.endPhotoUrl && !r.formAPhotoUrl) return "";
+  const row = (url: string, label: string) => `
+    <a href="${url}" target="_blank" rel="noreferrer" style="display:block;text-align:center;text-decoration:none;">
+      <img src="${url}" style="display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;" />
+      <span style="font-size:11px;color:#6b7280;">${label}</span>
     </a>`;
-  return `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:nowrap;">
-      ${r.startPhotoUrl ? thumb(r.startPhotoUrl, "起点") : ""}
-      ${r.endPhotoUrl ? thumb(r.endPhotoUrl, "終点") : ""}
+  return `<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">
+      ${r.startPhotoUrl ? row(r.startPhotoUrl, "起点") : ""}
+      ${r.endPhotoUrl ? row(r.endPhotoUrl, "終点") : ""}
+      ${r.formAPhotoUrl ? row(r.formAPhotoUrl, "点検地点位置図（様式Ａ）") : ""}
     </div>`;
 }
 
@@ -208,23 +213,23 @@ export default function MobileMapView({
     // 生DOMのため、Reactコンポーネントをそのまま埋め込むにはcreateRoot等の追加の
     // 仕組みが要る。地図上のピンは「タップしたら詳細を開く」の一撃で十分なため、
     // 複雑さに見合わないと判断し見送った）。
+    // ポップアップの最大幅は、画面幅いっぱいに広げつつも左右に地図をつまむ・
+    // ドラッグする余地を少し残す値にする（会話ログ「横にはめいっぱい広げて
+    // ほしい」参照）。画面幅そのものに追従させるため、forEachの外（＝結果一覧が
+    // 変わるたびに1回）で計算する。
+    const popupMaxWidth = Math.min(window.innerWidth - 48, 360);
+
     results.forEach((r) => {
       if (r.latitude == null || r.longitude == null) return; // 座標が無い施設はピンを打てない
       const marker = L.marker([r.latitude, r.longitude], { icon: buildResultIcon(r.kind) }).addTo(layer);
       marker.bindPopup(
-        `<div style="min-width:160px">
+        `<div style="width:${popupMaxWidth}px">
            <div style="font-size:10px;color:#6b7280;margin-bottom:2px;">${MOBILE_RESULT_KIND_LABEL[r.kind]}</div>
            <a href="${r.href}" style="font-weight:600;color:#2563eb;">${r.title}</a>
            ${r.subtitle ? `<div style="font-size:12px;color:#6b7280;">${r.subtitle}</div>` : ""}
-           ${buildStartEndPhotosHtml(r)}
+           ${buildKartePhotosHtml(r)}
          </div>`,
-        // PC版（MapView.tsx）はポップアップ幅を1000pxまで広げて起点・終点写真を
-        // 横450pxで並べているが、スマホは画面幅自体が狭く、地図の閲覧・操作を
-        // 妨げないサイズに収める必要があるため（会話ログ「スマホの画面サイズを
-        // 考慮して、画像が操作や地図閲覧を妨げないUIにしてください」参照）、
-        // ポップアップ最大幅は画面幅のうち十分operable領域を残す260pxに抑える
-        // （写真自体もbuildStartEndPhotosHtml側で小さめのサイズにしている）。
-        { maxWidth: 260 }
+        { maxWidth: popupMaxWidth }
       );
     });
 

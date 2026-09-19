@@ -21,7 +21,7 @@
 import { prisma } from "@/lib/prisma";
 import { haversineDistanceMeters } from "@/lib/geo";
 import { KARTE_TYPE_LABEL, FACILITY_LEDGER_DOC_CLASS_LABEL, facilityLedgerDisplayName } from "@/lib/labels";
-import { getStartEndRecordPhotos } from "@/lib/map-photos";
+import { getStartEndRecordPhotos, getFormAThumbnails } from "@/lib/map-photos";
 
 // 「現在地から探す」の対象範囲は、既定値も含めてlib/mobile-prefs.tsに集約している
 // （会話ログ「現在地検索の半径変更」により、設定画面で変更できるようにしたため）。
@@ -50,26 +50,34 @@ export type MobileSearchResult = {
   distanceM?: number; // 現在地検索時のみ設定
   latitude: number | null; // 地図表示用（無い場合はピンを打てない）
   longitude: number | null;
-  // 地図ピンのタップ時に表示する参考写真（起点／終点）。今のところkind==="karte"の
-  // 結果にのみ設定される（PC版地図と同じデータ・同じ考え方。lib/map-photos.ts参照）。
+  // 地図ピンのタップ時に表示する参考写真（起点／終点／様式Ａの点検地点位置図）。
+  // 今のところkind==="karte"の結果にのみ設定される（PC版地図と同じデータ・
+  // 同じ考え方。lib/map-photos.ts参照）。formAPhotoUrlは、起点・終点だけでは
+  // 「どういう箇所か」が分かりにくいという指摘を受けて追加した
+  // （会話ログ「起点終点のみでは、どういう箇所なのかわからない」参照）。
   startPhotoUrl?: string;
   endPhotoUrl?: string;
+  formAPhotoUrl?: string;
 };
 
-// kartes配列（karte.findMany結果）に、起点／終点の参考写真URLを付与した
+// kartes配列（karte.findMany結果）に、起点／終点／様式Ａの参考写真URLを付与した
 // MobileSearchResultの配列を作る。searchMobileByText・searchMobileNearby共通の
 // 末尾処理としてまとめている（PC版地図のapp/karte/page.tsxと同じ
-// getStartEndRecordPhotosを再利用。会話ログ「スマホでも、ポイントをタップした際に
-// 関連する画像を表示してください」参照）。
+// getStartEndRecordPhotos・getFormAThumbnailsを再利用。会話ログ「スマホでも、
+// ポイントをタップした際に関連する画像を表示してください」参照）。
 async function attachStartEndPhotos<T extends MobileSearchResult>(
   kartes: T[],
   karteIds: string[]
 ): Promise<T[]> {
   if (karteIds.length === 0) return kartes;
-  const photosByKarteId = await getStartEndRecordPhotos(karteIds);
+  const [photosByKarteId, formAByKarteId] = await Promise.all([
+    getStartEndRecordPhotos(karteIds),
+    getFormAThumbnails(karteIds),
+  ]);
   return kartes.map((k, i) => {
     const photos = photosByKarteId.get(karteIds[i]);
-    return photos ? { ...k, startPhotoUrl: photos.startPhotoUrl, endPhotoUrl: photos.endPhotoUrl } : k;
+    const formAPhotoUrl = formAByKarteId.get(karteIds[i]);
+    return { ...k, startPhotoUrl: photos?.startPhotoUrl, endPhotoUrl: photos?.endPhotoUrl, formAPhotoUrl };
   });
 }
 
