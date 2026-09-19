@@ -10,11 +10,16 @@ export const dynamic = "force-dynamic";
 // 【背景・会話ログより】「ここのヘッダーにお気に入り・閲覧履歴があると、一度
 // 戻ってしまった際にすぐに戻れてよい」との要望への対応。PC版のお気に入り画面
 // （/karte/favorites）はグループ管理・地図・テーブル等リッチな作りだが、
-// お気に入り自体はKarte（防災カルテ）専用のデータモデル（prisma/schema.prisma
-// のFavorite参照）のため、/m側は他の現場向け画面と同じシンプルな一覧
-// （/mの検索結果と同じカードスタイル）だけにしている。
-// PC版へリンクすると画面が崩れる問題（会話ログ参照）を避けるため、
-// 各項目のリンク先は/m/[facilityNo]（現場向け詳細画面）にしている。
+// /m側は他の現場向け画面と同じシンプルな一覧（/mの検索結果と同じカード
+// スタイル）だけにしている。
+//
+// お気に入りは当初Karte（防災カルテ）専用だったが、「お気に入り追加はカルテ
+// のみでは意味がありません。点検調書の項目すべてに適用できるようにして
+// ください」との指摘を受け一般化した（prisma/schema.prismaのFavoriteモデル
+// コメント参照）。門型標識点検調書には現状/m配下の専用画面が無いため、
+// PC版の詳細画面（/inspections/gate-signs/[id]）へリンクする
+// （施設台帳へのリンク等、他の場面でも/mから直接PC版URLへリンクする箇所が
+// 既にあるのと同じ考え方）。
 export default async function MobileFavoritesPage() {
   const favorites = await prisma.favorite.findMany({
     orderBy: { createdAt: "desc" },
@@ -26,6 +31,15 @@ export default async function MobileFavoritesPage() {
           routeName: true,
           locationDistrict: true,
           locationTown: true,
+        },
+      },
+      gateSignInspection: {
+        select: {
+          id: true,
+          managementNo: true,
+          sourceFileName: true,
+          routeName: true,
+          location: true,
         },
       },
     },
@@ -40,26 +54,48 @@ export default async function MobileFavoritesPage() {
 
       {favorites.length === 0 ? (
         <p className="rounded border border-gray-300 bg-white p-6 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
-          お気に入りに登録されたカルテがありません。カルテ詳細画面の☆ボタンから追加できます。
+          お気に入りに登録された調書がありません。カルテや点検調書の詳細画面の☆ボタンから追加できます。
         </p>
       ) : (
         <ul className="space-y-2">
-          {favorites.map(({ karte: k }) => (
-            <li key={k.facilityNo}>
-              <Link
-                href={`/m/${k.facilityNo}`}
-                className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
-              >
-                <p className="font-semibold text-gray-800 dark:text-gray-100">★ {k.facilityNo}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {KARTE_TYPE_LABEL[k.karteType] ?? k.karteType} ・ {k.routeName}
-                </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
-                </p>
-              </Link>
-            </li>
-          ))}
+          {favorites.map((f) => {
+            if (f.karte) {
+              const k = f.karte;
+              return (
+                <li key={`karte-${k.facilityNo}`}>
+                  <Link
+                    href={`/m/${k.facilityNo}`}
+                    className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">★ {k.facilityNo}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {KARTE_TYPE_LABEL[k.karteType] ?? k.karteType} ・ {k.routeName}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {[k.locationDistrict, k.locationTown].filter(Boolean).join(" ")}
+                    </p>
+                  </Link>
+                </li>
+              );
+            }
+            if (f.gateSignInspection) {
+              const g = f.gateSignInspection;
+              const title = g.managementNo ?? g.sourceFileName ?? "（管理番号不明）";
+              return (
+                <li key={`gate-sign-${g.id}`}>
+                  <Link
+                    href={`/inspections/gate-signs/${g.id}`}
+                    className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">門型標識 ・ {g.routeName}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{g.location}</p>
+                  </Link>
+                </li>
+              );
+            }
+            return null;
+          })}
         </ul>
       )}
     </div>

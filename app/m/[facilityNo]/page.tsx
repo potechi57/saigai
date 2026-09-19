@@ -222,8 +222,7 @@ export default async function MobilePhotoPage({
           {[karte.locationDistrict, karte.locationTown].filter(Boolean).join(" ")}
         </p>
         <FavoriteToggleButton
-          karteId={karte.id}
-          karteFacilityNo={karte.facilityNo}
+          target={{ type: "karte", id: karte.id, facilityNo: karte.facilityNo }}
           initialIsFavorite={karte.favorite != null}
         />
       </div>

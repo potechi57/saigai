@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { KARTE_TYPE_LABEL, responseMeta } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
-import type { MapKarte, HomeLocation } from "@/components/MapLoader";
+import type { MapKarte, MapGateSignInspection, HomeLocation } from "@/components/MapLoader";
 import CreateFavoriteGroupForm from "@/components/CreateFavoriteGroupForm";
 import FavoriteGroupsForm from "@/components/FavoriteGroupsForm";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
@@ -16,7 +16,14 @@ export const dynamic = "force-dynamic";
 // お気に入り画面（ヘッダーの「★ お気に入り」から遷移）。
 // 「お気に入りに該当する場所を確認できる」「調書を一覧表示できる」「グルーピングできる」の
 // 3点をこの1画面にまとめている: 上段にグループ管理（作成・絞り込みタブ）、
-// 中段に該当する場所を確認できる地図、下段に調書（カルテ）の一覧テーブルという構成。
+// 中段に該当する場所を確認できる地図、下段に調書の一覧テーブルという構成。
+//
+// 当初は防災カルテ（Karte）専用だったが、「お気に入り追加はカルテのみでは
+// 意味がありません。点検調書の項目すべてに適用できるようにしてください」との
+// 指摘を受け、門型標識点検調書（GateSignInspection）のお気に入りも同じ画面で
+// 確認・グループ分けできるよう一般化した（prisma/schema.prismaのFavoriteモデル
+// コメント参照）。1件のFavoriteはkarte/gateSignInspectionのどちらか一方だけを
+// 持つため、一覧表示・地図表示ともf.karte/f.gateSignInspectionの有無で分岐する。
 export default async function FavoritesPage({
   searchParams,
 }: {
@@ -39,6 +46,12 @@ export default async function FavoritesPage({
             events: { orderBy: { inspectionDate: "desc" }, take: 1, select: { inspectionDate: true } },
           },
         },
+        gateSignInspection: {
+          include: {
+            overviewPhotos: { orderBy: { sortOrder: "asc" } },
+            facilityListItem: { select: { id: true } },
+          },
+        },
         groupItems: { include: { group: true } },
       },
     }),
@@ -55,26 +68,52 @@ export default async function FavoritesPage({
         }
       : null;
 
-  const favoritesWithCoords = favorites.filter((f) => f.karte.latitude != null && f.karte.longitude != null);
+  const karteFavorites = favorites.filter((f) => f.karte != null);
+  const gateSignFavorites = favorites.filter((f) => f.gateSignInspection != null);
+
+  const favoritesWithCoords = karteFavorites.filter((f) => f.karte!.latitude != null && f.karte!.longitude != null);
   // マーカーのポップアップに表示する、起点／終点の参考写真。lib/map-photos.ts参照。
-  const startEndPhotos = await getStartEndRecordPhotos(favoritesWithCoords.map((f) => f.karte.id));
-  const mapKartes: MapKarte[] = favoritesWithCoords.map((f) => ({
-    id: f.karte.id,
-    facilityNo: f.karte.facilityNo,
-    routeName: f.karte.routeName,
-    karteTypeLabel: KARTE_TYPE_LABEL[f.karte.karteType] ?? f.karte.karteType,
-    responseCategory: f.karte.responseCategory,
-    latitude: Number(f.karte.latitude),
-    longitude: Number(f.karte.longitude),
-    isFavorite: true,
-    startPhotoUrl: startEndPhotos.get(f.karte.id)?.startPhotoUrl,
-    endPhotoUrl: startEndPhotos.get(f.karte.id)?.endPhotoUrl,
-    extensionLengthM: f.karte.extensionLengthM != null ? Number(f.karte.extensionLengthM) : null,
-    location: [f.karte.locationDistrict, f.karte.locationTown].filter(Boolean).join(" ") || null,
-    lastInspectionDateLabel: f.karte.events[0]?.inspectionDate
-      ? new Date(f.karte.events[0].inspectionDate).toLocaleDateString("ja-JP")
-      : null,
-  }));
+  const startEndPhotos = await getStartEndRecordPhotos(favoritesWithCoords.map((f) => f.karte!.id));
+  const mapKartes: MapKarte[] = favoritesWithCoords.map((f) => {
+    const k = f.karte!;
+    return {
+      id: k.id,
+      facilityNo: k.facilityNo,
+      routeName: k.routeName,
+      karteTypeLabel: KARTE_TYPE_LABEL[k.karteType] ?? k.karteType,
+      responseCategory: k.responseCategory,
+      latitude: Number(k.latitude),
+      longitude: Number(k.longitude),
+      isFavorite: true,
+      startPhotoUrl: startEndPhotos.get(k.id)?.startPhotoUrl,
+      endPhotoUrl: startEndPhotos.get(k.id)?.endPhotoUrl,
+      extensionLengthM: k.extensionLengthM != null ? Number(k.extensionLengthM) : null,
+      location: [k.locationDistrict, k.locationTown].filter(Boolean).join(" ") || null,
+      lastInspectionDateLabel: k.events[0]?.inspectionDate
+        ? new Date(k.events[0].inspectionDate).toLocaleDateString("ja-JP")
+        : null,
+    };
+  });
+
+  const gateSignFavoritesWithCoords = gateSignFavorites.filter(
+    (f) => f.gateSignInspection!.latitude != null && f.gateSignInspection!.longitude != null
+  );
+  const mapGateSignInspections: MapGateSignInspection[] = gateSignFavoritesWithCoords.map((f) => {
+    const g = f.gateSignInspection!;
+    return {
+      id: g.id,
+      title: g.managementNo ?? g.sourceFileName ?? "（管理番号不明）",
+      routeName: g.routeName,
+      location: g.location,
+      judgment: g.overallJudgment,
+      inspectionDateLabel: g.inspectionDate ? new Date(g.inspectionDate).toLocaleDateString("ja-JP") : null,
+      latitude: Number(g.latitude),
+      longitude: Number(g.longitude),
+      overviewPhotos: g.overviewPhotos.map((p) => ({ url: p.url, caption: p.caption })),
+      facilityListItemId: g.facilityListItem?.id ?? null,
+      isFavorite: true,
+    };
+  });
 
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
   const currentGroupName = groupId ? groups.find((g) => g.id === groupId)?.name : null;
@@ -132,12 +171,12 @@ export default async function FavoritesPage({
       </section>
 
       <section className="h-[420px] overflow-hidden rounded border border-gray-300 dark:border-gray-700">
-        {mapKartes.length === 0 ? (
+        {mapKartes.length === 0 && mapGateSignInspections.length === 0 ? (
           <div className="flex h-full items-center justify-center bg-gray-50 text-sm text-gray-400 dark:bg-gray-900 dark:text-gray-500">
             座標が登録されているお気に入りがありません。
           </div>
         ) : (
-          <MapView kartes={mapKartes} home={home} />
+          <MapView kartes={mapKartes} gateSignInspections={mapGateSignInspections} home={home} />
         )}
       </section>
 
@@ -149,31 +188,71 @@ export default async function FavoritesPage({
         </div>
         {favorites.length === 0 ? (
           <p className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">
-            {groupId ? "このグループにはお気に入りがありません。" : "お気に入りがまだありません。カルテ詳細画面の「☆ お気に入りに追加」から登録できます。"}
+            {groupId ? "このグループにはお気に入りがありません。" : "お気に入りがまだありません。カルテ詳細画面や点検調書詳細画面の「☆ お気に入りに追加」から登録できます。"}
           </p>
         ) : (
           <ul className="divide-y divide-gray-200 dark:divide-gray-700">
             {favorites.map((f) => {
-              const resp = responseMeta(f.karte.responseCategory);
-              return (
-                <li key={f.id} className="space-y-1.5 px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm">
-                      <Link href={`/karte/${f.karte.facilityNo}`} className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
-                        {f.karte.routeName}
-                      </Link>
-                      <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{f.karte.facilityNo}</span>
-                      <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${resp.badgeColor}`}>{resp.label}</span>
+              if (f.karte) {
+                const k = f.karte;
+                const resp = responseMeta(k.responseCategory);
+                return (
+                  <li key={f.id} className="space-y-1.5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <Link href={`/karte/${k.facilityNo}`} className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                          {k.routeName}
+                        </Link>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{k.facilityNo}</span>
+                        <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${resp.badgeColor}`}>{resp.label}</span>
+                      </div>
+                      <FavoriteToggleButton
+                        target={{ type: "karte", id: k.id, facilityNo: k.facilityNo }}
+                        initialIsFavorite
+                      />
                     </div>
-                    <FavoriteToggleButton karteId={f.karte.id} karteFacilityNo={f.karte.facilityNo} initialIsFavorite />
-                  </div>
-                  <FavoriteGroupsForm
-                    favoriteId={f.id}
-                    groups={groupOptions}
-                    selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
-                  />
-                </li>
-              );
+                    <FavoriteGroupsForm
+                      favoriteId={f.id}
+                      groups={groupOptions}
+                      selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
+                    />
+                  </li>
+                );
+              }
+              if (f.gateSignInspection) {
+                const g = f.gateSignInspection;
+                const title = g.managementNo ?? g.sourceFileName ?? "（管理番号不明）";
+                return (
+                  <li key={f.id} className="space-y-1.5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <Link
+                          href={`/inspections/gate-signs/${g.id}`}
+                          className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {title}
+                        </Link>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">門型標識</span>
+                        {g.overallJudgment && (
+                          <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            判定区分 {g.overallJudgment}
+                          </span>
+                        )}
+                      </div>
+                      <FavoriteToggleButton
+                        target={{ type: "gateSignInspection", id: g.id }}
+                        initialIsFavorite
+                      />
+                    </div>
+                    <FavoriteGroupsForm
+                      favoriteId={f.id}
+                      groups={groupOptions}
+                      selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
+                    />
+                  </li>
+                );
+              }
+              return null;
             })}
           </ul>
         )}

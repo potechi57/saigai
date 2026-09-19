@@ -1028,8 +1028,7 @@ export default async function KarteDetailPage({
       </BackLink>
         <div className="flex items-center gap-2">
           <FavoriteToggleButton
-            karteId={karte.id}
-            karteFacilityNo={karte.facilityNo}
+            target={{ type: "karte", id: karte.id, facilityNo: karte.facilityNo }}
             initialIsFavorite={karte.favorite != null}
           />
           <Link

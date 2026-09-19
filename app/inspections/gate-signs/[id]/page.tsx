@@ -9,6 +9,7 @@ import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLi
 import SheetTabs from "@/components/SheetTabs";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 import BackLink from "@/components/BackLink";
+import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
       overviewPhotos: { orderBy: { sortOrder: "asc" } },
       members: { orderBy: { sortOrder: "asc" } },
       facilityListItem: { select: { id: true, managementNo: true, routeName: true, location: true } },
+      favorite: { select: { id: true } },
     },
   });
   if (!insp) notFound();
@@ -156,6 +158,10 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
             判定区分 {insp.overallJudgment}
           </span>
         )}
+        <FavoriteToggleButton
+          target={{ type: "gateSignInspection", id: insp.id }}
+          initialIsFavorite={insp.favorite != null}
+        />
       </div>
       {insp.facilityListItem ? (
         <Link
