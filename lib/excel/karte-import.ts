@@ -298,9 +298,14 @@ export function extractKarte(wb: WorkBook): ExtractedKarte | null {
 //   - "様式Ｂ①"「様式Ｂ②"のように丸数字を直接付ける形式（B3274A090で確認済み。
 //     この形式は括弧が無いため、旧来の正規表現では1件もマッチせず様式Ｂが
 //     一切取り込まれない不具合になっていた）
-// の両方にマッチするようにしている。丸数字はcircledNumberToSeq/seqToCircledNumber
+//   - "様式Ｂ-①"「様式Ｂ-②"のように半角ハイフン＋丸数字を付ける形式
+//     （B1432A070で確認済み。会話ログ「このカルテの様式Bが反映されません」参照。
+//     この形式もハイフンが無い前提の旧正規表現ではマッチせず、様式Ｂが一切
+//     取り込まれないまま、様式Ｃ由来の対象名（resolveTargetName参照）だけが
+//     入った「中身の無い点検対象」が作られてしまっていた）
+// の全てにマッチするようにしている。丸数字はcircledNumberToSeq/seqToCircledNumber
 // と同じ範囲（①〜⑳。実データでは⑥までしか確認していないが余裕を持たせている）。
-const FORM_B_SHEET_PATTERN = /^様式Ｂ(?:\s*\(\d+\)|[①-⑳])?$/;
+const FORM_B_SHEET_PATTERN = /^様式Ｂ(?:\s*\(\d+\)|-?[①-⑳])?$/;
 
 export function findFormBSheetNames(wb: WorkBook): string[] {
   // シート名の前後に余分な空白が付いている実データ（後述のRECORD_PHOTO_SHEET_PATTERN
