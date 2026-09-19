@@ -4,6 +4,7 @@ import ViewHistoryButton from "@/components/ViewHistoryButton";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import HeaderHomeLink from "@/components/HeaderHomeLink";
 import MobileHeaderMenu from "@/components/MobileHeaderMenu";
+import NavigationTracker from "@/components/NavigationTracker";
 
 export const metadata: Metadata = {
   title: "道路施設管理 Web GIS (MVP)",
@@ -74,6 +75,7 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-screen flex-col">
         <ServiceWorkerRegister />
+        <NavigationTracker />
         {/* h-14固定にしているのは、地図中心の検索画面（app/karte/page.tsx）が
             ヘッダー分を差し引いた高さ(h-[calc(100vh-3.5rem)])で地図を敷き詰めるため、
             ヘッダーの実高さを正確に把握できる必要があるため（曖昧なpy-*任せにすると
