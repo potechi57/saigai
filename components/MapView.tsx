@@ -275,27 +275,31 @@ export default function MapView({
       const marker = L.marker([k.latitude, k.longitude], { icon: buildMarkerIcon(meta, favoriteIdsRef.current.has(k.id)) }).addTo(
         layer
       );
-      const distHomeId = `dist-home-${k.id}`;
-      const distCurId = `dist-current-${k.id}`;
       const routeBtnId = `route-btn-${k.id}`;
       const favSlotId = `fav-slot-${k.id}`;
+      // お気に入りボタン・「詳細を見る」リンクは、以前はそれぞれ独立した行として
+      // 一番下にまとめて置いていたが、写真（起点・終点）をユーザー指定の
+      // 320×180pxまで大きくするための縦方向の余白を確保する必要が生じたため
+      // （会話ログ「320×180くらいにはできるのではありませんか」「お気に入り
+      // 追加や、道路距離や、詳細を見るの位置を上に持ってくるなどの手段を
+      // とれば」参照）、見出し行（路線名）と同じ行に詰め、専用の行を無くした。
+      // 同様に、ホーム/現在地からの距離表示・道路距離ボタンも3行に分かれて
+      // いたものを1行（statusLineId）にまとめている。
+      const statusLineId = `status-line-${k.id}`;
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
-           <div style="font-weight:600;">${escapeHtml(k.routeName)}</div>
+           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+             <div style="font-weight:600;">${escapeHtml(k.routeName)}</div>
+             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+               <span id="${favSlotId}"></span>
+               <a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
+             </div>
+           </div>
            <div style="color:#666;">${escapeHtml(k.facilityNo)} ・ ${escapeHtml(k.karteTypeLabel)}</div>
-           <div style="margin-top:6px;color:#374151;">所在地: ${escapeHtml(k.location || "—")}</div>
-           <div style="color:#374151;">延長: ${k.extensionLengthM != null ? `${k.extensionLengthM} m` : "—"}</div>
-           <div style="color:#374151;">緯度経度: ${k.latitude}, ${k.longitude}</div>
-           <div style="margin-top:4px;">対応区分: ${escapeHtml(meta.label)}</div>
-           <div style="color:#374151;">最終点検日時: ${escapeHtml(k.lastInspectionDateLabel || "—")}</div>
+           <div style="margin-top:6px;color:#374151;">所在地: ${escapeHtml(k.location || "—")}（${k.latitude}, ${k.longitude}）</div>
+           <div style="margin-top:4px;color:#374151;">延長: ${k.extensionLengthM != null ? `${k.extensionLengthM} m` : "—"} ・ 対応区分: ${escapeHtml(meta.label)} ・ 最終点検日時: ${escapeHtml(k.lastInspectionDateLabel || "—")}</div>
            ${buildKartePhotosHtml(k)}
-           <div id="${favSlotId}" style="margin-top:6px;"></div>
-           <div id="${distHomeId}" style="margin-top:6px;color:#374151;font-size:12px;"></div>
-           <div id="${distCurId}" style="color:#374151;font-size:12px;"></div>
-           <button id="${routeBtnId}" type="button" style="margin-top:4px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">
-             道路距離を調べる（試験的）
-           </button>
-           <div style="margin-top:6px;"><a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;">詳細を見る →</a></div>
+           <div id="${statusLineId}" style="margin-top:6px;color:#374151;font-size:12px;"></div>
          </div>`,
         // maxWidthは、起点/終点サムネイル（下記buildKartePhotosHtml、各
         // START_END_WIDTH_PX）を2枚横に並べても余裕がある幅にしている。
@@ -316,55 +320,56 @@ export default function MapView({
 
       // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離・
       // お気に入りの状態を埋め込む（常時計算・表示しないことで地図上の情報量を絞る）。
+      // ホーム距離・現在地距離・道路距離ボタンは、以前は3行に分けていたが、
+      // 上記の理由（写真拡大の余白確保）により1行（statusLineId）にまとめている。
       marker.on("popupopen", () => {
-        const homeEl = document.getElementById(distHomeId);
-        if (homeEl) {
-          const h = homeRef.current;
-          homeEl.textContent = h
-            ? `🏠 ホームから ${formatDistanceMeters(
-                haversineDistanceMeters(h.latitude, h.longitude, k.latitude, k.longitude)
-              )}（直線距離）`
-            : "🏠 ホーム位置が未設定です";
-        }
-        const curEl = document.getElementById(distCurId);
-        if (curEl) {
-          const c = currentLocationRef.current;
-          curEl.textContent = c
-            ? `📍 現在地から ${formatDistanceMeters(
-                haversineDistanceMeters(c.lat, c.lng, k.latitude, k.longitude)
-              )}（直線距離）`
-            : "";
-        }
         renderFavSlot(favSlotId, k, marker, meta);
-        const btn = document.getElementById(routeBtnId) as HTMLButtonElement | null;
-        if (btn) {
-          btn.addEventListener(
-            "click",
-            () => {
-              const c = currentLocationRef.current;
-              const h = homeRef.current;
-              const origin = c ?? (h ? { lat: h.latitude, lng: h.longitude } : null);
-              if (!origin) {
-                btn.textContent = "ホーム位置または現在地を先に設定してください";
-                btn.disabled = true;
-                return;
-              }
-              btn.textContent = "取得中...";
-              btn.disabled = true;
-              fetchRoadRouteDistance(origin.lat, origin.lng, k.latitude, k.longitude).then((result) => {
-                if (!result.ok) {
-                  btn.textContent = `取得失敗（${result.error}）`;
-                  btn.disabled = false;
+        const statusEl = document.getElementById(statusLineId);
+        if (statusEl) {
+          const h = homeRef.current;
+          const c = currentLocationRef.current;
+          const homeText = h
+            ? `🏠 ホームから${formatDistanceMeters(haversineDistanceMeters(h.latitude, h.longitude, k.latitude, k.longitude))}`
+            : "🏠 ホーム未設定";
+          const curText = c
+            ? `📍 現在地から${formatDistanceMeters(haversineDistanceMeters(c.lat, c.lng, k.latitude, k.longitude))}`
+            : "";
+          statusEl.innerHTML = [
+            escapeHtml(homeText),
+            curText ? escapeHtml(curText) : "",
+            `<button id="${routeBtnId}" type="button" style="color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;font-size:12px;">道路距離を調べる（試験的）</button>`,
+          ]
+            .filter(Boolean)
+            .join(" ・ ");
+
+          const btn = document.getElementById(routeBtnId) as HTMLButtonElement | null;
+          if (btn) {
+            btn.addEventListener(
+              "click",
+              () => {
+                const c2 = currentLocationRef.current;
+                const h2 = homeRef.current;
+                const origin = c2 ?? (h2 ? { lat: h2.latitude, lng: h2.longitude } : null);
+                if (!origin) {
+                  btn.textContent = "ホーム位置または現在地を先に設定してください";
+                  btn.disabled = true;
                   return;
                 }
-                const minutes = Math.round(result.seconds / 60);
-                btn.outerHTML = `<div style="margin-top:4px;color:#374151;font-size:12px;">🚗 道路距離(参考): ${formatDistanceMeters(
-                  result.meters
-                )} ・ 約${minutes}分</div>`;
-              });
-            },
-            { once: true }
-          );
+                btn.textContent = "取得中...";
+                btn.disabled = true;
+                fetchRoadRouteDistance(origin.lat, origin.lng, k.latitude, k.longitude).then((result) => {
+                  if (!result.ok) {
+                    btn.textContent = `取得失敗（${result.error}）`;
+                    btn.disabled = false;
+                    return;
+                  }
+                  const minutes = Math.round(result.seconds / 60);
+                  btn.outerHTML = `<span style="color:#374151;">🚗 ${formatDistanceMeters(result.meters)} ・ 約${minutes}分</span>`;
+                });
+              },
+              { once: true }
+            );
+          }
         }
       });
 
@@ -993,14 +998,17 @@ async function fetchRoadRouteDistance(
 // （会話ログ参照。スマホ版と同じ理由）、様式Ａの合成画像を起点・終点の
 // 上に追加した。一度は全体を1.2倍（450→540px・253→304px）に拡大したが、
 // 「思いのほか大きくなっている・縦スクロールバーが出ないサイズにしたい」
-// との指摘を受け、様式Ａより優先して起点・終点側を縮小した
-// （会話ログ「どちらかといえば、起終点写真を小さくしてください」参照）。
-// 様式Ａ（メインの参考画像）は情報量を保つためやや大きめのまま残し、
-// 起点・終点（あくまで補助的な参考写真）はサムネイル程度まで縮小している。
+// との指摘を受けて起点・終点側を160×90pxまで縮小したところ、今度は
+// 「小さすぎる」との指摘を受けた（会話ログ「320×180くらいにはできる
+// のではありませんか」参照）。320×180pxに戻す一方で、スクロールバーを
+// 出さないため、写真以外のテキスト情報側（お気に入りボタン・詳細リンク・
+// ホーム/現在地からの距離・道路距離ボタン）を上のbindPopup側で1行〜見出し行に
+// 詰め、縦方向の余白を確保している（会話ログ「お気に入り追加や、道路距離や、
+// 詳細を見るの位置を上に持ってくるなどの手段をとれば」参照）。
 const FORM_A_WIDTH_PX = 400;
 const FORM_A_HEIGHT_PX = 225; // 16:9
-const START_END_WIDTH_PX = 160;
-const START_END_HEIGHT_PX = 90; // 16:9
+const START_END_WIDTH_PX = 320;
+const START_END_HEIGHT_PX = 180; // 16:9
 
 function buildKartePhotosHtml(k: MapKarte): string {
   if (!k.startPhotoUrl && !k.endPhotoUrl && !k.formAPhotoUrl) return "";
