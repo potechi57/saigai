@@ -999,33 +999,60 @@ async function fetchRoadRouteDistance(
 // 上に追加した。一度は全体を1.2倍（450→540px・253→304px）に拡大したが、
 // 「思いのほか大きくなっている・縦スクロールバーが出ないサイズにしたい」
 // との指摘を受けて起点・終点側を160×90pxまで縮小したところ、今度は
-// 「小さすぎる」との指摘を受けた（会話ログ「320×180くらいにはできる
-// のではありませんか」参照）。320×180pxに戻す一方で、スクロールバーを
-// 出さないため、写真以外のテキスト情報側（お気に入りボタン・詳細リンク・
-// ホーム/現在地からの距離・道路距離ボタン）を上のbindPopup側で1行〜見出し行に
-// 詰め、縦方向の余白を確保している（会話ログ「お気に入り追加や、道路距離や、
-// 詳細を見るの位置を上に持ってくるなどの手段をとれば」参照）。
-const FORM_A_WIDTH_PX = 400;
-const FORM_A_HEIGHT_PX = 225; // 16:9
+// 「小さすぎる」との指摘を受け320×180pxまで戻した（会話ログ参照）。
+// さらに「様式Aの画像を600に拡大し、中央揃えにしてください。縦スクロール
+// が出ない状態でです」との指摘を受けたが、様式Ａ側を単純に16:9のまま幅だけ
+// 600pxに拡大すると高さも338pxまで伸びてしまい、テキスト情報側をこれ以上
+// 詰めても縦スクロールを避けられない。
+//
+// 様式Ａの合成画像は実際には「横長」（点検地点位置図欄（C8:BI26）そのものの
+// 見た目の縦横比。app/karte/[karteNo]/page.tsxの「合成画像は横長になりがちで、
+// 横幅を増やしても高さはあまり伸びない」という既存コメント参照）であり、
+// 起点・終点の普通の写真と違って16:9に強制する必然性は無い。そのため、
+// 高さを画像の実寸に完全に追従させる（height:auto）方式も検討したが、
+// これは採用しなかった。理由は、Leafletのポップアップは画像の読み込み前に
+// 一度レイアウトを確定し、画像読み込み完了後の再レイアウト時にはmaxHeight
+// による自動スクロール化が正しく効かないことを確認したため（実際に検証用の
+// ダミー画像でheight:autoを試したところ、内容が画面高を超えてもスクロール
+// バーが出ないまま画面外にはみ出す＝以前修正した「見切れる」不具合が
+// 再発する動作を確認した）。
+//
+// 代わりに、高さは以前と同じ225pxに固定したまま幅だけ600pxに拡大し、
+// object-fit:containで画像全体を（切り抜かずに）中に収める方式にした。
+// 想定どおり横長な画像であれば600×225の枠内にほぼ収まり、想定より横長で
+// なかった場合も上下に余白ができるだけで、切り抜き（見切れ）にはならない。
+// 高さを変えていないため、以前検証済みの「起点・終点320×180pxと合わせて
+// 縦スクロールが出ない」状態はそのまま維持される。中央揃えは、外側コンテナに
+// align-items:centerを指定することで実現している（起点・終点の横並び行より
+// 様式Ａの方が横幅が狭いため、指定しないと左寄せになってしまうため）。
+const FORM_A_WIDTH_PX = 600;
+const FORM_A_HEIGHT_PX = 225; // 拡大前と同じ高さのまま据え置き（理由は上記コメント参照）
 const START_END_WIDTH_PX = 320;
-const START_END_HEIGHT_PX = 180; // 16:9
+const START_END_HEIGHT_PX = 180; // 16:9（普通の写真のため、様式Ａと異なりcoverで問題ない）
 
 function buildKartePhotosHtml(k: MapKarte): string {
   if (!k.startPhotoUrl && !k.endPhotoUrl && !k.formAPhotoUrl) return "";
-  const thumb = (url: string, label: string, widthPx: number, heightPx: number) => `
+  const formAThumb = (url: string, label: string) => `
+    <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;display:block;">
+      <div style="width:${FORM_A_WIDTH_PX}px;height:${FORM_A_HEIGHT_PX}px;border-radius:4px;border:1px solid #d1d5db;background:#f9fafb;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+        <img src="${escapeHtml(url)}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;" />
+      </div>
+      <span style="font-size:12px;color:#6b7280;">${escapeHtml(label)}</span>
+    </a>`;
+  const startEndThumb = (url: string, label: string) => `
     <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;flex-shrink:0;">
-      <img src="${escapeHtml(url)}" style="width:${widthPx}px;max-width:${widthPx}px;height:${heightPx}px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      <img src="${escapeHtml(url)}" style="width:${START_END_WIDTH_PX}px;max-width:${START_END_WIDTH_PX}px;height:${START_END_HEIGHT_PX}px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
       <span style="font-size:12px;color:#6b7280;">${escapeHtml(label)}</span>
     </a>`;
   // flex-wrapを付けると、Leafletがポップアップ幅を決める際の計測パスで
   // （maxWidthが十分大きくても）2枚が縦に折り返されてしまうため、
   // 明示的にnowrapにして横並びを強制する（画面が狭い場合はポップアップが
   // 画面からはみ出す方向になるが、Leafletが地図を自動でパンして対応する）。
-  return `<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">
-      ${k.formAPhotoUrl ? thumb(k.formAPhotoUrl, "点検地点位置図（様式Ａ）", FORM_A_WIDTH_PX, FORM_A_HEIGHT_PX) : ""}
+  return `<div style="margin-top:6px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+      ${k.formAPhotoUrl ? formAThumb(k.formAPhotoUrl, "点検地点位置図（様式Ａ）") : ""}
       <div style="display:flex;gap:8px;flex-wrap:nowrap;">
-        ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点", START_END_WIDTH_PX, START_END_HEIGHT_PX) : ""}
-        ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点", START_END_WIDTH_PX, START_END_HEIGHT_PX) : ""}
+        ${k.startPhotoUrl ? startEndThumb(k.startPhotoUrl, "起点") : ""}
+        ${k.endPhotoUrl ? startEndThumb(k.endPhotoUrl, "終点") : ""}
       </div>
     </div>`;
 }
