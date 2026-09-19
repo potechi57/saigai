@@ -7,7 +7,7 @@ import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType, FACI
 import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSignInspection } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
-import { getStartEndRecordPhotos } from "@/lib/map-photos";
+import { getStartEndRecordPhotos, getFormAThumbnails } from "@/lib/map-photos";
 import { buildInspectionCommonConditions } from "@/lib/inspection-search";
 import {
   getKarteRouteNameOptions,
@@ -730,8 +730,12 @@ export default async function KarteListPage({
   // （地図だけ別条件になってしまっていた従来の問題を防ぐ）。
   const kartesWithCoords = kartes.filter((k) => k.latitude != null && k.longitude != null);
   // マーカーのポップアップに表示する、起点／終点の参考写真（現状記録写真のうち
-  // キャプションに「起点」「終点」を含むもの）。lib/map-photos.ts参照。
-  const startEndPhotos = await getStartEndRecordPhotos(kartesWithCoords.map((k) => k.id));
+  // キャプションに「起点」「終点」を含むもの）・様式Ａの点検地点位置図の合成画像。
+  // lib/map-photos.ts参照。
+  const [startEndPhotos, formAThumbnails] = await Promise.all([
+    getStartEndRecordPhotos(kartesWithCoords.map((k) => k.id)),
+    getFormAThumbnails(kartesWithCoords.map((k) => k.id)),
+  ]);
   const mapKartes: MapKarte[] = kartesWithCoords.map((k) => ({
     id: k.id,
     facilityNo: k.facilityNo,
@@ -745,6 +749,7 @@ export default async function KarteListPage({
     isFavorite: k.favorite != null,
     startPhotoUrl: startEndPhotos.get(k.id)?.startPhotoUrl,
     endPhotoUrl: startEndPhotos.get(k.id)?.endPhotoUrl,
+    formAPhotoUrl: formAThumbnails.get(k.id),
     extensionLengthM: k.extensionLengthM != null ? Number(k.extensionLengthM) : null,
     location: [k.locationDistrict, k.locationTown].filter(Boolean).join(" ") || null,
     lastInspectionDateLabel: k.events[0]?.inspectionDate

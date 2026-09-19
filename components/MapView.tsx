@@ -24,6 +24,11 @@ export type MapKarte = {
   // 無ければ単に表示しない。
   startPhotoUrl?: string;
   endPhotoUrl?: string;
+  // 様式Ａ（点検地点位置図）の合成画像。起点・終点の写真だけでは「どういう
+  // 箇所なのか」が分かりにくいという指摘を受けて追加した（会話ログ
+  // 「PC版も様式Aの画像を表示してほしいです」参照。lib/map-photos.tsの
+  // getFormAThumbnails参照）。
+  formAPhotoUrl?: string;
   // ポップアップに表示する追加情報（いずれも無ければ「—」扱いで表示を省略）。
   extensionLengthM?: number | null; // 延長(m)
   location?: string | null; // 所在地（locationDistrict + locationTownを結合済みの文字列）
@@ -270,7 +275,7 @@ export default function MapView({
            <div style="color:#374151;">緯度経度: ${k.latitude}, ${k.longitude}</div>
            <div style="margin-top:4px;">対応区分: ${escapeHtml(meta.label)}</div>
            <div style="color:#374151;">最終点検日時: ${escapeHtml(k.lastInspectionDateLabel || "—")}</div>
-           ${buildStartEndPhotosHtml(k)}
+           ${buildKartePhotosHtml(k)}
            <div id="${favSlotId}" style="margin-top:6px;"></div>
            <div id="${distHomeId}" style="margin-top:6px;color:#374151;font-size:12px;"></div>
            <div id="${distCurId}" style="color:#374151;font-size:12px;"></div>
@@ -279,12 +284,19 @@ export default function MapView({
            </button>
            <div style="margin-top:6px;"><a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;">詳細を見る →</a></div>
          </div>`,
-        // 起点/終点サムネイル（下記buildStartEndPhotosHtml、各450px）を2枚横に
-        // 並べられるだけの幅を確保している（450*2+間隔+余白）。Leaflet既定の
-        // ポップアップ幅（300px）よりかなり広いが、技術的な制約は無い
-        // （幅が画面に収まらない場合はLeafletが地図を自動でパンして調整する。
-        // 極端に狭い画面では窮屈になりうる点は既知のトレードオフ）。
-        { maxWidth: 1000 }
+        // 起点/終点サムネイル（下記buildKartePhotosHtml、各540px＝450*1.2）を
+        // 2枚横に並べられるだけの幅を確保している（540*2+間隔+余白）。
+        // maxHeightは、写真（様式Ａ＋起点＋終点）とテキスト情報を全部足すと
+        // ポップアップがかなり縦長になり、画面の高さより高くなる場合に
+        // ボックスが画面からはみ出して見切れてしまう不具合があったため設定した
+        // （会話ログ「スポットをクリックしたときに、この白いボックスが
+        // 見切れることがあります」参照）。maxHeightを指定すると、Leafletが
+        // ポップアップ内側を自動的にスクロール可能にしてくれる
+        // （.leaflet-popup-content-wrapper側でoverflow-y:autoが効く）ため、
+        // 画面からはみ出す代わりに、ポップアップ内をスクロールして続きを
+        // 見られるようになる。画面の高さそのものに追従させるため、
+        // ウィンドウ高さから見出し等の余白を引いた値にする。
+        { maxWidth: 1200, maxHeight: Math.max(300, window.innerHeight - 160) }
       );
 
       // ポップアップを開いた＝この地点を選択した瞬間に、ホーム/現在地からの直線距離・
@@ -956,27 +968,38 @@ async function fetchRoadRouteDistance(
   }
 }
 
-// 起点／終点の参考写真を、ポップアップ内のサムネイルとして組み立てる。
-// 様式Ｂの写真（PhotoSlot、aspect-video＝16:9）と同じ縦横比のまま、
-// 幅450px（高さ253px）で表示する。ポップアップ自体の幅を1000pxまで
-// 広げている（bindPopupのmaxWidth）ため、2枚を横に並べて表示できる
-// （flex-wrapにより、画面が狭く収まらない場合は自動的に縦積みに折り返す）。
-// クリックすると元画像を別タブで開ける（拡大して詳しく見たい場合のため）。
-// どちらも無ければ何も表示しない。
-function buildStartEndPhotosHtml(k: MapKarte): string {
-  if (!k.startPhotoUrl && !k.endPhotoUrl) return "";
+// 起点／終点／様式Ａ（点検地点位置図）の参考写真を、ポップアップ内の
+// サムネイルとして組み立てる。様式Ｂの写真（PhotoSlot、aspect-video＝16:9）と
+// 同じ縦横比のまま表示する。クリックすると元画像を別タブで開ける
+// （拡大して詳しく見たい場合のため）。3枚とも無ければ何も表示しない。
+//
+// 【経緯】当初は起点・終点の2枚（各450×253px）だけを横並びにしていたが、
+// 「起点終点のみでは、どういう箇所なのかわからない」との指摘を受け
+// （会話ログ参照。スマホ版と同じ理由）、様式Ａの合成画像を起点・終点の
+// 上に追加した。あわせて、ボックス全体を1.2倍（450→540px・253→304px）に
+// 拡大した（会話ログ「このボックスを横幅は1.2倍程度大きくして」参照）。
+// 様式Ａは起点・終点と違い単独（ペアがない）ため、幅は起点・終点の1枚と
+// 揃えて540px（2枚並べた合計幅まで広げると612px分の縦幅を取り過ぎるため）。
+const THUMB_WIDTH_PX = 540; // 450 * 1.2
+const THUMB_HEIGHT_PX = 304; // 253 * 1.2（16:9を維持）
+
+function buildKartePhotosHtml(k: MapKarte): string {
+  if (!k.startPhotoUrl && !k.endPhotoUrl && !k.formAPhotoUrl) return "";
   const thumb = (url: string, label: string) => `
     <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;flex-shrink:0;">
-      <img src="${escapeHtml(url)}" style="width:450px;max-width:450px;height:253px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      <img src="${escapeHtml(url)}" style="width:${THUMB_WIDTH_PX}px;max-width:${THUMB_WIDTH_PX}px;height:${THUMB_HEIGHT_PX}px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
       <span style="font-size:12px;color:#6b7280;">${escapeHtml(label)}</span>
     </a>`;
   // flex-wrapを付けると、Leafletがポップアップ幅を決める際の計測パスで
   // （maxWidthが十分大きくても）2枚が縦に折り返されてしまうため、
   // 明示的にnowrapにして横並びを強制する（画面が狭い場合はポップアップが
   // 画面からはみ出す方向になるが、Leafletが地図を自動でパンして対応する）。
-  return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
-      ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
-      ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
+  return `<div style="margin-top:6px;display:flex;flex-direction:column;gap:8px;">
+      ${k.formAPhotoUrl ? thumb(k.formAPhotoUrl, "点検地点位置図（様式Ａ）") : ""}
+      <div style="display:flex;gap:8px;flex-wrap:nowrap;">
+        ${k.startPhotoUrl ? thumb(k.startPhotoUrl, "起点") : ""}
+        ${k.endPhotoUrl ? thumb(k.endPhotoUrl, "終点") : ""}
+      </div>
     </div>`;
 }
 
