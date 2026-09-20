@@ -6,7 +6,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { RESPONSE_META, responseMeta, formatFacilityType, facilityLedgerDisplayName } from "@/lib/labels";
 import { facilityTaxonomyEmoji } from "@/lib/facility-taxonomy";
-import { haversineDistanceMeters, formatDistanceMeters } from "@/lib/geo";
+import { haversineDistanceMeters, formatDistanceMeters, formatLatLngDms } from "@/lib/geo";
 import { setHomeLocation, clearHomeLocation } from "@/lib/actions/settings-actions";
 import { setFavorite } from "@/lib/actions/favorite-actions";
 
@@ -311,7 +311,7 @@ export default function MapView({
              </div>
            </div>
            <div style="color:#374151;">路線名: ${escapeHtml(k.routeName)} ・ 防災種別: ${escapeHtml(k.karteTypeLabel)}</div>
-           <div style="margin-top:6px;color:#374151;">所在地: ${escapeHtml(k.location || "—")}（${k.latitude}, ${k.longitude}）</div>
+           <div style="margin-top:6px;color:#374151;">所在地: ${escapeHtml(k.location || "—")}（${escapeHtml(formatLatLngDms(k.latitude, k.longitude))}）</div>
            <div style="margin-top:4px;color:#374151;">延長: ${k.extensionLengthM != null ? `${k.extensionLengthM} m` : "—"} ・ 対応区分: ${escapeHtml(meta.label)} ・ 最終点検日時: ${escapeHtml(k.lastInspectionDateLabel || "—")}</div>
            ${buildKartePhotosHtml(k)}
            <div id="${statusLineId}" style="margin-top:6px;color:#374151;font-size:12px;"></div>

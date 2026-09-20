@@ -10,6 +10,7 @@ import SheetTabs from "@/components/SheetTabs";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 import RecordViewHistory from "@/components/RecordViewHistory";
 import { karteRouteDisplayName } from "@/lib/karte-route-classification";
+import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
 
 // 一覧画面と同じ理由で静的プリレンダリングを無効化する。
@@ -153,7 +154,9 @@ export default async function KarteDetailPage({
         <HeaderItem label="現道・旧道区分">{karte.roadStatus ? ROAD_STATUS_LABEL[karte.roadStatus] : "—"}</HeaderItem>
         <HeaderItem label="所在地">{[karte.locationDistrict, karte.locationTown].filter(Boolean).join(" ") || "—"}</HeaderItem>
         <HeaderItem label="北緯・東経">
-          {karte.latitude && karte.longitude ? `${karte.latitude}, ${karte.longitude}` : "—"}
+          {karte.latitude && karte.longitude
+            ? formatLatLngDms(Number(karte.latitude), Number(karte.longitude))
+            : "—"}
         </HeaderItem>
         <HeaderItem label="測地系">{karte.geodeticSystem ? GEODETIC_LABEL[karte.geodeticSystem] : "—"}</HeaderItem>
         <HeaderItem label="事前通行規制区間指定">{yesNo(karte.preTrafficRestriction)}</HeaderItem>

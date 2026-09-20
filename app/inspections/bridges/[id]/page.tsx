@@ -8,6 +8,7 @@ import RecordViewHistory from "@/components/RecordViewHistory";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import SheetTabs from "@/components/SheetTabs";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
+import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +74,11 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
         <Field label="径間数" value={insp.spanCount != null ? String(insp.spanCount) : null} />
         <Field
           label="緯度経度"
-          value={insp.latitude != null && insp.longitude != null ? `${insp.latitude}, ${insp.longitude}` : null}
+          value={
+            insp.latitude != null && insp.longitude != null
+              ? formatLatLngDms(Number(insp.latitude), Number(insp.longitude))
+              : null
+          }
         />
         <Field
           label="点検日"

@@ -8,6 +8,7 @@ import SheetTabs from "@/components/SheetTabs";
 import ExcelSheetGrid from "@/components/ExcelSheetGrid";
 import type { ExtractedGrid } from "@/lib/excel/excel-grid-extract";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
+import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
@@ -63,7 +64,11 @@ export default async function BridgeLedgerDetailPage({ params }: { params: Promi
             </div>
             <Field
               label="緯度経度"
-              value={bridge.latitude != null && bridge.longitude != null ? `${bridge.latitude}, ${bridge.longitude}` : null}
+              value={
+                bridge.latitude != null && bridge.longitude != null
+                  ? formatLatLngDms(Number(bridge.latitude), Number(bridge.longitude))
+                  : null
+              }
             />
           </dl>
         </div>
