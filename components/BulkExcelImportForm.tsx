@@ -106,9 +106,10 @@ export default function BulkExcelImportForm() {
                             onClick={() => removeQueuedFile(f.id)}
                             title="このファイルを取りやめる"
                             aria-label={`${f.file.name}を取りやめる`}
-                            className="text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
+                            className="flex items-center gap-0.5 whitespace-nowrap text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
                           >
-                            ×
+                            <span aria-hidden="true">×</span>
+                            キャンセル
                           </button>
                         )}
                       </td>

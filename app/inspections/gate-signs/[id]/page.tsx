@@ -74,13 +74,17 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   // その内容が表示されているようですが、エクセルと同じように項目の下にその
   // 内容を表示する形にしてほしい」参照。以前はTh/Tdを同じ行に横並びさせていた）。
   // 表の横幅は4ユニット固定（1ユニット=ラベル+値のペア1組分）で統一し、
-  // フィールド数が4に満たないグループは末尾のセルのcolSpanで埋めている。
+  // フィールド数が4に満たないグループは末尾のセルのcolSpanで埋めている
+  // （施設名・形式・路線名・所在地・緯度経度の行だけは5ユニット。緯度経度は
+  // Excel上は別行だが、1項目だけのために2行使うのは間に合わないとのことで
+  // 所在地の隣に並べている。会話ログ「緯度経度のために２行分をつかうのは
+  // もったいないです。所在地のとなりにおいてはいかがでしょうか」参照）。
   //
   // 【行の対応関係（Excel行番号は1始まり）】
   //   行4/6: 施設名・形式・路線名・所在地
-  //   IMS設定シート由来: 緯度経度（Excel上は行4-5に度分秒で直書きされているが、
-  //          DB側は10進度で保持しているため、lib/geo.tsのformatLatLngDmsで
-  //          度分秒表記に戻して表示する。他の画面と同じ方式）
+  //   （+IMS設定シート由来の緯度経度。Excel上は行4-5に度分秒で直書きされて
+  //          いるが、DB側は10進度で保持しているため、lib/geo.tsの
+  //          formatLatLngDmsで度分秒表記に戻して表示する。他の画面と同じ方式）
   //   行8/9: 定期点検実施年月日・定期点検者・記録者・管理者名
   //   行10/11: 代替路の有無・緊急輸送道路・自専道or一般道・占用物件
   //   行13-20: 部材単位の健全性の診断（支柱・横梁・標識板または道路情報板・
@@ -107,6 +111,7 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
             <Th>形式</Th>
             <Th>路線名</Th>
             <Th>所在地</Th>
+            <Th>緯度経度</Th>
           </tr>
           <tr>
             <Td>{insp.facilityName || "—"}</Td>
@@ -126,13 +131,7 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
               )}
             </Td>
             <Td>{insp.location || "—"}</Td>
-          </tr>
-
-          <tr>
-            <Th colSpan={4}>緯度経度</Th>
-          </tr>
-          <tr>
-            <Td colSpan={4}>
+            <Td>
               {insp.latitude != null && insp.longitude != null
                 ? formatLatLngDms(Number(insp.latitude), Number(insp.longitude))
                 : "—"}
