@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { KARTE_TYPE_LABEL, responseMeta } from "@/lib/labels";
+import { KARTE_TYPE_LABEL, JUDGMENT_BADGE, responseMeta, FACILITY_LEDGER_DOC_CLASS_LABEL, facilityLedgerDisplayName, formatFacilityType } from "@/lib/labels";
 import MapView from "@/components/MapLoader";
-import type { MapKarte, MapGateSignInspection, HomeLocation } from "@/components/MapLoader";
+import type {
+  MapKarte,
+  MapGateSignInspection,
+  MapBridgeInspection,
+  MapBridgeLedgerRecord,
+  MapLedger,
+  HomeLocation,
+} from "@/components/MapLoader";
 import CreateFavoriteGroupForm from "@/components/CreateFavoriteGroupForm";
 import FavoriteGroupsForm from "@/components/FavoriteGroupsForm";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
@@ -20,10 +27,10 @@ export const dynamic = "force-dynamic";
 //
 // 当初は防災カルテ（Karte）専用だったが、「お気に入り追加はカルテのみでは
 // 意味がありません。点検調書の項目すべてに適用できるようにしてください」との
-// 指摘を受け、門型標識点検調書（GateSignInspection）のお気に入りも同じ画面で
-// 確認・グループ分けできるよう一般化した（prisma/schema.prismaのFavoriteモデル
-// コメント参照）。1件のFavoriteはkarte/gateSignInspectionのどちらか一方だけを
-// 持つため、一覧表示・地図表示ともf.karte/f.gateSignInspectionの有無で分岐する。
+// 指摘を受け、点検調書（門型標識・橋梁）・台帳（橋梁台帳・法令/施設台帳）の
+// お気に入りも同じ画面で確認・グループ分けできるよう一般化した
+// （prisma/schema.prismaのFavoriteモデルコメント参照）。1件のFavoriteはこれら
+// 5種のうちどれか1つだけを持つため、一覧表示・地図表示ともf.karte等の有無で分岐する。
 export default async function FavoritesPage({
   searchParams,
 }: {
@@ -52,6 +59,18 @@ export default async function FavoritesPage({
             facilityListItem: { select: { id: true } },
           },
         },
+        bridgeInspection: {
+          include: {
+            photos: { where: { category: "overview" }, orderBy: { sortOrder: "asc" } },
+            facilityListItem: { select: { id: true } },
+          },
+        },
+        bridgeLedger: {
+          include: { facilityListItem: { select: { id: true } } },
+        },
+        facilityLedger: {
+          include: { images: { orderBy: { sortOrder: "asc" } } },
+        },
         groupItems: { include: { group: true } },
       },
     }),
@@ -70,6 +89,9 @@ export default async function FavoritesPage({
 
   const karteFavorites = favorites.filter((f) => f.karte != null);
   const gateSignFavorites = favorites.filter((f) => f.gateSignInspection != null);
+  const bridgeInspectionFavorites = favorites.filter((f) => f.bridgeInspection != null);
+  const bridgeLedgerFavorites = favorites.filter((f) => f.bridgeLedger != null);
+  const facilityLedgerFavorites = favorites.filter((f) => f.facilityLedger != null);
 
   const favoritesWithCoords = karteFavorites.filter((f) => f.karte!.latitude != null && f.karte!.longitude != null);
   // マーカーのポップアップに表示する、起点／終点の参考写真。lib/map-photos.ts参照。
@@ -114,6 +136,74 @@ export default async function FavoritesPage({
       isFavorite: true,
     };
   });
+
+  const bridgeInspectionFavoritesWithCoords = bridgeInspectionFavorites.filter(
+    (f) => f.bridgeInspection!.latitude != null && f.bridgeInspection!.longitude != null
+  );
+  const mapBridgeInspections: MapBridgeInspection[] = bridgeInspectionFavoritesWithCoords.map((f) => {
+    const b = f.bridgeInspection!;
+    return {
+      id: b.id,
+      title: b.bridgeName ?? b.managementNo ?? b.sourceFileName ?? "（橋梁名不明）",
+      routeName: b.routeName,
+      location: b.location,
+      judgment: b.overallJudgment,
+      inspectionDateLabel: b.inspectionDate ? new Date(b.inspectionDate).toLocaleDateString("ja-JP") : null,
+      latitude: Number(b.latitude),
+      longitude: Number(b.longitude),
+      overviewPhotos: b.photos.map((p) => ({ url: p.url, caption: p.caption })),
+      facilityListItemId: b.facilityListItem?.id ?? null,
+      isFavorite: true,
+    };
+  });
+
+  const bridgeLedgerFavoritesWithCoords = bridgeLedgerFavorites.filter(
+    (f) => f.bridgeLedger!.latitude != null && f.bridgeLedger!.longitude != null
+  );
+  const mapBridgeLedgers: MapBridgeLedgerRecord[] = bridgeLedgerFavoritesWithCoords.map((f) => {
+    const b = f.bridgeLedger!;
+    return {
+      id: b.id,
+      title: b.bridgeName ?? b.managementNo ?? b.sourceFileName ?? "（橋名不明）",
+      routeName: b.routeName,
+      location: b.location,
+      latitude: Number(b.latitude),
+      longitude: Number(b.longitude),
+      facilityListItemId: b.facilityListItem?.id ?? null,
+      isFavorite: true,
+    };
+  });
+
+  const facilityLedgerFavoritesWithCoords = facilityLedgerFavorites.filter(
+    (f) => f.facilityLedger!.latitude != null && f.facilityLedger!.longitude != null
+  );
+  const mapLedgers: MapLedger[] = facilityLedgerFavoritesWithCoords.map((f) => {
+    const l = f.facilityLedger!;
+    return {
+      id: l.id,
+      docClassLabel: FACILITY_LEDGER_DOC_CLASS_LABEL[l.docClass] ?? l.docClass,
+      facilityTypeLabel: formatFacilityType(l.facilityType, l.facilitySubType),
+      facilityType: l.facilityType,
+      facilitySubType: l.facilitySubType,
+      managementNo: l.managementNo,
+      name: l.name,
+      routeName: l.routeName,
+      location: l.location,
+      latitude: Number(l.latitude),
+      longitude: Number(l.longitude),
+      coverImageUrl: l.images[0]?.imageUrl ?? null,
+      imageCount: l.images.length,
+      note: l.note,
+      isFavorite: true,
+    };
+  });
+
+  const hasAnyMapData =
+    mapKartes.length > 0 ||
+    mapGateSignInspections.length > 0 ||
+    mapBridgeInspections.length > 0 ||
+    mapBridgeLedgers.length > 0 ||
+    mapLedgers.length > 0;
 
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
   const currentGroupName = groupId ? groups.find((g) => g.id === groupId)?.name : null;
@@ -171,12 +261,19 @@ export default async function FavoritesPage({
       </section>
 
       <section className="h-[420px] overflow-hidden rounded border border-gray-300 dark:border-gray-700">
-        {mapKartes.length === 0 && mapGateSignInspections.length === 0 ? (
+        {!hasAnyMapData ? (
           <div className="flex h-full items-center justify-center bg-gray-50 text-sm text-gray-400 dark:bg-gray-900 dark:text-gray-500">
             座標が登録されているお気に入りがありません。
           </div>
         ) : (
-          <MapView kartes={mapKartes} gateSignInspections={mapGateSignInspections} home={home} />
+          <MapView
+            kartes={mapKartes}
+            gateSignInspections={mapGateSignInspections}
+            bridgeInspections={mapBridgeInspections}
+            bridgeLedgers={mapBridgeLedgers}
+            ledgers={mapLedgers}
+            home={home}
+          />
         )}
       </section>
 
@@ -188,7 +285,7 @@ export default async function FavoritesPage({
         </div>
         {favorites.length === 0 ? (
           <p className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">
-            {groupId ? "このグループにはお気に入りがありません。" : "お気に入りがまだありません。カルテ詳細画面や点検調書詳細画面の「☆ お気に入りに追加」から登録できます。"}
+            {groupId ? "このグループにはお気に入りがありません。" : "お気に入りがまだありません。カルテ詳細画面や点検調書・台帳詳細画面の「☆ お気に入りに追加」から登録できます。"}
           </p>
         ) : (
           <ul className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -234,13 +331,110 @@ export default async function FavoritesPage({
                         </Link>
                         <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">門型標識</span>
                         {g.overallJudgment && (
-                          <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                          <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[g.overallJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
                             判定区分 {g.overallJudgment}
                           </span>
                         )}
                       </div>
                       <FavoriteToggleButton
                         target={{ type: "gateSignInspection", id: g.id }}
+                        initialIsFavorite
+                      />
+                    </div>
+                    <FavoriteGroupsForm
+                      favoriteId={f.id}
+                      groups={groupOptions}
+                      selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
+                    />
+                  </li>
+                );
+              }
+              if (f.bridgeInspection) {
+                const b = f.bridgeInspection;
+                const title = b.bridgeName ?? b.managementNo ?? b.sourceFileName ?? "（橋梁名不明）";
+                return (
+                  <li key={f.id} className="space-y-1.5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <Link
+                          href={`/inspections/bridges/${b.id}`}
+                          className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {title}
+                        </Link>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">橋梁</span>
+                        {b.overallJudgment && (
+                          <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[b.overallJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
+                            判定区分 {b.overallJudgment}
+                          </span>
+                        )}
+                      </div>
+                      <FavoriteToggleButton
+                        target={{ type: "bridgeInspection", id: b.id }}
+                        initialIsFavorite
+                      />
+                    </div>
+                    <FavoriteGroupsForm
+                      favoriteId={f.id}
+                      groups={groupOptions}
+                      selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
+                    />
+                  </li>
+                );
+              }
+              if (f.bridgeLedger) {
+                const b = f.bridgeLedger;
+                const title = b.bridgeName ?? b.managementNo ?? "（橋名不明）";
+                return (
+                  <li key={f.id} className="space-y-1.5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <Link
+                          href={`/bridge-ledgers/${b.id}`}
+                          className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {title}
+                        </Link>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">橋梁台帳</span>
+                      </div>
+                      <FavoriteToggleButton
+                        target={{ type: "bridgeLedger", id: b.id }}
+                        initialIsFavorite
+                      />
+                    </div>
+                    <FavoriteGroupsForm
+                      favoriteId={f.id}
+                      groups={groupOptions}
+                      selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
+                    />
+                  </li>
+                );
+              }
+              if (f.facilityLedger) {
+                const l = f.facilityLedger;
+                const title = facilityLedgerDisplayName(l.managementNo, l.name);
+                const facilityTypeLabel = formatFacilityType(l.facilityType, l.facilitySubType);
+                return (
+                  <li key={f.id} className="space-y-1.5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <Link
+                          href={`/ledgers/${l.id}`}
+                          className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {title}
+                        </Link>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
+                          {FACILITY_LEDGER_DOC_CLASS_LABEL[l.docClass] ?? l.docClass}
+                        </span>
+                        {facilityTypeLabel && (
+                          <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            {facilityTypeLabel}
+                          </span>
+                        )}
+                      </div>
+                      <FavoriteToggleButton
+                        target={{ type: "facilityLedger", id: l.id }}
                         initialIsFavorite
                       />
                     </div>

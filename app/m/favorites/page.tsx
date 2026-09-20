@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { KARTE_TYPE_LABEL } from "@/lib/labels";
+import { KARTE_TYPE_LABEL, FACILITY_LEDGER_DOC_CLASS_LABEL, facilityLedgerDisplayName } from "@/lib/labels";
 import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
@@ -15,11 +15,11 @@ export const dynamic = "force-dynamic";
 //
 // お気に入りは当初Karte（防災カルテ）専用だったが、「お気に入り追加はカルテ
 // のみでは意味がありません。点検調書の項目すべてに適用できるようにして
-// ください」との指摘を受け一般化した（prisma/schema.prismaのFavoriteモデル
-// コメント参照）。門型標識点検調書には現状/m配下の専用画面が無いため、
-// PC版の詳細画面（/inspections/gate-signs/[id]）へリンクする
-// （施設台帳へのリンク等、他の場面でも/mから直接PC版URLへリンクする箇所が
-// 既にあるのと同じ考え方）。
+// ください」との指摘を受け、点検調書（門型標識・橋梁）・台帳（橋梁台帳・
+// 法令/施設台帳）にも一般化した（prisma/schema.prismaのFavoriteモデル
+// コメント参照）。これらの種別には現状/m配下の専用画面が無いため、
+// PC版の詳細画面へリンクする（施設台帳へのリンク等、他の場面でも/mから
+// 直接PC版URLへリンクする箇所が既にあるのと同じ考え方）。
 export default async function MobileFavoritesPage() {
   const favorites = await prisma.favorite.findMany({
     orderBy: { createdAt: "desc" },
@@ -42,6 +42,35 @@ export default async function MobileFavoritesPage() {
           location: true,
         },
       },
+      bridgeInspection: {
+        select: {
+          id: true,
+          bridgeName: true,
+          managementNo: true,
+          sourceFileName: true,
+          routeName: true,
+          location: true,
+        },
+      },
+      bridgeLedger: {
+        select: {
+          id: true,
+          bridgeName: true,
+          managementNo: true,
+          routeName: true,
+          location: true,
+        },
+      },
+      facilityLedger: {
+        select: {
+          id: true,
+          docClass: true,
+          managementNo: true,
+          name: true,
+          routeName: true,
+          location: true,
+        },
+      },
     },
   });
 
@@ -54,7 +83,7 @@ export default async function MobileFavoritesPage() {
 
       {favorites.length === 0 ? (
         <p className="rounded border border-gray-300 bg-white p-6 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
-          お気に入りに登録された調書がありません。カルテや点検調書の詳細画面の☆ボタンから追加できます。
+          お気に入りに登録された調書がありません。カルテや点検調書・台帳の詳細画面の☆ボタンから追加できます。
         </p>
       ) : (
         <ul className="space-y-2">
@@ -90,6 +119,56 @@ export default async function MobileFavoritesPage() {
                     <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">門型標識 ・ {g.routeName}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">{g.location}</p>
+                  </Link>
+                </li>
+              );
+            }
+            if (f.bridgeInspection) {
+              const b = f.bridgeInspection;
+              const title = b.bridgeName ?? b.managementNo ?? b.sourceFileName ?? "（橋梁名不明）";
+              return (
+                <li key={`bridge-inspection-${b.id}`}>
+                  <Link
+                    href={`/inspections/bridges/${b.id}`}
+                    className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">橋梁 ・ {b.routeName}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{b.location}</p>
+                  </Link>
+                </li>
+              );
+            }
+            if (f.bridgeLedger) {
+              const b = f.bridgeLedger;
+              const title = b.bridgeName ?? b.managementNo ?? "（橋名不明）";
+              return (
+                <li key={`bridge-ledger-${b.id}`}>
+                  <Link
+                    href={`/bridge-ledgers/${b.id}`}
+                    className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">橋梁台帳 ・ {b.routeName}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{b.location}</p>
+                  </Link>
+                </li>
+              );
+            }
+            if (f.facilityLedger) {
+              const l = f.facilityLedger;
+              const title = facilityLedgerDisplayName(l.managementNo, l.name);
+              return (
+                <li key={`facility-ledger-${l.id}`}>
+                  <Link
+                    href={`/ledgers/${l.id}`}
+                    className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {FACILITY_LEDGER_DOC_CLASS_LABEL[l.docClass] ?? l.docClass} ・ {l.routeName}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{l.location}</p>
                   </Link>
                 </li>
               );

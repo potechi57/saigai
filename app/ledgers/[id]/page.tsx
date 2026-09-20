@@ -7,6 +7,7 @@ import FacilityLedgerImageManager from "@/components/FacilityLedgerImageManager"
 import FacilityLedgerEditForm from "@/components/FacilityLedgerEditForm";
 import RecordViewHistory from "@/components/RecordViewHistory";
 import BackLink from "@/components/BackLink";
+import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function FacilityLedgerDetailPage({ params }: { params: Pro
   const { id } = await params;
   const ledger = await prisma.facilityLedger.findUnique({
     where: { id },
-    include: { images: { orderBy: { sortOrder: "asc" } } },
+    include: { images: { orderBy: { sortOrder: "asc" } }, favorite: { select: { id: true } } },
   });
   if (!ledger) notFound();
 
@@ -53,6 +54,10 @@ export default async function FacilityLedgerDetailPage({ params }: { params: Pro
             {facilityTypeLabel}
           </span>
         )}
+        <FavoriteToggleButton
+          target={{ type: "facilityLedger", id: ledger.id }}
+          initialIsFavorite={ledger.favorite != null}
+        />
       </div>
       {ledger.managementNo && ledger.name && ledger.managementNo !== ledger.name && (
         <p className="text-sm text-gray-500 dark:text-gray-400">台帳名: {ledger.name}</p>

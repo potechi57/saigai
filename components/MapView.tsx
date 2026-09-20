@@ -62,6 +62,9 @@ export type MapLedger = {
   coverImageUrl?: string | null; // 代表画像（先頭の1枚）。1枚も無ければnull
   imageCount: number; // ポップアップに「他N枚」等の案内を出すために使う
   note?: string | null;
+  // MapKarte.isFavoriteと同じ理由（お気に入り機能を一般化したことに伴う追加。
+  // 会話ログ「法令台帳・施設台帳：お気に入り対応」参照）。
+  isFavorite?: boolean;
 };
 
 // 「施設一覧」形式のExcel（道路施設の管理台帳の出力）から取り込んだ
@@ -260,6 +263,7 @@ export default function MapView({
   const bridgeLedgerFavoriteIdsRef = useRef<Set<string>>(
     new Set(bridgeLedgers.filter((b) => b.isFavorite).map((b) => b.id))
   );
+  const ledgerFavoriteIdsRef = useRef<Set<string>>(new Set(ledgers.filter((l) => l.isFavorite).map((l) => l.id)));
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -515,16 +519,21 @@ export default function MapView({
     lastLedgerIdsKeyRef.current = idsKey;
 
     layer.clearLayers();
+    ledgerFavoriteIdsRef.current = new Set(ledgers.filter((l) => l.isFavorite).map((l) => l.id));
 
     for (const l of ledgers) {
       const marker = L.marker([l.latitude, l.longitude], {
-        icon: buildLedgerMarkerIcon(l.facilityType, l.facilitySubType),
+        icon: buildLedgerMarkerIcon(l.facilityType, l.facilitySubType, ledgerFavoriteIdsRef.current.has(l.id)),
       }).addTo(layer);
       const displayName = facilityLedgerDisplayName(l.managementNo, l.name);
       const detailHref = `/ledgers/${l.id}`;
+      const favSlotId = `ledger-fav-slot-${l.id}`;
       marker.bindPopup(
         `<div style="font-size:13px;min-width:180px;">
-           <div style="font-weight:600;">${escapeHtml(displayName)}</div>
+           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+             <div style="font-weight:600;">${escapeHtml(displayName)}</div>
+             <span id="${favSlotId}" style="flex-shrink:0;"></span>
+           </div>
            <div style="color:#666;">${escapeHtml(l.docClassLabel)}${l.facilityTypeLabel ? `・${escapeHtml(l.facilityTypeLabel)}` : ""}</div>
            ${l.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(l.routeName)}</div>` : ""}
            ${l.location ? `<div style="color:#374151;">所在地: ${escapeHtml(l.location)}</div>` : ""}
@@ -540,6 +549,39 @@ export default function MapView({
            <div style="margin-top:6px;"><a href="${escapeHtml(detailHref)}" style="color:#2563eb;">この施設の詳細を見る →</a></div>
          </div>`,
         { maxWidth: 400 }
+      );
+
+      marker.on("popupopen", () => renderLedgerFavSlot(favSlotId, l, marker));
+    }
+
+    function renderLedgerFavSlot(slotId: string, l: MapLedger, marker: L.Marker) {
+      const slot = document.getElementById(slotId);
+      if (!slot) return;
+      const isFav = ledgerFavoriteIdsRef.current.has(l.id);
+      const btnId = `ledger-fav-toggle-${l.id}`;
+      slot.innerHTML = isFav
+        ? `<span style="font-size:12px;color:#a16207;">★</span> <button type="button" id="${btnId}" style="margin-left:4px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">外す</button>`
+        : `<button type="button" id="${btnId}" style="font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">☆ お気に入り</button>`;
+      const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+      btn?.addEventListener(
+        "click",
+        () => {
+          const next = !ledgerFavoriteIdsRef.current.has(l.id);
+          btn.disabled = true;
+          btn.textContent = "処理中...";
+          setFavorite({ type: "facilityLedger", id: l.id }, next).then((result) => {
+            if (!result.ok) {
+              btn.disabled = false;
+              btn.textContent = `失敗（${result.error}）`;
+              return;
+            }
+            if (next) ledgerFavoriteIdsRef.current.add(l.id);
+            else ledgerFavoriteIdsRef.current.delete(l.id);
+            marker.setIcon(buildLedgerMarkerIcon(l.facilityType, l.facilitySubType, next));
+            renderLedgerFavSlot(slotId, l, marker);
+          });
+        },
+        { once: true }
       );
     }
   }, [ledgers]);
@@ -1166,17 +1208,24 @@ function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: bool
 // 選べるようになったため（会話ログ参照）、施設一覧と同じfacilityTaxonomyEmoji
 // で絵文字を出し分ける。丸型・紫系の色は変えず、カルテ（しずく型）・
 // 施設一覧（正方形・オレンジ）とは引き続き見た目で区別できるようにしている。
-function buildLedgerMarkerIcon(facilityType: string | null | undefined, facilitySubType: string | null | undefined): L.DivIcon {
+function buildLedgerMarkerIcon(
+  facilityType: string | null | undefined,
+  facilitySubType: string | null | undefined,
+  isFavorite: boolean = false
+): L.DivIcon {
   return L.divIcon({
     className: "",
     html: `<div style="
+        position:relative;
         background:#7c3aed;
         width:26px;height:26px;border-radius:50%;
         border:2px solid white;
         box-shadow:0 1px 3px rgba(0,0,0,0.4);
         display:flex;align-items:center;justify-content:center;
         font-size:14px;
-      ">${facilityTaxonomyEmoji(facilityType, facilitySubType)}</div>`,
+      ">${facilityTaxonomyEmoji(facilityType, facilitySubType)}${
+        isFavorite ? '<span style="position:absolute;top:-8px;right:-6px;font-size:13px;">★</span>' : ""
+      }</div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
     popupAnchor: [0, -13],
