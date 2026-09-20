@@ -17,7 +17,11 @@ const JUDGMENT_BADGE: Record<string, string> = {
 // （FacilityListItem）とは別テーブルだが、管理番号で紐付いている場合は
 // リンクを出す。
 export default async function GateSignInspectionListPage() {
+  // supersededByInspection: null＝年度別履歴チェーンのうち現在有効な最新レコード
+  // のみを一覧に出す（過去年度分はこの一覧には出さない。詳細画面から辿る）。
+  // schema.prismaのGateSignInspection.previousInspectionIdコメント参照。
   const inspections = await prisma.gateSignInspection.findMany({
+    where: { supersededByInspection: { is: null } },
     orderBy: { createdAt: "desc" },
     include: {
       overviewPhotos: { orderBy: { sortOrder: "asc" }, take: 1 },

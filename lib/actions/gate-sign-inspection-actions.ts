@@ -11,11 +11,15 @@ import { logAudit } from "@/lib/audit";
 // 紐付ける。管理番号はExcel内ではなくファイル名から取得する
 // （lib/excel/gate-sign-inspection-import.ts参照）。
 //
-// 再取込時は、同じ管理番号の既存レコードを削除してから作り直す（施設一覧
-// Excelのような「直近点検の上書き」ではなく、詳細点検報告書そのものの
-// 差し替えという性質のため。部材レコード・写真も含めて丸ごと作り直すのが
-// 一番単純で分かりやすい）。管理番号が取得できなかった場合（ファイル名が
-// 想定の形式でない）は毎回新規作成する（重複排除の判断基準が無いため）。
+// 【再取込み時の年度別履歴保存について】以前は同じ管理番号の既存レコードを
+// 削除してから作り直していたが、(1) お気に入り・共有済みURLが無効になる、
+// (2) 前回点検の判定・写真が跡形もなく消え経年比較ができない、という2つの
+// 問題があった（会話ログ「点検調書の再取込みで、IDが変わり、過去のデータが
+// 消える」参照）。そこで、削除せずに新しいレコードを作り、旧レコードの
+// previousInspectionIdに新レコードのidをセットして連鎖させる方式にした
+// （schema.prismaのGateSignInspection.previousInspectionIdコメント参照）。
+// 管理番号が取得できなかった場合（ファイル名が想定の形式でない）は
+// 履歴として連鎖させる基準が無いため、毎回新規（独立した）レコードとして作成する。
 
 function hasBlobCredentials(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN);
@@ -60,21 +64,15 @@ export async function importGateSignInspectionExcel(
     ? await prisma.facilityListItem.findUnique({ where: { managementNo: data.managementNo }, select: { id: true } })
     : null;
 
-  // 同じ管理番号の既存レコードがあれば、写真（Blob）ごと削除してから作り直す
-  // （上記コメント参照）。
-  if (data.managementNo) {
-    const existing = await prisma.gateSignInspection.findFirst({
-      where: { managementNo: data.managementNo },
-      include: { members: { select: { photoUrl: true } }, overviewPhotos: { select: { url: true } } },
-    });
-    if (existing) {
-      await Promise.all([
-        ...existing.members.filter((m) => m.photoUrl).map((m) => del(m.photoUrl as string).catch(() => {})),
-        ...existing.overviewPhotos.map((p) => del(p.url).catch(() => {})),
-      ]);
-      await prisma.gateSignInspection.delete({ where: { id: existing.id } });
-    }
-  }
+  // 同じ管理番号の「現在有効な最新レコード」（supersededByInspectionが無いもの）を
+  // 探す。見つかっても削除はせず、新レコード作成後にpreviousInspectionIdで
+  // つなぐ（上記コメント参照）。
+  const previous = data.managementNo
+    ? await prisma.gateSignInspection.findFirst({
+        where: { managementNo: data.managementNo, supersededByInspection: { is: null } },
+        include: { favorite: { select: { id: true } } },
+      })
+    : null;
 
   const folder = data.managementNo ?? `unmatched-${Date.now()}`;
   async function uploadImage(image: { data: Buffer; ext: string }, sub: string): Promise<string> {
@@ -103,6 +101,7 @@ export async function importGateSignInspectionExcel(
     data: {
       facilityListItemId: facility?.id ?? null,
       managementNo: data.managementNo,
+      previousInspectionId: previous?.id ?? null,
       facilityName: data.facilityName,
       facilityForm: data.facilityForm,
       routeName: data.routeName,
@@ -148,34 +147,73 @@ export async function importGateSignInspectionExcel(
     },
   });
 
+  // 旧レコードにお気に入り登録があれば、新レコードへ引き継ぐ（会話ログ
+  // 「お気に入り登録が消える」問題への対応。お気に入りは「この施設を継続的に
+  // 注視している」という意味合いのため、特定年度の記録ではなく常に最新の
+  // レコードを指すようにする）。
+  if (previous?.favorite) {
+    await prisma.favorite.update({
+      where: { id: previous.favorite.id },
+      data: { gateSignInspectionId: created.id },
+    });
+  }
+
   await logAudit({
     action: "CREATE",
     entityType: "点検調書（門型標識）",
-    summary: `${data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の門型標識点検調書を取込`,
+    summary: `${data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の門型標識点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
     linkHref: `/inspections/gate-signs/${created.id}`,
   });
 
   revalidatePath("/inspections/gate-signs");
   revalidatePath("/karte");
+  if (previous) revalidatePath(`/inspections/gate-signs/${previous.id}`);
 
   return { ok: true, id: created.id, managementNo: data.managementNo, matchedFacility: !!facility };
 }
 
+// 履歴チェーン全体（previousInspectionIdを遡って辿れる全レコード）を削除する。
+// 「この点検調書を削除」は施設そのものの記録を丸ごと消す操作という位置づけ
+// （特定年度だけを消す機能は無い。会話ログでも年度単位の削除は要望されていない）。
 export async function deleteGateSignInspection(id: string): Promise<void> {
-  const existing = await prisma.gateSignInspection.findUnique({
-    where: { id },
-    include: { members: { select: { photoUrl: true } }, overviewPhotos: { select: { url: true } } },
+  const chain: { id: string; managementNo: string | null; sourceFileName: string | null }[] = [];
+  let cursor: string | null = id;
+  while (cursor) {
+    const record: { id: string; managementNo: string | null; sourceFileName: string | null; previousInspectionId: string | null } | null =
+      await prisma.gateSignInspection.findUnique({
+        where: { id: cursor },
+        select: { id: true, managementNo: true, sourceFileName: true, previousInspectionId: true },
+      });
+    if (!record) break;
+    chain.push(record);
+    cursor = record.previousInspectionId;
+  }
+  if (chain.length === 0) return;
+
+  const photoUrls = await prisma.gateSignInspectionPhoto.findMany({
+    where: { inspectionId: { in: chain.map((c) => c.id) } },
+    select: { url: true },
   });
-  if (!existing) return;
+  const memberPhotoUrls = await prisma.gateSignInspectionMember.findMany({
+    where: { inspectionId: { in: chain.map((c) => c.id) }, photoUrl: { not: null } },
+    select: { photoUrl: true },
+  });
   await Promise.all([
-    ...existing.members.filter((m) => m.photoUrl).map((m) => del(m.photoUrl as string).catch(() => {})),
-    ...existing.overviewPhotos.map((p) => del(p.url).catch(() => {})),
+    ...photoUrls.map((p) => del(p.url).catch(() => {})),
+    ...memberPhotoUrls.map((m) => del(m.photoUrl as string).catch(() => {})),
   ]);
-  await prisma.gateSignInspection.delete({ where: { id } });
+
+  // previousInspectionIdの一意制約があるため、新しい方（末尾）から順に削除する
+  // （途中のレコードを先に消すと、それを参照しているレコードのFK制約に引っかかる）。
+  for (const record of chain) {
+    await prisma.gateSignInspection.delete({ where: { id: record.id } });
+  }
+
+  const latest = chain[0];
   await logAudit({
     action: "DELETE",
     entityType: "点検調書（門型標識）",
-    summary: `${existing.managementNo ?? existing.sourceFileName ?? "点検調書"}を削除`,
+    summary: `${latest.managementNo ?? latest.sourceFileName ?? "点検調書"}を削除（${chain.length}年度分）`,
   });
   revalidatePath("/inspections/gate-signs");
   revalidatePath("/karte");

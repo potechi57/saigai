@@ -832,6 +832,26 @@ model GateSignInspection {
 
   sourceFileName String? // 取込元Excelファイル名（参考情報。再取込時の重複判定にも使う）
 
+  // 年度ごとの履歴保存（会話ログ「点検年度ごとに履歴として保存する」参照）。
+  // 以前は同じ管理番号のファイルを再取込みすると既存レコードを削除して
+  // 作り直しており、(1) お気に入り・共有済みURLが無効になる、(2) 前回点検の
+  // 判定・写真が跡形もなく消え、経年比較ができない、という2つの問題があった
+  // （会話ログ「点検調書の再取込みで、IDが変わり、過去のデータが消える」参照。
+  // 実際にこのセッション中、橋梁の再取込みでIDが変わる場面があった）。
+  //
+  // そこで、削除せずに新しいレコードを作り、旧レコードのpreviousInspectionIdに
+  // 新レコードのidをセットして連鎖させる方式にした（カルテのKarte＋KarteEvent
+  // 「基本情報は上書き・点検記録は積み上げ」という既存の考え方を、門型標識・
+  // 橋梁向けに単純化して適用したもの。新モデルを増やさず自己参照で済ませている）。
+  // 「現在有効な最新レコード」はsupersededByInspection（逆参照）がnullのもの
+  // （地図・検索一覧はこの条件で絞り込むだけでよい）。旧レコードのURLは
+  // リダイレクトせずそのまま表示できるようにし（詳細画面に「新しい年度の記録が
+  // あります」という案内を出す）、お気に入りだけは新レコードへ引き継ぐ
+  // （lib/actions/gate-sign-inspection-actions.tsのsupersedeロジック参照）。
+  previousInspectionId   String?             @unique
+  previousInspection     GateSignInspection? @relation("GateSignInspectionHistory", fields: [previousInspectionId], references: [id], onDelete: SetNull)
+  supersededByInspection GateSignInspection? @relation("GateSignInspectionHistory")
+
   members        GateSignInspectionMember[]
   overviewPhotos GateSignInspectionPhoto[]
   favorite       Favorite? // Karteのfavoriteフィールドと同じ考え方（Favoriteモデルのコメント参照）
