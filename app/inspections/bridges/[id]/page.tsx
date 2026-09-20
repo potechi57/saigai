@@ -39,12 +39,30 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
       members: { orderBy: { sortOrder: "asc" } },
       facilityListItem: { select: { id: true, managementNo: true } },
       favorite: { select: { id: true } },
+      supersededByInspection: { select: { id: true } },
     },
   });
   if (!insp) notFound();
 
   const title = insp.bridgeName ?? insp.managementNo ?? insp.sourceFileName ?? "（橋梁名不明）";
   const overviewPhotos = insp.photos.map((p) => ({ id: p.id, url: p.url, caption: p.caption }));
+
+  // 年度別履歴（GateSignInspectionと同じ方式。schema.prismaの
+  // BridgeInspection.previousInspectionIdコメント参照）。
+  const pastYears: { id: string; inspectionDate: Date | null; sourceFileName: string | null }[] = [];
+  {
+    let cursor = insp.previousInspectionId;
+    while (cursor) {
+      const past: { id: string; inspectionDate: Date | null; sourceFileName: string | null; previousInspectionId: string | null } | null =
+        await prisma.bridgeInspection.findUnique({
+          where: { id: cursor },
+          select: { id: true, inspectionDate: true, sourceFileName: true, previousInspectionId: true },
+        });
+      if (!past) break;
+      pastYears.push(past);
+      cursor = past.previousInspectionId;
+    }
+  }
 
   // 径間（スパン）ごとにタブを分ける（会話ログ「過去の門型標識点検のエクセル
   // ファイルを参考に...」参照。門型標識のpageNoグループ化と同じ考え方）。
@@ -246,6 +264,16 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
         ← 点検調書（橋梁）一覧に戻る
       </BackLink>
 
+      {insp.supersededByInspection && (
+        // GateSignInspectionと同じ方式（app/inspections/gate-signs/[id]/page.tsx参照）。
+        <p className="rounded border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+          これは過去年度の記録です。
+          <Link href={`/inspections/bridges/${insp.supersededByInspection.id}`} className="ml-1 underline">
+            最新の記録を見る →
+          </Link>
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h1>
         {insp.overallJudgment && (
@@ -273,6 +301,21 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
         </p>
       )}
 
+      {pastYears.length > 0 && (
+        <div className="rounded border border-gray-300 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-900">
+          <h2 className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">過去の点検履歴</h2>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1">
+            {pastYears.map((p) => (
+              <li key={p.id}>
+                <Link href={`/inspections/bridges/${p.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {p.inspectionDate ? new Date(p.inspectionDate).toLocaleDateString("ja-JP") : p.sourceFileName ?? p.id}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <SheetTabs
         tabs={[
           { id: "form1", label: "様式１", content: form1 },
@@ -290,15 +333,21 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
         ]}
       />
 
-      <form action={deleteBridgeInspection.bind(null, insp.id)}>
-        <ConfirmSubmitButton
-          message={`「${title}」を削除しますか？（元に戻せません）`}
-          pendingLabel="削除中..."
-          className="text-sm text-red-600 hover:underline dark:text-red-400"
-        >
-          この点検調書を削除
-        </ConfirmSubmitButton>
-      </form>
+      {!insp.supersededByInspection && (
+        <form action={deleteBridgeInspection.bind(null, insp.id)}>
+          <ConfirmSubmitButton
+            message={
+              pastYears.length > 0
+                ? `「${title}」を削除しますか？過去の年度分を含め、全ての記録（${pastYears.length + 1}件）が削除されます。（元に戻せません）`
+                : `「${title}」を削除しますか？（元に戻せません）`
+            }
+            pendingLabel="削除中..."
+            className="text-sm text-red-600 hover:underline dark:text-red-400"
+          >
+            この点検調書を削除
+          </ConfirmSubmitButton>
+        </form>
+      )}
     </div>
   );
 }

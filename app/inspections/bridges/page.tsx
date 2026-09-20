@@ -17,7 +17,10 @@ const JUDGMENT_BADGE: Record<string, string> = {
 // 対になる一覧。app/inspections/gate-signs/page.tsxと同じ構成）。施設台帳
 // （FacilityListItem）とは別テーブルだが、管理番号で紐付いている場合はリンクを出す。
 export default async function BridgeInspectionListPage() {
+  // supersededByInspection: null＝年度別履歴チェーンのうち現在有効な最新
+  // レコードのみを一覧に出す（GateSignInspectionListPageと同じ方式）。
   const inspections = await prisma.bridgeInspection.findMany({
+    where: { supersededByInspection: { is: null } },
     orderBy: { createdAt: "desc" },
     include: {
       photos: { orderBy: { sortOrder: "asc" }, take: 1 },
