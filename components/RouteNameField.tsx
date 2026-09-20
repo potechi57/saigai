@@ -18,7 +18,17 @@ import { ROAD_TYPE_GROUPS, type RoadTypeGroupKey } from "@/lib/road-type-groups"
 //
 // 最終的に送信するのは既存と同じ<select name={name}>なので、サーバー側の
 // 検索処理・URLの形式は一切変えていない（既存の路線名検索との互換性を維持する）。
-export type RouteGroupOption = { routeName: string; group: RoadTypeGroupKey | null; displayName: string };
+export type RouteGroupOption = {
+  routeName: string;
+  group: RoadTypeGroupKey | null;
+  displayName: string;
+  // 市町村道の3段階目の絞り込み（市町村名）用。会話ログ「市町村道を押した際に、
+  // 松江市、出雲市、安来市のように市町村名が出て、どれか選択できる仕様に
+  // してください」参照。点検調書タブ（Karte.locationTown由来）のみ持ち、
+  // 施設台帳タブは対応するクリーンな項目が無いため常にnull
+  // （app/karte/page.tsxのkarteRouteGroupOptions参照）。
+  municipality?: string | null;
+};
 
 type GroupSelection = RoadTypeGroupKey | "all" | "unclassified";
 
@@ -53,6 +63,23 @@ export default function RouteNameField({
     : "all";
   const [group, setGroup] = useState<GroupSelection>(initialGroup);
   const [filter, setFilter] = useState("");
+  // 市町村道の3段階目（市町村）絞り込み（会話ログ「市町村道を押した際に、
+  // 松江市、出雲市、安来市のように市町村名が出て、どれか選択できる仕様に
+  // してください」参照）。municipalityを持つ路線がある場合のみ意味を持つ
+  // （RouteGroupOption.municipalityコメント参照。無い呼び出し元では常に
+  // "all"のまま何も絞り込まれない）。
+  const initialMunicipality =
+    initialGroup === "municipal" ? (routes.find((r) => r.routeName === defaultValue)?.municipality ?? "all") : "all";
+  const [municipality, setMunicipality] = useState<string | "all">(initialMunicipality ?? "all");
+
+  const municipalRoutes = useMemo(() => routes.filter((r) => r.group === "municipal"), [routes]);
+  const municipalityOptions = useMemo(
+    () =>
+      Array.from(new Set(municipalRoutes.map((r) => r.municipality).filter((m): m is string => !!m))).sort((a, b) =>
+        a.localeCompare(b, "ja")
+      ),
+    [municipalRoutes]
+  );
 
   const filteredRoutes = useMemo(() => {
     const normalizedFilter = toFullWidth(filter);
@@ -62,8 +89,9 @@ export default function RouteNameField({
         if (group === "unclassified") return r.group === null;
         return r.group === group;
       })
+      .filter((r) => group !== "municipal" || municipality === "all" || r.municipality === municipality)
       .filter((r) => !normalizedFilter || r.displayName.includes(normalizedFilter));
-  }, [routes, group, filter]);
+  }, [routes, group, municipality, filter]);
 
   return (
     <div className="space-y-1.5">
@@ -79,7 +107,12 @@ export default function RouteNameField({
               <button
                 key={key}
                 type="button"
-                onClick={() => setGroup(key)}
+                onClick={() => {
+                  setGroup(key);
+                  // 道路種別を切り替えたら、前に選んでいた市町村の絞り込みは
+                  // 意味を持たなくなるためリセットする。
+                  setMunicipality("all");
+                }}
                 className={`rounded-full border px-2 py-0.5 text-xs ${
                   isActive
                     ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-500"
@@ -92,6 +125,41 @@ export default function RouteNameField({
           }
         )}
       </div>
+
+      {/* 1.5段階目: 市町村道が選ばれているときだけ、市町村名でさらに絞り込む
+          （会話ログ「市町村道を押した際に、松江市、出雲市、安来市のように
+          市町村名が出て、どれか選択できる仕様にしてください」参照。市町村道は
+          件数が非常に多くなりやすいため設けている）。municipalityOptionsが
+          空（＝呼び出し元がmunicipalityを持たない）の場合は何も表示しない。 */}
+      {group === "municipal" && municipalityOptions.length > 0 && (
+        <div className="flex flex-wrap gap-1 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
+          <button
+            type="button"
+            onClick={() => setMunicipality("all")}
+            className={`rounded-full border px-2 py-0.5 text-xs ${
+              municipality === "all"
+                ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+            }`}
+          >
+            すべての市町村
+          </button>
+          {municipalityOptions.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMunicipality(m)}
+              className={`rounded-full border px-2 py-0.5 text-xs ${
+                municipality === m
+                  ? "border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900"
+                  : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 路線名自体の検索・絞り込み（会話ログ「路線名自体にも検索・絞り込み機能を
           設ける」参照）。ここに入力した文字列はフォーム送信されず、あくまで
