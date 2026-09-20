@@ -34,14 +34,27 @@ export const getKarteRouteNameOptions = unstable_cache(
 // 「路線名検索を道路種別＋路線名の2段階にする」参照。lib/karte-route-classification.ts）。
 // 同じrouteNameを持つ複数のKarte行が異なるroadTypeを持つことは無いことを確認済み
 // （DB調査済み）。
+//
+// locationTown（市区町村。Karteが実データとして持つ唯一のクリーンな市町村項目）も
+// 合わせて返す。市町村道はその定義上、1路線が複数市町村にまたがることは無いため
+// （国道・県道と異なり、市町村道は当該市町村の管轄区域内で完結する）、routeNameごとに
+// 1つのlocationTownに定まる前提で良い（会話ログ「市町村道を押した際に、松江市、
+// 出雲市、安来市のように市町村名が出て、どれか選択できる仕様にしてください」参照。
+// 3段階目の絞り込みに使う。components/RouteNameField.tsx参照）。施設台帳
+// （FacilityListItem）側は所在地が自由記述のlocation列のみで、市町村を機械的に
+// 判定できる信頼できる項目が無いため、今回はこちら（点検調書タブ）のみ対応する
+// （lib/road-type-groups.tsの「推測はしない」方針に倣い、自由記述からの市町村名
+// 抽出は行わない）。
 export const getKarteRouteOptionsWithType = unstable_cache(
-  async (): Promise<{ routeName: string; roadType: RoadType | null }[]> => {
+  async (): Promise<{ routeName: string; roadType: RoadType | null; municipality: string | null }[]> => {
     const rows = await prisma.karte.findMany({
       distinct: ["routeName"],
-      select: { routeName: true, roadType: true },
+      select: { routeName: true, roadType: true, locationTown: true },
       orderBy: { routeName: "asc" },
     });
-    return rows.filter((r): r is { routeName: string; roadType: RoadType | null } => !!r.routeName);
+    return rows
+      .filter((r): r is { routeName: string; roadType: RoadType | null; locationTown: string | null } => !!r.routeName)
+      .map((r) => ({ routeName: r.routeName, roadType: r.roadType, municipality: r.locationTown }));
   },
   ["reference-data:karte-route-with-type"],
   CACHE_OPTIONS

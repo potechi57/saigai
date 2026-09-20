@@ -741,13 +741,21 @@ export default async function KarteListPage({
   // （会話ログ「先ほど分類されていなかったのは、すべて県道でした」を受けて
   // 調査し直し、施設台帳と同じ実データベースの判定方式に切り替えた。
   // lib/karte-route-classification.ts参照）。
-  const karteRouteOverrideByName = new Map(karteRouteOptionsWithType.map((r) => [r.routeName, r.roadType]));
+  const karteRouteInfoByName = new Map(karteRouteOptionsWithType.map((r) => [r.routeName, r]));
   const karteRouteGroupOptions = routeNameOptions.map((routeName) => {
-    const roadType = karteRouteOverrideByName.get(routeName) ?? null;
+    const info = karteRouteInfoByName.get(routeName);
+    const roadType = info?.roadType ?? null;
+    const group = karteRouteGroup(roadType);
     return {
       routeName,
-      group: karteRouteGroup(roadType),
+      group,
       displayName: karteRouteDisplayName(routeName, roadType) ?? routeName,
+      // 市町村道のみ、3段階目の絞り込み（会話ログ「市町村道を押した際に、
+      // 松江市、出雲市、安来市のように市町村名が出て、どれか選択できる仕様に
+      // してください」参照）用の市町村名を付与する。lib/reference-data.tsの
+      // getKarteRouteOptionsWithTypeコメント参照（施設台帳側は対応する
+      // クリーンな項目が無いため未対応）。
+      municipality: group === "municipal" ? (info?.municipality ?? null) : null,
     };
   });
 
