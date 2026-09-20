@@ -19,7 +19,14 @@ import Link from "next/link";
 const STORAGE_KEY = "recordViewHistory";
 const MAX_ENTRIES = 10;
 
-export type ViewHistoryKind = "karte" | "facility" | "ledger" | "gate_sign_inspection" | "bridge_ledger" | "bridge_inspection";
+export type ViewHistoryKind =
+  | "karte"
+  | "facility"
+  | "ledger"
+  | "gate_sign_inspection"
+  | "bridge_ledger"
+  | "bridge_inspection"
+  | "slope_structure_inspection";
 
 export type ViewHistoryEntry = {
   kind: ViewHistoryKind;
@@ -37,6 +44,7 @@ const KIND_LABEL: Record<ViewHistoryKind, string> = {
   gate_sign_inspection: "点検調書（門型標識）",
   bridge_ledger: "橋梁台帳",
   bridge_inspection: "点検調書（橋梁）",
+  slope_structure_inspection: "点検調書（法面構造物）",
 };
 
 export function readViewHistory(): ViewHistoryEntry[] {

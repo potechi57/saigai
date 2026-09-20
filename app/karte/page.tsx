@@ -20,6 +20,7 @@ import type {
   MapGateSignInspection,
   MapBridgeInspection,
   MapBridgeLedgerRecord,
+  MapSlopeStructureInspection,
 } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos, getFormAThumbnails } from "@/lib/map-photos";
@@ -569,6 +570,23 @@ export default async function KarteListPage({
     ? { latitude: { not: null }, longitude: { not: null }, supersededByInspection: { is: null }, AND: bridgeAndConditions }
     : { id: "__no_data_yet__" };
 
+  // 点検調書＞道路＞法面構造物（gateSignReady/bridgeReadyと同じ考え方。会話ログ
+  // 「法面構造物（新規実装一式）」参照。判定はⅠ〜Ⅲだが、パラメータ名は
+  // gsJudgmentを引き続き共用する（gateSignReady/bridgeReady/slopeReadyは排他）。
+  const slopeReady = cat === "inspection" && inspectionBunya === "road" && inspectionShisetsu === "法面構造物";
+  const slopeAndConditions: Prisma.SlopeStructureInspectionWhereInput[] = slopeReady
+    ? (buildInspectionCommonConditions(
+        { managementNo: params.q, routeName: params.routeName, location: params.location },
+        { managementNo: "managementNo", routeName: "routeName", location: "location" }
+      ) as Prisma.SlopeStructureInspectionWhereInput[])
+    : [];
+  if (slopeReady && params.gsJudgment) {
+    slopeAndConditions.push({ overallJudgment: params.gsJudgment });
+  }
+  const slopeWhere: Prisma.SlopeStructureInspectionWhereInput = slopeReady
+    ? { latitude: { not: null }, longitude: { not: null }, supersededByInspection: { is: null }, AND: slopeAndConditions }
+    : { id: "__no_data_yet__" };
+
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
   // いる値から選ぶセレクトボックスにしている（フィルタ条件に関わらず全件から候補を
   // 集める）。防災カルテ・施設一覧はデータが別物のため、選択肢も別々に集計する。
@@ -596,6 +614,7 @@ export default async function KarteListPage({
     gateSignInspectionsRaw,
     bridgeInspectionsRaw,
     bridgeLedgersRaw,
+    slopeStructureInspectionsRaw,
     kartesBeforeLocationFilter,
     karteTotalCount,
     facilityItems,
@@ -662,6 +681,16 @@ export default async function KarteListPage({
       where: { latitude: { not: null }, longitude: { not: null } },
       orderBy: { createdAt: "desc" },
       include: {
+        facilityListItem: { select: { id: true } },
+        favorite: { select: { id: true } },
+      },
+      take: SEARCH_RESULT_LIMIT,
+    }),
+    prisma.slopeStructureInspection.findMany({
+      where: slopeWhere,
+      orderBy: { createdAt: "desc" },
+      include: {
+        photos: { where: { category: "overview" }, orderBy: { sortOrder: "asc" } },
         facilityListItem: { select: { id: true } },
         favorite: { select: { id: true } },
       },
@@ -794,6 +823,20 @@ export default async function KarteListPage({
     longitude: Number(b.longitude),
     facilityListItemId: b.facilityListItem?.id ?? null,
     isFavorite: b.favorite != null,
+  }));
+
+  const mapSlopeStructureInspections: MapSlopeStructureInspection[] = slopeStructureInspectionsRaw.map((s) => ({
+    id: s.id,
+    title: s.managementNo ?? s.sourceFileName ?? "（箇所番号不明）",
+    routeName: s.routeName,
+    location: s.location,
+    judgment: s.overallJudgment,
+    inspectionDateLabel: s.inspectionDate ? new Date(s.inspectionDate).toLocaleDateString("ja-JP") : null,
+    latitude: Number(s.latitude),
+    longitude: Number(s.longitude),
+    overviewPhotos: s.photos.map((p) => ({ url: p.url, caption: p.caption })),
+    facilityListItemId: s.facilityListItem?.id ?? null,
+    isFavorite: s.favorite != null,
   }));
 
   const home: HomeLocation =
@@ -1277,7 +1320,8 @@ export default async function KarteListPage({
                         「門型標識のエクセルファイル...読み込んで表示できる仕様に」参照）。 */}
                     <div className="flex flex-wrap gap-1.5 border-l-2 border-gray-200 pl-2 dark:border-gray-700">
                       {INSPECTION_TYPES[inspectionBunya]?.map((t) => {
-                        const isReady = inspectionBunya === "road" && (t.label === "門型標識" || t.label === "橋梁");
+                        const isReady =
+                          inspectionBunya === "road" && (t.label === "門型標識" || t.label === "橋梁" || t.label === "法面構造物");
                         return (
                           <PendingLink
                             key={t.label}
@@ -1296,16 +1340,21 @@ export default async function KarteListPage({
                         );
                       })}
                     </div>
-                    {inspectionBunya === "road" && (inspectionShisetsu === "門型標識" || inspectionShisetsu === "橋梁") ? (
+                    {inspectionBunya === "road" &&
+                    (inspectionShisetsu === "門型標識" || inspectionShisetsu === "橋梁" || inspectionShisetsu === "法面構造物") ? (
                       <>
-                        {/* 判定区分（健全性の診断。Ⅰ〜Ⅳ）は点検調書の検索方法として
-                            特に重要度が高いとの指摘を受けて設けている（会話ログ参照）。
-                            管理番号・路線名・所在地は上の共通フィールド（q/routeName/
-                            location）をそのまま使う（lib/inspection-search.ts参照）。
-                            橋梁も門型標識と同じgsJudgmentパラメータを共用する
-                            （bridgeReady/gateSignReadyは排他のため衝突しない）。 */}
+                        {/* 判定区分（健全性の診断）は点検調書の検索方法として特に重要度が
+                            高いとの指摘を受けて設けている（会話ログ参照）。管理番号・
+                            路線名・所在地は上の共通フィールド（q/routeName/location）を
+                            そのまま使う（lib/inspection-search.ts参照）。橋梁・法面構造物も
+                            門型標識と同じgsJudgmentパラメータを共用する（bridgeReady/
+                            gateSignReady/slopeReadyは排他のため衝突しない）。法面構造物は
+                            判定区分がⅠ〜Ⅲ（対応不要/経過観察/要対策）のみである点だけ
+                            他の2種と異なる（会話ログ「法面構造物（新規実装一式）」参照）。 */}
                         <div>
-                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">判定区分</label>
+                          <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                            {inspectionShisetsu === "法面構造物" ? "点検者の評価" : "判定区分"}
+                          </label>
                           <select
                             key={params.gsJudgment ?? ""}
                             name="gsJudgment"
@@ -1313,14 +1362,14 @@ export default async function KarteListPage({
                             className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                           >
                             <option value="">すべて</option>
-                            {["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ"].map((j) => (
+                            {(inspectionShisetsu === "法面構造物" ? ["Ⅰ", "Ⅱ", "Ⅲ"] : ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ"]).map((j) => (
                               <option key={j} value={j}>
                                 {j}
                               </option>
                             ))}
                           </select>
                         </div>
-                        {inspectionShisetsu === "門型標識" ? (
+                        {inspectionShisetsu === "門型標識" && (
                           <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
                             門型標識の点検調書 {mapGateSignInspections.length}件を地図に表示中です。
                             <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
@@ -1332,7 +1381,8 @@ export default async function KarteListPage({
                             </Link>
                             もできます。
                           </p>
-                        ) : (
+                        )}
+                        {inspectionShisetsu === "橋梁" && (
                           <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
                             橋梁の点検調書 {mapBridgeInspections.length}件を地図に表示中です。
                             <Link href="/inspections/bridges" className="text-blue-600 dark:text-blue-400 hover:underline">
@@ -1340,6 +1390,19 @@ export default async function KarteListPage({
                             </Link>
                             で確認・
                             <Link href="/inspections/bridges/import" className="text-blue-600 dark:text-blue-400 hover:underline">
+                              Excel取込
+                            </Link>
+                            もできます。
+                          </p>
+                        )}
+                        {inspectionShisetsu === "法面構造物" && (
+                          <p className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            法面構造物の点検調書 {mapSlopeStructureInspections.length}件を地図に表示中です。
+                            <Link href="/inspections/slopes" className="text-blue-600 dark:text-blue-400 hover:underline">
+                              専用の一覧ページ
+                            </Link>
+                            で確認・
+                            <Link href="/inspections/slopes/import" className="text-blue-600 dark:text-blue-400 hover:underline">
                               Excel取込
                             </Link>
                             もできます。
@@ -1490,6 +1553,14 @@ export default async function KarteListPage({
               : bridgeAndConditions.length > 0
                 ? `検索結果 ${mapBridgeInspections.length} 件`
                 : `全 ${mapBridgeInspections.length} 件を地図に表示中`}
+          </span>
+          <span className="block">
+            点検調書（法面構造物）：
+            {!slopeReady
+              ? "未選択"
+              : slopeAndConditions.length > 0
+                ? `検索結果 ${mapSlopeStructureInspections.length} 件`
+                : `全 ${mapSlopeStructureInspections.length} 件を地図に表示中`}
           </span>
         </p>
 
@@ -1798,6 +1869,67 @@ export default async function KarteListPage({
             </div>
 
             <div>
+              {/* 門型標識・橋梁と同じ理由（会話ログ「法面構造物（新規実装一式）」
+                  参照）。mapSlopeStructureInspectionsは既にslopeWhereで絞り込み済みの
+                  データ（地図表示と共通）。 */}
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">点検調書（法面構造物）検索結果</h2>
+              <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2"></th>
+                      <th className="px-3 py-2">箇所番号</th>
+                      <th className="px-3 py-2">評価</th>
+                      <th className="px-3 py-2">路線名</th>
+                      <th className="px-3 py-2">所在地</th>
+                      <th className="px-3 py-2">点検日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mapSlopeStructureInspections.map((s) => (
+                      <tr key={s.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-yellow-500">{s.isFavorite ? "★" : ""}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/inspections/slopes/${s.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {s.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">
+                          {s.judgment ? (
+                            <span
+                              className={`rounded px-2 py-0.5 text-xs ${JUDGMENT_BADGE[s.judgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+                            >
+                              {s.judgment}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{s.routeName ?? "—"}</td>
+                        <td className="px-3 py-2">{s.location ?? "—"}</td>
+                        <td className="px-3 py-2">{s.inspectionDateLabel ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {mapSlopeStructureInspections.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                          {!slopeReady
+                            ? "点検調書タブ＞道路＞法面構造物を選んで「検索」を押してください。"
+                            : "条件に一致する点検調書がありません。"}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                <Link href="/inspections/slopes" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  点検調書（法面構造物、全件）を見る →
+                </Link>
+              </p>
+            </div>
+
+            <div>
               {/* 橋梁台帳は施設一覧・台帳（画像）と同じく常時表示（会話ログ
                   「橋梁台帳：お気に入り・地図一覧・キャンセルボタン」参照）。 */}
               <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">橋梁台帳検索結果</h2>
@@ -1852,6 +1984,7 @@ export default async function KarteListPage({
             gateSignInspections={mapGateSignInspections}
             bridgeInspections={mapBridgeInspections}
             bridgeLedgers={mapBridgeLedgers}
+            slopeStructureInspections={mapSlopeStructureInspections}
           />
         )}
       </main>

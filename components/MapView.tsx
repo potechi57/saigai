@@ -150,6 +150,24 @@ export type MapBridgeLedgerRecord = {
   isFavorite?: boolean;
 };
 
+// 点検調書＞道路＞法面構造物（prisma/schema.prismaのSlopeStructureInspection
+// 参照）。MapGateSignInspection/MapBridgeInspectionと同じ考え方だが、判定は
+// Ⅰ〜Ⅳではなく点検者の評価（Ⅰ：対応不要／Ⅱ：経過観察／Ⅲ：要対策）を使う
+// （lib/labels.tsのJUDGMENT_BADGEはⅠ〜Ⅲの配色も含むため流用できる）。
+export type MapSlopeStructureInspection = {
+  id: string;
+  title: string; // 表示名（箇所番号。呼び出し側で決定済み）
+  routeName?: string | null;
+  location?: string | null;
+  judgment?: string | null; // 点検者の評価（Ⅰ|Ⅱ|Ⅲ）
+  inspectionDateLabel?: string | null;
+  latitude: number;
+  longitude: number;
+  overviewPhotos: { url: string; caption: string | null }[];
+  facilityListItemId?: string | null;
+  isFavorite?: boolean;
+};
+
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
 
 // 地図APIはGoogle Maps等への差し替えを見据え、業務データ（MapKarte）とは疎結合にしている
@@ -170,6 +188,7 @@ export default function MapView({
   gateSignInspections = [],
   bridgeInspections = [],
   bridgeLedgers = [],
+  slopeStructureInspections = [],
 }: {
   kartes: MapKarte[];
   home?: HomeLocation;
@@ -184,6 +203,7 @@ export default function MapView({
   gateSignInspections?: MapGateSignInspection[];
   bridgeInspections?: MapBridgeInspection[];
   bridgeLedgers?: MapBridgeLedgerRecord[];
+  slopeStructureInspections?: MapSlopeStructureInspection[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -209,7 +229,9 @@ export default function MapView({
   const bridgeLayerRef = useRef<L.LayerGroup | null>(null);
   // 橋梁台帳のマーカー一式（施設一覧と同じ、常時表示のレイヤー）。
   const bridgeLedgerLayerRef = useRef<L.LayerGroup | null>(null);
-  // ledgers/facilityListItems/gateSignInspections/bridgeInspections/bridgeLedgersも、kartesと同じ理由
+  // 点検調書（法面構造物）のマーカー一式（門型標識・橋梁と同じ考え方）。
+  const slopeLayerRef = useRef<L.LayerGroup | null>(null);
+  // ledgers/facilityListItems/gateSignInspections/bridgeInspections/bridgeLedgers/slopeStructureInspectionsも、kartesと同じ理由
   // （lastKarteIdsKeyRef参照）でID集合の差分チェックを行う。以前は「件数が少ない
   // 想定なので毎回作り直す」という単純化をしていたが、お気に入りの☆/★切替や
   // ホーム位置設定のたびに呼ばれるrouter.refresh()でもこれらのレイヤーを
@@ -220,6 +242,7 @@ export default function MapView({
   const lastGateSignIdsKeyRef = useRef<string | null>(null);
   const lastBridgeIdsKeyRef = useRef<string | null>(null);
   const lastBridgeLedgerIdsKeyRef = useRef<string | null>(null);
+  const lastSlopeIdsKeyRef = useRef<string | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -263,6 +286,9 @@ export default function MapView({
   const bridgeLedgerFavoriteIdsRef = useRef<Set<string>>(
     new Set(bridgeLedgers.filter((b) => b.isFavorite).map((b) => b.id))
   );
+  const slopeFavoriteIdsRef = useRef<Set<string>>(
+    new Set(slopeStructureInspections.filter((s) => s.isFavorite).map((s) => s.id))
+  );
   const ledgerFavoriteIdsRef = useRef<Set<string>>(new Set(ledgers.filter((l) => l.isFavorite).map((l) => l.id)));
 
   useEffect(() => {
@@ -286,6 +312,7 @@ export default function MapView({
     gateSignLayerRef.current = L.layerGroup().addTo(map);
     bridgeLayerRef.current = L.layerGroup().addTo(map);
     bridgeLedgerLayerRef.current = L.layerGroup().addTo(map);
+    slopeLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
@@ -296,6 +323,7 @@ export default function MapView({
       gateSignLayerRef.current = null;
       bridgeLayerRef.current = null;
       bridgeLedgerLayerRef.current = null;
+      slopeLayerRef.current = null;
       // レイヤーグループを作り直す（＝上のkarteLayerRef等が新しい空のグループに
       // 差し替わる）ため、「前回どのID集合を描画したか」を覚えているこれらのrefも
       // 一緒にリセットする。リセットしないと、直後の各マーカー構築effectが
@@ -311,6 +339,7 @@ export default function MapView({
       lastGateSignIdsKeyRef.current = null;
       lastBridgeIdsKeyRef.current = null;
       lastBridgeLedgerIdsKeyRef.current = null;
+      lastSlopeIdsKeyRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -809,6 +838,88 @@ export default function MapView({
       );
     }
   }, [bridgeInspections]);
+
+  // 点検調書（法面構造物）のマーカーを構築する専用effect（bridgeInspectionsと
+  // 全く同じ構成。会話ログ「法面構造物（新規実装一式）」参照。門型標識・橋梁の
+  // パターンをそのまま横展開）。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = slopeLayerRef.current;
+    if (!map || !layer) return;
+
+    const idsKey = slopeStructureInspections
+      .map((s) => s.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastSlopeIdsKeyRef.current) return;
+    lastSlopeIdsKeyRef.current = idsKey;
+
+    layer.clearLayers();
+    slopeFavoriteIdsRef.current = new Set(slopeStructureInspections.filter((s) => s.isFavorite).map((s) => s.id));
+
+    for (const s of slopeStructureInspections) {
+      const marker = L.marker([s.latitude, s.longitude], {
+        icon: buildSlopeMarkerIcon(s.judgment, slopeFavoriteIdsRef.current.has(s.id)),
+      }).addTo(layer);
+      const detailHref = `/inspections/slopes/${s.id}`;
+      const favSlotId = `slope-fav-slot-${s.id}`;
+      marker.bindPopup(
+        `<div style="font-size:13px;min-width:180px;">
+           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+             <div style="font-weight:600;">${escapeHtml(s.title)}</div>
+             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+               <span id="${favSlotId}"></span>
+               <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
+             </div>
+           </div>
+           ${s.judgment ? `<div style="color:#666;">点検者の評価 ${escapeHtml(s.judgment)}</div>` : ""}
+           ${s.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(s.routeName)}</div>` : ""}
+           ${s.location ? `<div style="color:#374151;">所在地: ${escapeHtml(s.location)}</div>` : ""}
+           ${s.inspectionDateLabel ? `<div style="color:#374151;">点検日: ${escapeHtml(s.inspectionDateLabel)}</div>` : ""}
+           ${buildSlopeOverviewPhotosHtml(s, detailHref)}
+           ${
+             s.facilityListItemId
+               ? `<div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(s.facilityListItemId)}" style="color:#2563eb;">施設台帳を見る →</a></div>`
+               : ""
+           }
+         </div>`,
+        { maxWidth: 1000 }
+      );
+
+      marker.on("popupopen", () => renderSlopeFavSlot(favSlotId, s, marker));
+    }
+
+    function renderSlopeFavSlot(slotId: string, s: MapSlopeStructureInspection, marker: L.Marker) {
+      const slot = document.getElementById(slotId);
+      if (!slot) return;
+      const isFav = slopeFavoriteIdsRef.current.has(s.id);
+      const btnId = `slope-fav-toggle-${s.id}`;
+      slot.innerHTML = isFav
+        ? `<span style="font-size:12px;color:#a16207;">★ お気に入り済み</span> <button type="button" id="${btnId}" style="margin-left:6px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">外す</button>`
+        : `<button type="button" id="${btnId}" style="font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">☆ お気に入りに追加</button>`;
+      const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+      btn?.addEventListener(
+        "click",
+        () => {
+          const next = !slopeFavoriteIdsRef.current.has(s.id);
+          btn.disabled = true;
+          btn.textContent = "処理中...";
+          setFavorite({ type: "slopeStructureInspection", id: s.id }, next).then((result) => {
+            if (!result.ok) {
+              btn.disabled = false;
+              btn.textContent = `失敗（${result.error}）`;
+              return;
+            }
+            if (next) slopeFavoriteIdsRef.current.add(s.id);
+            else slopeFavoriteIdsRef.current.delete(s.id);
+            marker.setIcon(buildSlopeMarkerIcon(s.judgment, next));
+            renderSlopeFavSlot(slotId, s, marker);
+          });
+        },
+        { once: true }
+      );
+    }
+  }, [slopeStructureInspections]);
 
   // 橋梁台帳のマーカーを構築する専用effect（施設一覧と同じ、常時表示の
   // レイヤー。判定区分の概念が無いため、マーカー色は固定・お気に入り☆★のみ
@@ -1348,6 +1459,42 @@ function buildBridgeMarkerIcon(judgment: string | null | undefined, isFavorite: 
     iconAnchor: [13, 13],
     popupAnchor: [0, -13],
   });
+}
+
+// 点検調書（法面構造物）のマーカーアイコン。門型標識（🪧）・橋梁（🌉）と
+// 見分けられるよう法面を連想させる⛰️を使う。判定はⅠ〜Ⅲだが配色マップは
+// Ⅰ〜Ⅳ共通のGATE_SIGN_JUDGMENT_COLORをそのまま流用できる。
+function buildSlopeMarkerIcon(judgment: string | null | undefined, isFavorite: boolean): L.DivIcon {
+  const color = (judgment && GATE_SIGN_JUDGMENT_COLOR[judgment]) || "#6b7280";
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        position:relative;
+        background:${color};
+        width:26px;height:26px;border-radius:6px;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+        font-size:14px;
+      ">⛰️${
+        isFavorite ? '<span style="position:absolute;top:-8px;right:-6px;font-size:13px;">★</span>' : ""
+      }</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
+  });
+}
+
+function buildSlopeOverviewPhotosHtml(s: MapSlopeStructureInspection, detailHref: string): string {
+  if (s.overviewPhotos.length === 0) return "";
+  const thumb = (url: string, caption: string | null) => `
+    <a href="${escapeHtml(detailHref)}" style="text-align:center;text-decoration:none;flex-shrink:0;">
+      <img src="${escapeHtml(url)}" style="width:450px;max-width:450px;height:253px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      ${caption ? `<span style="font-size:12px;color:#6b7280;">${escapeHtml(caption)}</span>` : ""}
+    </a>`;
+  return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
+      ${s.overviewPhotos.map((p) => thumb(p.url, p.caption)).join("")}
+    </div>`;
 }
 
 // OSRM（Open Source Routing Machine）の公開デモサーバーを使い、道路経路に沿った
