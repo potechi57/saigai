@@ -459,6 +459,11 @@ model Favorite {
   bridgeLedgerId String?      @unique
   bridgeLedger   BridgeLedger? @relation(fields: [bridgeLedgerId], references: [id], onDelete: Cascade)
 
+  // 法令台帳・施設台帳（画像。トンネル台帳等）共通（会話ログ「法令台帳・
+  // 施設台帳：お気に入り対応」参照）。
+  facilityLedgerId String?         @unique
+  facilityLedger   FacilityLedger? @relation(fields: [facilityLedgerId], references: [id], onDelete: Cascade)
+
   note String? // お気に入りに追加した際の任意メモ
 
   createdAt DateTime @default(now())
@@ -634,7 +639,8 @@ model FacilityLedger {
   // タブ名（label）を後から自由に変更できるようにするため、別テーブルに
   // 切り出した（会話ログ参照。/ledgers/[id]で「Excelシート風タブ」
   // （components/SheetTabs.tsx）を使って切り替える）。
-  images FacilityLedgerImage[]
+  images   FacilityLedgerImage[]
+  favorite Favorite? // GateSignInspection.favoriteと同じ考え方（Favoriteモデルのコメント参照）
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -18,7 +18,8 @@ export type FavoriteTarget =
   | { type: "karte"; id: string; facilityNo: string }
   | { type: "gateSignInspection"; id: string }
   | { type: "bridgeInspection"; id: string }
-  | { type: "bridgeLedger"; id: string };
+  | { type: "bridgeLedger"; id: string }
+  | { type: "facilityLedger"; id: string };
 
 // カルテ詳細画面・地図のポップアップ・検索結果一覧など、複数箇所にある
 // ☆/★ボタンから直接呼ばれる（フォーム経由ではなく、クライアント側でawaitして
@@ -53,7 +54,7 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
       } else {
         await prisma.favorite.deleteMany({ where: { bridgeInspectionId: target.id } });
       }
-    } else {
+    } else if (target.type === "bridgeLedger") {
       if (shouldBeFavorite) {
         await prisma.favorite.upsert({
           where: { bridgeLedgerId: target.id },
@@ -62,6 +63,16 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
         });
       } else {
         await prisma.favorite.deleteMany({ where: { bridgeLedgerId: target.id } });
+      }
+    } else {
+      if (shouldBeFavorite) {
+        await prisma.favorite.upsert({
+          where: { facilityLedgerId: target.id },
+          create: { facilityLedgerId: target.id },
+          update: {},
+        });
+      } else {
+        await prisma.favorite.deleteMany({ where: { facilityLedgerId: target.id } });
       }
     }
   } catch (e) {
@@ -86,8 +97,13 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
     revalidatePath("/karte");
     revalidatePath("/karte/favorites");
     revalidatePath("/m/favorites");
-  } else {
+  } else if (target.type === "bridgeLedger") {
     revalidatePath(`/bridge-ledgers/${target.id}`);
+    revalidatePath("/karte");
+    revalidatePath("/karte/favorites");
+    revalidatePath("/m/favorites");
+  } else {
+    revalidatePath(`/ledgers/${target.id}`);
     revalidatePath("/karte");
     revalidatePath("/karte/favorites");
     revalidatePath("/m/favorites");

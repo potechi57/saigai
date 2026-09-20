@@ -616,7 +616,7 @@ export default async function KarteListPage({
     // 将来データが増えた場合の安全網）。
     prisma.facilityLedger.findMany({
       where: ledgerWhere,
-      include: { images: { orderBy: { sortOrder: "asc" } } },
+      include: { images: { orderBy: { sortOrder: "asc" } }, favorite: { select: { id: true } } },
       take: SEARCH_RESULT_LIMIT,
     }),
     // 法令台帳タブの検索結果表示用の総件数（会話ログ「法令台帳にも検索結果を表示」
@@ -753,6 +753,7 @@ export default async function KarteListPage({
     coverImageUrl: l.images[0]?.imageUrl ?? null,
     imageCount: l.images.length,
     note: l.note,
+    isFavorite: l.favorite != null,
   }));
   const ledgerTruncated = ledgerTotalCount > facilityLedgersRaw.length;
 
@@ -1516,6 +1517,7 @@ export default async function KarteListPage({
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
                     <tr>
+                      <th className="px-3 py-2"></th>
                       <th className="px-3 py-2">分類</th>
                       <th className="px-3 py-2">管理番号</th>
                       <th className="px-3 py-2">台帳名</th>
@@ -1527,6 +1529,7 @@ export default async function KarteListPage({
                   <tbody>
                     {mapLedgers.map((l) => (
                       <tr key={l.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-yellow-500">{l.isFavorite ? "★" : ""}</td>
                         <td className="px-3 py-2">{l.docClassLabel}</td>
                         <td className="px-3 py-2">
                           <Link href={`/ledgers/${l.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
@@ -1541,7 +1544,7 @@ export default async function KarteListPage({
                     ))}
                     {mapLedgers.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                        <td colSpan={7} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
                           {!hasLedgerSearched
                             ? "検索条件を指定して「検索」を押してください。"
                             : "条件に一致する台帳がありません。"}
