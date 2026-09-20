@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { importGateSignInspectionExcel } from "@/lib/actions/gate-sign-inspection-actions";
@@ -14,6 +14,13 @@ import { importGateSignInspectionExcel } from "@/lib/actions/gate-sign-inspectio
 type FileStatus = "waiting" | "processing" | "success" | "error";
 
 type FileState = {
+  // ファイル一覧内での識別用ID（crypto.randomUUID()）。取込結果のGateSignInspection.id
+  // とは別物（会話ログ「取り込みまちのものを途中で取りやめる...カルテのみの機能
+  // でしょうか。ならばこちらにも実装」参照。カルテのまとめ取込
+  // （components/BulkImportContext.tsx）と同じ理由で、配列のindexではなく
+  // 安定したIDをkeyにしないと、途中で1件取りやめた際に後続要素のindexがずれて
+  // 別ファイルを誤って処理・表示してしまう）。
+  listId: string;
   file: File;
   status: FileStatus;
   detail: string;
@@ -33,24 +40,50 @@ export default function GateSignInspectionImportForm() {
   const router = useRouter();
   const [files, setFiles] = useState<FileState[]>([]);
   const [running, setRunning] = useState(false);
+  // handleRunのループ（非同期に何ステップも進む）が、×で途中キャンセルされた
+  // ファイルを正しく検知できるよう、常に最新の配列を参照できるrefを併用する
+  // （components/BulkImportContext.tsxと同じ理由・同じ方式）。
+  const filesRef = useRef<FileState[]>([]);
+
+  function setFilesAndRef(updater: (prev: FileState[]) => FileState[]) {
+    setFiles((prev) => {
+      const next = updater(prev);
+      filesRef.current = next;
+      return next;
+    });
+  }
 
   function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
-    setFiles(selected.map((file) => ({ file, status: "waiting", detail: "" })));
+    setFilesAndRef(() => selected.map((file) => ({ listId: crypto.randomUUID(), file, status: "waiting", detail: "" })));
+  }
+
+  // 順番待ち（waiting）のファイルだけを取りやめられるようにする（会話ログ
+  // 「取り込みまちのものを途中で取りやめるのは、カルテのみの機能でしょうか。
+  // ならば、こちらにも実装お願いします」参照。処理中・完了済みのファイルは
+  // 対象外＝既に開始した取込を安全に中断する手段が無いため。
+  // components/BulkImportContext.tsxのremoveQueuedFileと同じ方針）。
+  function removeQueuedFile(listId: string) {
+    setFilesAndRef((prev) => prev.filter((f) => !(f.listId === listId && f.status === "waiting")));
   }
 
   // 1件ずつ順番に処理する（並列にしない理由はBulkExcelImportForm.tsxと同じ。
   // 1件が失敗しても他のファイルには影響させず、最後まで通して結果一覧を出す）。
   async function handleRun() {
     setRunning(true);
-    for (let i = 0; i < files.length; i++) {
-      setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "processing", detail: "解析・登録中..." } : f)));
+    const queueIds = filesRef.current.filter((f) => f.status === "waiting").map((f) => f.listId);
+    for (const listId of queueIds) {
+      const current = filesRef.current.find((f) => f.listId === listId);
+      // ループが到達する前に×で取りやめられていた場合はスキップする。
+      if (!current || current.status !== "waiting") continue;
+
+      setFilesAndRef((prev) => prev.map((f) => (f.listId === listId ? { ...f, status: "processing", detail: "解析・登録中..." } : f)));
       const fd = new FormData();
-      fd.append("file", files[i].file);
+      fd.append("file", current.file);
       const result = await importGateSignInspectionExcel(null, fd);
-      setFiles((prev) =>
-        prev.map((f, idx) =>
-          idx === i
+      setFilesAndRef((prev) =>
+        prev.map((f) =>
+          f.listId === listId
             ? result.ok
               ? {
                   ...f,
@@ -115,13 +148,14 @@ export default function GateSignInspectionImportForm() {
                   <th className="px-3 py-2">ファイル名</th>
                   <th className="px-3 py-2">状態</th>
                   <th className="px-3 py-2">詳細</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {files.map((f, i) => {
+                {files.map((f) => {
                   const status = STATUS_LABEL[f.status];
                   return (
-                    <tr key={i} className="border-t border-gray-200 dark:border-gray-700">
+                    <tr key={f.listId} className="border-t border-gray-200 dark:border-gray-700">
                       <td className="max-w-[16rem] truncate px-3 py-2 text-gray-800 dark:text-gray-100" title={f.file.name}>
                         {f.file.name}
                       </td>
@@ -135,6 +169,19 @@ export default function GateSignInspectionImportForm() {
                           </Link>
                         ) : (
                           f.detail
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {f.status === "waiting" && (
+                          <button
+                            type="button"
+                            onClick={() => removeQueuedFile(f.listId)}
+                            title="このファイルを取りやめる"
+                            aria-label={`${f.file.name}を取りやめる`}
+                            className="text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
+                          >
+                            ×
+                          </button>
                         )}
                       </td>
                     </tr>
