@@ -15,11 +15,11 @@ export const dynamic = "force-dynamic";
 //
 // お気に入りは当初Karte（防災カルテ）専用だったが、「お気に入り追加はカルテ
 // のみでは意味がありません。点検調書の項目すべてに適用できるようにして
-// ください」との指摘を受け、点検調書（門型標識・橋梁）・台帳（橋梁台帳・
-// 法令/施設台帳）にも一般化した（prisma/schema.prismaのFavoriteモデル
-// コメント参照）。これらの種別には現状/m配下の専用画面が無いため、
-// PC版の詳細画面へリンクする（施設台帳へのリンク等、他の場面でも/mから
-// 直接PC版URLへリンクする箇所が既にあるのと同じ考え方）。
+// ください」との指摘を受け、点検調書（門型標識・橋梁・法面構造物）・台帳
+// （橋梁台帳・法令/施設台帳）にも一般化した（prisma/schema.prismaの
+// Favoriteモデルコメント参照）。これらの種別には現状/m配下の専用画面が
+// 無いため、PC版の詳細画面へリンクする（施設台帳へのリンク等、他の場面でも
+// /mから直接PC版URLへリンクする箇所が既にあるのと同じ考え方）。
 export default async function MobileFavoritesPage() {
   const favorites = await prisma.favorite.findMany({
     orderBy: { createdAt: "desc" },
@@ -67,6 +67,15 @@ export default async function MobileFavoritesPage() {
           docClass: true,
           managementNo: true,
           name: true,
+          routeName: true,
+          location: true,
+        },
+      },
+      slopeStructureInspection: {
+        select: {
+          id: true,
+          managementNo: true,
+          sourceFileName: true,
           routeName: true,
           location: true,
         },
@@ -151,6 +160,22 @@ export default async function MobileFavoritesPage() {
                     <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">橋梁台帳 ・ {b.routeName}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">{b.location}</p>
+                  </Link>
+                </li>
+              );
+            }
+            if (f.slopeStructureInspection) {
+              const s = f.slopeStructureInspection;
+              const title = s.managementNo ?? s.sourceFileName ?? "（箇所番号不明）";
+              return (
+                <li key={`slope-structure-inspection-${s.id}`}>
+                  <Link
+                    href={`/inspections/slopes/${s.id}`}
+                    className="block rounded border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">★ {title}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">法面構造物 ・ {s.routeName}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{s.location}</p>
                   </Link>
                 </li>
               );

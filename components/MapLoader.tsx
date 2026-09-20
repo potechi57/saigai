@@ -28,4 +28,5 @@ export type {
   MapGateSignInspection,
   MapBridgeInspection,
   MapBridgeLedgerRecord,
+  MapSlopeStructureInspection,
 } from "./MapView";

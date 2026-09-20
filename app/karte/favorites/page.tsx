@@ -8,6 +8,7 @@ import type {
   MapBridgeInspection,
   MapBridgeLedgerRecord,
   MapLedger,
+  MapSlopeStructureInspection,
   HomeLocation,
 } from "@/components/MapLoader";
 import CreateFavoriteGroupForm from "@/components/CreateFavoriteGroupForm";
@@ -27,10 +28,11 @@ export const dynamic = "force-dynamic";
 //
 // 当初は防災カルテ（Karte）専用だったが、「お気に入り追加はカルテのみでは
 // 意味がありません。点検調書の項目すべてに適用できるようにしてください」との
-// 指摘を受け、点検調書（門型標識・橋梁）・台帳（橋梁台帳・法令/施設台帳）の
-// お気に入りも同じ画面で確認・グループ分けできるよう一般化した
-// （prisma/schema.prismaのFavoriteモデルコメント参照）。1件のFavoriteはこれら
-// 5種のうちどれか1つだけを持つため、一覧表示・地図表示ともf.karte等の有無で分岐する。
+// 指摘を受け、点検調書（門型標識・橋梁・法面構造物）・台帳（橋梁台帳・
+// 法令/施設台帳）のお気に入りも同じ画面で確認・グループ分けできるよう
+// 一般化した（prisma/schema.prismaのFavoriteモデルコメント参照）。1件の
+// Favoriteはこれら6種のうちどれか1つだけを持つため、一覧表示・地図表示とも
+// f.karte等の有無で分岐する。
 export default async function FavoritesPage({
   searchParams,
 }: {
@@ -71,6 +73,12 @@ export default async function FavoritesPage({
         facilityLedger: {
           include: { images: { orderBy: { sortOrder: "asc" } } },
         },
+        slopeStructureInspection: {
+          include: {
+            photos: { where: { category: "overview" }, orderBy: { sortOrder: "asc" } },
+            facilityListItem: { select: { id: true } },
+          },
+        },
         groupItems: { include: { group: true } },
       },
     }),
@@ -92,6 +100,7 @@ export default async function FavoritesPage({
   const bridgeInspectionFavorites = favorites.filter((f) => f.bridgeInspection != null);
   const bridgeLedgerFavorites = favorites.filter((f) => f.bridgeLedger != null);
   const facilityLedgerFavorites = favorites.filter((f) => f.facilityLedger != null);
+  const slopeStructureInspectionFavorites = favorites.filter((f) => f.slopeStructureInspection != null);
 
   const favoritesWithCoords = karteFavorites.filter((f) => f.karte!.latitude != null && f.karte!.longitude != null);
   // マーカーのポップアップに表示する、起点／終点の参考写真。lib/map-photos.ts参照。
@@ -198,12 +207,33 @@ export default async function FavoritesPage({
     };
   });
 
+  const slopeStructureInspectionFavoritesWithCoords = slopeStructureInspectionFavorites.filter(
+    (f) => f.slopeStructureInspection!.latitude != null && f.slopeStructureInspection!.longitude != null
+  );
+  const mapSlopeStructureInspections: MapSlopeStructureInspection[] = slopeStructureInspectionFavoritesWithCoords.map((f) => {
+    const s = f.slopeStructureInspection!;
+    return {
+      id: s.id,
+      title: s.managementNo ?? s.sourceFileName ?? "（箇所番号不明）",
+      routeName: s.routeName,
+      location: s.location,
+      judgment: s.overallJudgment,
+      inspectionDateLabel: s.inspectionDate ? new Date(s.inspectionDate).toLocaleDateString("ja-JP") : null,
+      latitude: Number(s.latitude),
+      longitude: Number(s.longitude),
+      overviewPhotos: s.photos.map((p) => ({ url: p.url, caption: p.caption })),
+      facilityListItemId: s.facilityListItem?.id ?? null,
+      isFavorite: true,
+    };
+  });
+
   const hasAnyMapData =
     mapKartes.length > 0 ||
     mapGateSignInspections.length > 0 ||
     mapBridgeInspections.length > 0 ||
     mapBridgeLedgers.length > 0 ||
-    mapLedgers.length > 0;
+    mapLedgers.length > 0 ||
+    mapSlopeStructureInspections.length > 0;
 
   const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
   const currentGroupName = groupId ? groups.find((g) => g.id === groupId)?.name : null;
@@ -272,6 +302,7 @@ export default async function FavoritesPage({
             bridgeInspections={mapBridgeInspections}
             bridgeLedgers={mapBridgeLedgers}
             ledgers={mapLedgers}
+            slopeStructureInspections={mapSlopeStructureInspections}
             home={home}
           />
         )}
@@ -399,6 +430,39 @@ export default async function FavoritesPage({
                       </div>
                       <FavoriteToggleButton
                         target={{ type: "bridgeLedger", id: b.id }}
+                        initialIsFavorite
+                      />
+                    </div>
+                    <FavoriteGroupsForm
+                      favoriteId={f.id}
+                      groups={groupOptions}
+                      selectedGroupIds={f.groupItems.map((gi) => gi.groupId)}
+                    />
+                  </li>
+                );
+              }
+              if (f.slopeStructureInspection) {
+                const s = f.slopeStructureInspection;
+                const title = s.managementNo ?? s.sourceFileName ?? "（箇所番号不明）";
+                return (
+                  <li key={f.id} className="space-y-1.5 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <Link
+                          href={`/inspections/slopes/${s.id}`}
+                          className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {title}
+                        </Link>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">法面構造物</span>
+                        {s.overallJudgment && (
+                          <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[s.overallJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
+                            {s.overallJudgment}
+                          </span>
+                        )}
+                      </div>
+                      <FavoriteToggleButton
+                        target={{ type: "slopeStructureInspection", id: s.id }}
                         initialIsFavorite
                       />
                     </div>

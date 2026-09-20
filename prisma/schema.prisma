@@ -464,6 +464,9 @@ model Favorite {
   facilityLedgerId String?         @unique
   facilityLedger   FacilityLedger? @relation(fields: [facilityLedgerId], references: [id], onDelete: Cascade)
 
+  slopeStructureInspectionId String?                   @unique
+  slopeStructureInspection   SlopeStructureInspection? @relation(fields: [slopeStructureInspectionId], references: [id], onDelete: Cascade)
+
   note String? // お気に入りに追加した際の任意メモ
 
   createdAt DateTime @default(now())
@@ -732,10 +735,11 @@ model FacilityListItem {
   repairDate     String? // 修繕年月日（最新）
   repairRemarks  String? // 修繕記録の備考（最新）
 
-  inspections         FacilityInspectionRecord[]
-  gateSignInspections GateSignInspection[]
-  bridgeLedgers       BridgeLedger[]
-  bridgeInspections   BridgeInspection[]
+  inspections               FacilityInspectionRecord[]
+  gateSignInspections       GateSignInspection[]
+  bridgeLedgers             BridgeLedger[]
+  bridgeInspections         BridgeInspection[]
+  slopeStructureInspections SlopeStructureInspection[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1235,6 +1239,134 @@ model BridgeInspectionPhoto {
   damageType String?
   judgment   String?
   spanRef    String?
+
+  @@index([inspectionId])
+}
+
+// ── 点検調書（道路＞法面構造物） ─────────────────────────────────
+// 点検調書タブ＞道路＞法面構造物＞エクセル読み込み（会話ログ「法面構造物
+// （新規実装一式）」参照。サンプルファイル「A01-AH-900051_01_４３１号_
+// 西川津町_18.88_法面構造物.xlsx」ほか34件で構造を確認済み）。
+// GateSignInspection・BridgeInspectionとは発行元・様式が異なる独自体系で、
+// Excelは以下の構成:
+//   - 点検表: 1シートに箇所番号・路線名・所在地・緯度経度・点検日・評点評価
+//     （構造物評点/地山評点/Ⅰ〜Ⅲ）・総括コメント等、検索・地図表示に必要な
+//     項目が全てまとまっている（GateSignInspection/BridgeInspectionの
+//     様式１に相当）。この情報量の多いシート自体を、SlopeStructureInspectionSheet
+//     （sheetName="点検表"）としてグリッド保存もし、Web側でも元の見た目を
+//     確認できるようにする（下記「チェックシートについて」と同じ理由）。
+//   - 様式1〜7（点検チェックシート）: 法面構造物の種類（モルタル吹付け・
+//     のり枠・ロックネット・擁壁・石/ブロック積擁壁・落石防護柵・雪崩防止柵）
+//     ごとに用意された固定7種類のテンプレートシートで、実際にはこのうち
+//     「点検表」のY2セル（点検対象項目）が指す1枚だけに実データが入り、
+//     残り6枚は空のテンプレートのまま（実データ34件で確認済み）。
+//   - IMS設定シート: 門型標識・橋梁と異なり緯度経度はここではなく点検表側に
+//     載っている。代わりに「点検対象項目→対応する様式シート名」の対応表を
+//     持つが、各様式シートのB1（例:「点検チェックシート　モルタル吹付け」）
+//     から自己記述的に判定できるため、取込処理はこの対応表には依存しない
+//     （lib/excel/slope-structure-inspection-import.ts参照。将来ファイルの
+//     シート順が変わっても壊れないようにするため）。
+//
+// 【チェックシートについて・データモデルの設計判断】7種類のチェックシートは
+// 項目構成（区分・配点・評点・備考の行数や意味）が構造物種類ごとに全く異なり
+// （実データで確認済み。例: モルタル吹付けは「開口ひび割れ」「浮き・剥離」等、
+// 擁壁系は全く別の項目体系）、個別にDB列化すると7種類ぶんの別スキーマが
+// 必要になり複雑化する一方、これらは検索・絞り込みの対象にする必要が薄い
+// （検索・地図・お気に入りに必要な情報＝評点合計・健全度評価Ⅰ〜Ⅲは既に
+// structureScore/groundScore/overallJudgmentとして構造化済み）。そのため
+// BridgeLedgerSheet（橋梁台帳の密な帳票）と同じ「元Excelのセル配置を
+// ExtractedGrid（lib/excel/excel-grid-extract.ts）としてそのまま保存し、
+// ExcelSheetGridで見た目だけ忠実に再現する」方針にした（CLAUDE.md 10章・
+// 17章の「密で構造物種類ごとに異なる帳票は、個別スキーマ化よりも汎用グリッド
+// 表示が適切」という考え方に沿う）。
+model SlopeStructureInspection {
+  id String @id @default(cuid())
+
+  facilityListItemId String?
+  facilityListItem   FacilityListItem? @relation(fields: [facilityListItemId], references: [id], onDelete: SetNull)
+  // 点検表「箇所番号」欄（例: A01-AH-900051）。ファイル名にも同じ値が含まれるが、
+  // 門型標識と異なりExcel本体（H2セル）から取得できる（会話ログ「エクセルに
+  // 書いてある通りに実装してほしい」の方針を踏襲）。
+  managementNo String?
+
+  structureType String? // 点検対象項目（例: モルタル吹付け）。点検表Y2
+  managerOrgName String? // 管理機関名。点検表H3
+  routeName      String?
+  location       String? // 所在地（地先名。「松江市」+「西川津町」を結合済み）
+  distanceMarkFrom String? // 距離標（自）
+  distanceMarkTo   String? // 距離標（至）
+
+  latitude  Decimal? @db.Decimal(9, 6) // 点検表の緯度(度)(分)(秒)から10進度に変換
+  longitude Decimal? @db.Decimal(9, 6)
+
+  inspectionDate DateTime? // 点検日
+  photoDate      DateTime? // 撮影日（現況写真の撮影日。点検日と別のことがある）
+  weather        String? // 天候
+
+  // 評点による評価（構造物評点計・地山評点計）と、それに基づく点検者の評価
+  // （Ⅰ：対応不要／Ⅱ：経過観察／Ⅲ：要対策。GateSignInspection/
+  // BridgeInspectionのⅠ〜Ⅳ判定区分と表記は違うが、lib/labels.tsの
+  // JUDGMENT_BADGEはⅠ〜Ⅲの配色も含むため共通コンポーネントで表示できる）。
+  structureScore  Decimal? @db.Decimal(6, 2)
+  groundScore     Decimal? @db.Decimal(6, 2)
+  overallJudgment String? // Ⅰ|Ⅱ|Ⅲ
+
+  geologyDescription   String? // 背後地山の地形・地質
+  summaryComment        String? // 総括コメント
+  inspectionFindings    String? // 点検状況（注意箇所等）
+  dailyInspectionPoints String? // 日常点検の着眼点
+
+  sourceFileName String?
+
+  // 年度別履歴保存（GateSignInspection.previousInspectionIdと同じ考え方。
+  // そちらのコメント参照）。
+  previousInspectionId   String?                    @unique
+  previousInspection     SlopeStructureInspection?  @relation("SlopeStructureInspectionHistory", fields: [previousInspectionId], references: [id], onDelete: SetNull)
+  supersededByInspection SlopeStructureInspection?  @relation("SlopeStructureInspectionHistory")
+
+  sheets   SlopeStructureInspectionSheet[]
+  photos   SlopeStructureInspectionPhoto[]
+  favorite Favorite? // GateSignInspection.favoriteと同じ考え方
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([managementNo])
+  @@index([facilityListItemId])
+}
+
+// 「点検表」シートと、点検対象項目に該当する「様式N（点検チェックシート）」
+// シートの2枚を、元の見た目のまま保存する（BridgeLedgerSheetと同じ方針。
+// SlopeStructureInspection本体コメント参照）。
+model SlopeStructureInspectionSheet {
+  id           String                    @id @default(cuid())
+  inspectionId String
+  inspection   SlopeStructureInspection  @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  sheetName String // 元のExcelシート名（例: 点検表、様式1－(2)）
+  label     String // タブ表示名（例: 点検表、点検チェックシート（モルタル吹付け））
+  sortOrder Int    @default(0)
+  grid      Json // ExtractedGrid（セル値・結合・列幅・行高）
+
+  createdAt DateTime @default(now())
+
+  @@index([inspectionId])
+}
+
+// 点検表の「現況写真」「平面図・概略断面図」、および写真番号付きの損傷写真
+// （①②③…）。GateSignInspectionPhoto/BridgeInspectionPhotoと同じ考え方。
+model SlopeStructureInspectionPhoto {
+  id           String                   @id @default(cuid())
+  inspectionId String
+  inspection   SlopeStructureInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  url       String
+  caption   String?
+  sortOrder Int     @default(0)
+
+  // sitePlan=平面図・概略断面図、overview=現況写真、damage=番号付き損傷写真
+  // （lib/excel/slope-structure-inspection-import.ts参照）。
+  category String @default("overview")
 
   @@index([inspectionId])
 }
