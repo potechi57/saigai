@@ -5,6 +5,10 @@ import { put, del } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { parseBridgeInspectionExcel, type BridgeInspectionData } from "@/lib/excel/bridge-inspection-import";
 import { logAudit } from "@/lib/audit";
+import { mapWithConcurrency } from "@/lib/concurrency";
+
+// 写真アップロードの同時実行数上限（lib/concurrency.tsのコメント参照）。
+const UPLOAD_CONCURRENCY = 6;
 
 // 点検調書＞道路＞橋梁のExcel取込（会話ログ「過去の門型標識点検のエクセル
 // ファイルを参考に橋梁の点検様式の取り込みもできるようにしてほしい」参照）。
@@ -82,11 +86,12 @@ export async function importBridgeInspectionExcel(
   let photoUrls: { url: string; caption: string | null }[];
   let memberPhotoUrls: (string | null)[];
   try {
-    photoUrls = await Promise.all(
-      data.photos.map(async (p, i) => ({ url: await uploadImage(p.image, `photo-${i}`), caption: p.caption }))
-    );
-    memberPhotoUrls = await Promise.all(
-      data.members.map((m, i) => (m.photo ? uploadImage(m.photo, `member-${i}`) : Promise.resolve(null)))
+    photoUrls = await mapWithConcurrency(data.photos, UPLOAD_CONCURRENCY, async (p, i) => ({
+      url: await uploadImage(p.image, `photo-${i}`),
+      caption: p.caption,
+    }));
+    memberPhotoUrls = await mapWithConcurrency(data.members, UPLOAD_CONCURRENCY, (m, i) =>
+      m.photo ? uploadImage(m.photo, `member-${i}`) : Promise.resolve(null)
     );
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

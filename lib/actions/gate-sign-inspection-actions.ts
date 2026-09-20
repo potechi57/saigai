@@ -5,6 +5,10 @@ import { put, del } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import { parseGateSignInspectionExcel, type GateSignInspectionData } from "@/lib/excel/gate-sign-inspection-import";
 import { logAudit } from "@/lib/audit";
+import { mapWithConcurrency } from "@/lib/concurrency";
+
+// 写真アップロードの同時実行数上限（lib/concurrency.tsのコメント参照）。
+const UPLOAD_CONCURRENCY = 6;
 
 // 点検調書＞道路＞門型標識のExcel取込（会話ログ参照）。1ファイル＝1施設の
 // 詳細点検報告書で、施設台帳（FacilityListItem）の道路標識行と管理番号で
@@ -86,11 +90,12 @@ export async function importGateSignInspectionExcel(
   let overviewPhotoUrls: { url: string; caption: string | null }[];
   let memberPhotoUrls: (string | null)[];
   try {
-    overviewPhotoUrls = await Promise.all(
-      data.overviewPhotos.map(async (p, i) => ({ url: await uploadImage(p.image, `overview-${i}`), caption: p.caption }))
-    );
-    memberPhotoUrls = await Promise.all(
-      data.members.map((m, i) => (m.photo ? uploadImage(m.photo, `member-${i}`) : Promise.resolve(null)))
+    overviewPhotoUrls = await mapWithConcurrency(data.overviewPhotos, UPLOAD_CONCURRENCY, async (p, i) => ({
+      url: await uploadImage(p.image, `overview-${i}`),
+      caption: p.caption,
+    }));
+    memberPhotoUrls = await mapWithConcurrency(data.members, UPLOAD_CONCURRENCY, (m, i) =>
+      m.photo ? uploadImage(m.photo, `member-${i}`) : Promise.resolve(null)
     );
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

@@ -8,6 +8,10 @@ import {
   type SlopeStructureInspectionData,
 } from "@/lib/excel/slope-structure-inspection-import";
 import { logAudit } from "@/lib/audit";
+import { mapWithConcurrency } from "@/lib/concurrency";
+
+// 写真アップロードの同時実行数上限（lib/concurrency.tsのコメント参照）。
+const UPLOAD_CONCURRENCY = 6;
 
 // 点検調書＞道路＞法面構造物のExcel取込（lib/actions/bridge-inspection-actions.ts
 // と同じ方針: 管理番号（点検表の「箇所番号」欄）で施設台帳（FacilityListItem）の
@@ -78,13 +82,11 @@ export async function importSlopeStructureInspectionExcel(
 
   let photoUrls: { url: string; caption: string | null; category: string }[];
   try {
-    photoUrls = await Promise.all(
-      data.photos.map(async (p, i) => ({
-        url: await uploadImage(p.image, `photo-${i}`),
-        caption: p.caption,
-        category: p.category,
-      }))
-    );
+    photoUrls = await mapWithConcurrency(data.photos, UPLOAD_CONCURRENCY, async (p, i) => ({
+      url: await uploadImage(p.image, `photo-${i}`),
+      caption: p.caption,
+      category: p.category,
+    }));
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `写真のアップロードに失敗しました（詳細: ${detail}）` };
