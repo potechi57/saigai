@@ -113,6 +113,25 @@ export type MapGateSignInspection = {
   isFavorite?: boolean;
 };
 
+// 点検調書＞道路＞橋梁（prisma/schema.prismaのBridgeInspection参照）。
+// MapGateSignInspectionと同じ考え方（会話ログ「橋梁：地図・検索結果一覧への
+// 表示」参照。門型標識のパターンをそのまま横展開）。
+export type MapBridgeInspection = {
+  id: string;
+  title: string; // 表示名（橋梁名があればそれ、無ければ管理番号等。呼び出し側で決定済み）
+  routeName?: string | null;
+  location?: string | null;
+  judgment?: string | null; // 判定区分（Ⅰ〜Ⅳ）
+  inspectionDateLabel?: string | null;
+  latitude: number;
+  longitude: number;
+  // 全景写真（起点側・終点側。lib/excel/bridge-inspection-import.tsの
+  // extractForm1OverviewPhotos参照）。
+  overviewPhotos: { url: string; caption: string | null }[];
+  facilityListItemId?: string | null;
+  isFavorite?: boolean;
+};
+
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
 
 // 地図APIはGoogle Maps等への差し替えを見据え、業務データ（MapKarte）とは疎結合にしている
@@ -131,6 +150,7 @@ export default function MapView({
   ledgers = [],
   facilityListItems = [],
   gateSignInspections = [],
+  bridgeInspections = [],
 }: {
   kartes: MapKarte[];
   home?: HomeLocation;
@@ -143,6 +163,7 @@ export default function MapView({
   ledgers?: MapLedger[];
   facilityListItems?: MapFacilityListItem[];
   gateSignInspections?: MapGateSignInspection[];
+  bridgeInspections?: MapBridgeInspection[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -164,7 +185,9 @@ export default function MapView({
   // 点検調書（門型標識）のマーカー一式（台帳・施設一覧と同様、呼び出し元で
   // 分類が絞り込まれた状態で渡されるため、ここではそのまま描画するだけ）。
   const gateSignLayerRef = useRef<L.LayerGroup | null>(null);
-  // ledgers/facilityListItems/gateSignInspectionsも、kartesと同じ理由
+  // 点検調書（橋梁）のマーカー一式（門型標識と同じ考え方）。
+  const bridgeLayerRef = useRef<L.LayerGroup | null>(null);
+  // ledgers/facilityListItems/gateSignInspections/bridgeInspectionsも、kartesと同じ理由
   // （lastKarteIdsKeyRef参照）でID集合の差分チェックを行う。以前は「件数が少ない
   // 想定なので毎回作り直す」という単純化をしていたが、お気に入りの☆/★切替や
   // ホーム位置設定のたびに呼ばれるrouter.refresh()でもこれらのレイヤーを
@@ -173,6 +196,7 @@ export default function MapView({
   const lastLedgerIdsKeyRef = useRef<string | null>(null);
   const lastFacilityListIdsKeyRef = useRef<string | null>(null);
   const lastGateSignIdsKeyRef = useRef<string | null>(null);
+  const lastBridgeIdsKeyRef = useRef<string | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -210,6 +234,9 @@ export default function MapView({
   const gateSignFavoriteIdsRef = useRef<Set<string>>(
     new Set(gateSignInspections.filter((g) => g.isFavorite).map((g) => g.id))
   );
+  const bridgeFavoriteIdsRef = useRef<Set<string>>(
+    new Set(bridgeInspections.filter((b) => b.isFavorite).map((b) => b.id))
+  );
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -230,6 +257,7 @@ export default function MapView({
     ledgerLayerRef.current = L.layerGroup().addTo(map);
     facilityListLayerRef.current = L.layerGroup().addTo(map);
     gateSignLayerRef.current = L.layerGroup().addTo(map);
+    bridgeLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
@@ -238,6 +266,7 @@ export default function MapView({
       ledgerLayerRef.current = null;
       facilityListLayerRef.current = null;
       gateSignLayerRef.current = null;
+      bridgeLayerRef.current = null;
       // レイヤーグループを作り直す（＝上のkarteLayerRef等が新しい空のグループに
       // 差し替わる）ため、「前回どのID集合を描画したか」を覚えているこれらのrefも
       // 一緒にリセットする。リセットしないと、直後の各マーカー構築effectが
@@ -251,6 +280,7 @@ export default function MapView({
       lastLedgerIdsKeyRef.current = null;
       lastFacilityListIdsKeyRef.current = null;
       lastGateSignIdsKeyRef.current = null;
+      lastBridgeIdsKeyRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -630,6 +660,87 @@ export default function MapView({
       );
     }
   }, [gateSignInspections]);
+
+  // 点検調書（橋梁）のマーカーを構築する専用effect（門型標識と同じ考え方。
+  // 会話ログ「橋梁：地図・検索結果一覧への表示」参照）。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = bridgeLayerRef.current;
+    if (!map || !layer) return;
+
+    const idsKey = bridgeInspections
+      .map((b) => b.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastBridgeIdsKeyRef.current) return;
+    lastBridgeIdsKeyRef.current = idsKey;
+
+    layer.clearLayers();
+    bridgeFavoriteIdsRef.current = new Set(bridgeInspections.filter((b) => b.isFavorite).map((b) => b.id));
+
+    for (const b of bridgeInspections) {
+      const marker = L.marker([b.latitude, b.longitude], {
+        icon: buildBridgeMarkerIcon(b.judgment, bridgeFavoriteIdsRef.current.has(b.id)),
+      }).addTo(layer);
+      const detailHref = `/inspections/bridges/${b.id}`;
+      const favSlotId = `bridge-fav-slot-${b.id}`;
+      marker.bindPopup(
+        `<div style="font-size:13px;min-width:180px;">
+           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+             <div style="font-weight:600;">${escapeHtml(b.title)}</div>
+             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+               <span id="${favSlotId}"></span>
+               <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
+             </div>
+           </div>
+           ${b.judgment ? `<div style="color:#666;">判定区分 ${escapeHtml(b.judgment)}</div>` : ""}
+           ${b.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(b.routeName)}</div>` : ""}
+           ${b.location ? `<div style="color:#374151;">所在地: ${escapeHtml(b.location)}</div>` : ""}
+           ${b.inspectionDateLabel ? `<div style="color:#374151;">点検日: ${escapeHtml(b.inspectionDateLabel)}</div>` : ""}
+           ${buildBridgeOverviewPhotosHtml(b, detailHref)}
+           ${
+             b.facilityListItemId
+               ? `<div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(b.facilityListItemId)}" style="color:#2563eb;">施設台帳を見る →</a></div>`
+               : ""
+           }
+         </div>`,
+        { maxWidth: 1000 }
+      );
+
+      marker.on("popupopen", () => renderBridgeFavSlot(favSlotId, b, marker));
+    }
+
+    function renderBridgeFavSlot(slotId: string, b: MapBridgeInspection, marker: L.Marker) {
+      const slot = document.getElementById(slotId);
+      if (!slot) return;
+      const isFav = bridgeFavoriteIdsRef.current.has(b.id);
+      const btnId = `bridge-fav-toggle-${b.id}`;
+      slot.innerHTML = isFav
+        ? `<span style="font-size:12px;color:#a16207;">★ お気に入り済み</span> <button type="button" id="${btnId}" style="margin-left:6px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">外す</button>`
+        : `<button type="button" id="${btnId}" style="font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">☆ お気に入りに追加</button>`;
+      const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+      btn?.addEventListener(
+        "click",
+        () => {
+          const next = !bridgeFavoriteIdsRef.current.has(b.id);
+          btn.disabled = true;
+          btn.textContent = "処理中...";
+          setFavorite({ type: "bridgeInspection", id: b.id }, next).then((result) => {
+            if (!result.ok) {
+              btn.disabled = false;
+              btn.textContent = `失敗（${result.error}）`;
+              return;
+            }
+            if (next) bridgeFavoriteIdsRef.current.add(b.id);
+            else bridgeFavoriteIdsRef.current.delete(b.id);
+            marker.setIcon(buildBridgeMarkerIcon(b.judgment, next));
+            renderBridgeFavSlot(slotId, b, marker);
+          });
+        },
+        { once: true }
+      );
+    }
+  }, [bridgeInspections]);
 
   // ホーム位置ピンは、地図本体を作り直さずに独立して追加・更新・削除する
   // （上の初期化effectとは別立てにする理由は直上のコメントの通り）。
@@ -1038,6 +1149,31 @@ function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite
   });
 }
 
+const BRIDGE_JUDGMENT_COLOR = GATE_SIGN_JUDGMENT_COLOR; // 判定区分Ⅰ〜Ⅳの配色は点検調書間で共通
+
+// 点検調書（橋梁）のマーカーアイコン。門型標識（🪧）と見分けられるよう橋を
+// 連想させる🌉を使う（会話ログ「橋梁：地図・検索結果一覧への表示」参照）。
+function buildBridgeMarkerIcon(judgment: string | null | undefined, isFavorite: boolean): L.DivIcon {
+  const color = (judgment && BRIDGE_JUDGMENT_COLOR[judgment]) || "#6b7280";
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        position:relative;
+        background:${color};
+        width:26px;height:26px;border-radius:6px;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+        font-size:14px;
+      ">🌉${
+        isFavorite ? '<span style="position:absolute;top:-8px;right:-6px;font-size:13px;">★</span>' : ""
+      }</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
+  });
+}
+
 // OSRM（Open Source Routing Machine）の公開デモサーバーを使い、道路経路に沿った
 // 距離・所要時間を取得する。APIキーが不要で試せる貴重な選択肢だが、あくまで
 // 動作確認・デモ用の共用サーバーであり、SLAが無く商用の常用には向かない
@@ -1149,6 +1285,18 @@ function buildGateSignOverviewPhotosHtml(g: MapGateSignInspection, detailHref: s
     </a>`;
   return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
       ${g.overviewPhotos.map((p) => thumb(p.url, p.caption)).join("")}
+    </div>`;
+}
+
+function buildBridgeOverviewPhotosHtml(b: MapBridgeInspection, detailHref: string): string {
+  if (b.overviewPhotos.length === 0) return "";
+  const thumb = (url: string, caption: string | null) => `
+    <a href="${escapeHtml(detailHref)}" style="text-align:center;text-decoration:none;flex-shrink:0;">
+      <img src="${escapeHtml(url)}" style="width:450px;max-width:450px;height:253px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;display:block;" />
+      ${caption ? `<span style="font-size:12px;color:#6b7280;">${escapeHtml(caption)}</span>` : ""}
+    </a>`;
+  return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
+      ${b.overviewPhotos.map((p) => thumb(p.url, p.caption)).join("")}
     </div>`;
 }
 
