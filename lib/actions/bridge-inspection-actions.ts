@@ -114,6 +114,8 @@ export async function importBridgeInspectionExcel(
       responsiblePerson: data.responsiblePerson,
       overallJudgment: data.overallJudgment,
       overallFindings: data.overallFindings,
+      memberOverview: data.memberOverview,
+      spanDiagnoses: data.spanDiagnoses,
       sourceFileName: file.name,
       photos: {
         create: photoUrls.map((p, i) => ({ url: p.url, caption: p.caption, sortOrder: i })),

@@ -84,6 +84,37 @@ export type BridgeInspectionPhotoData = {
   caption: string | null;
 };
 
+// 「道路橋様式１」の「部材単位の診断（各部材毎に最悪値を記入）」総括表
+// （主桁・横桁・床版・下部構造・支承部・その他の6行固定。実データ確認済み:
+// A/B列=部材名、C列=判定区分、D列=変状の種類、F列=備考、H列=応急措置後の
+// 判定区分、J列=応急措置内容、L列=応急措置及び判定実施年月日）。
+// GateSignInspectionMemberOverviewRowと同じ形。橋全体を通した1つだけの
+// 総合評価であり、BridgeInspection.memberOverviewにJSONとして保存する
+// （schema.prismaのBridgeInspection.memberOverviewコメント参照）。
+export type BridgeInspectionMemberOverviewRow = {
+  memberName: string;
+  judgment: string | null;
+  damageType: string | null;
+  remarks: string | null;
+  postActionJudgment: string | null;
+  postActionContent: string | null;
+  postActionDate: string | null;
+};
+
+// 「定期点検調書（その４）径間N」の径間ごとの損傷評価（床版・主桁・横桁・
+// 橋台橋脚・支承・排水施設・伸縮装置・高欄地覆・路面の9項目固定。実データ
+// 確認済み: V列=部材名、X列=判定区分、Y列=変状の種類）。径間の数だけ配列
+// 要素を持つ（schema.prismaのBridgeInspection.spanDiagnosesコメント参照）。
+export type BridgeInspectionSpanDiagnosisItem = {
+  memberName: string;
+  judgment: string | null;
+  damageType: string | null;
+};
+export type BridgeInspectionSpanDiagnosis = {
+  spanNo: number;
+  items: BridgeInspectionSpanDiagnosisItem[];
+};
+
 export type BridgeInspectionData = {
   managementNo: string | null;
   bridgeName: string | null;
@@ -99,6 +130,8 @@ export type BridgeInspectionData = {
   responsiblePerson: string | null;
   overallJudgment: string | null;
   overallFindings: string | null;
+  memberOverview: BridgeInspectionMemberOverviewRow[];
+  spanDiagnoses: BridgeInspectionSpanDiagnosis[];
   members: BridgeInspectionMemberData[];
   photos: BridgeInspectionPhotoData[];
 };
@@ -118,6 +151,9 @@ const SITE_PHOTO_SHEET_NAME = "定期点検調書（その3）";
 // 実データでは末尾に余分な空白が付くことがある（例:「...径間4 」）ため、
 // 前方一致（trimして比較）で拾う。
 const DAMAGE_PHOTO_SHEET_PREFIX = "定期点検調書（その5）";
+// 「定期点検調書（その4） 径間N」（径間の数だけ複製される。その5と同じく
+// 末尾の空白ゆれに備え前方一致で拾う）。
+const SPAN_DIAGNOSIS_SHEET_PREFIX = "定期点検調書（その4）";
 
 // シート名がテンプレートの全角数字（Ａ／１等）表記か、通常の全角文字表記か
 // ファイルによってブレる可能性があるため、前方一致・trimで緩く探す
@@ -160,6 +196,48 @@ function extractOverallJudgment(ws: WorkSheet): { overallJudgment: string | null
   // 「道路橋毎の健全性の診断」欄。ヘッダー（（判定区分）（所見等）」の
   // 次の行に実際の値が入る（実データで確認済み。A24/B24=ヘッダー、A25/B25=値）。
   return { overallJudgment: cellText(ws, 24, 0), overallFindings: cellText(ws, 24, 1) };
+}
+
+// 「部材単位の診断」総括表は、部材名（A列）が無い行は直前の部材グループの
+// 続き（例:「上部構造」グループの主桁・横桁・床版）であることを実データで
+// 確認済み。表示上は部材名（B列があればB列、無ければA列）をそのまま使う。
+const MEMBER_OVERVIEW_ROWS = [
+  { row: 14, nameCol: 1, defaultName: "主桁" },
+  { row: 15, nameCol: 1, defaultName: "横桁" },
+  { row: 16, nameCol: 1, defaultName: "床版" },
+  { row: 17, nameCol: 0, defaultName: "下部構造" },
+  { row: 18, nameCol: 0, defaultName: "支承部" },
+  { row: 19, nameCol: 0, defaultName: "その他" },
+] as const;
+
+function extractMemberOverview(ws: WorkSheet): BridgeInspectionMemberOverviewRow[] {
+  return MEMBER_OVERVIEW_ROWS.map(({ row, nameCol, defaultName }) => ({
+    memberName: cellText(ws, row, nameCol) ?? defaultName,
+    judgment: cellText(ws, row, 2),
+    damageType: cellText(ws, row, 3),
+    remarks: cellText(ws, row, 5),
+    postActionJudgment: cellText(ws, row, 7),
+    postActionContent: cellText(ws, row, 9),
+    postActionDate: cellText(ws, row, 11),
+  }));
+}
+
+// 「定期点検調書（その４）径間N」1枚分（V列=部材名、X列=判定区分、Y列=変状の
+// 種類、行8〜16固定。実データ確認済み）。
+const SPAN_DIAGNOSIS_ROWS = 9; // 床版・主桁・横桁・橋台橋脚・支承・排水施設・伸縮装置・高欄地覆・路面
+function extractSpanDiagnosisItems(ws: WorkSheet): BridgeInspectionSpanDiagnosisItem[] {
+  const items: BridgeInspectionSpanDiagnosisItem[] = [];
+  for (let i = 0; i < SPAN_DIAGNOSIS_ROWS; i++) {
+    const row = 7 + i;
+    const memberName = cellText(ws, row, 21);
+    if (!memberName) continue;
+    items.push({
+      memberName,
+      judgment: cellText(ws, row, 23),
+      damageType: cellText(ws, row, 24),
+    });
+  }
+  return items;
 }
 
 // 様式２・その２・その３の「写真の1行上・同じ列」に置かれたラベルセルを
@@ -273,6 +351,12 @@ function readSpanNo(ws: WorkSheet): number | null {
   return cellNumber(ws, 3, 13); // N4
 }
 
+// 「定期点検調書（その４）径間N」シートの「径間番号」欄（実データ確認済み:
+// J4ラベル・K4に値。その５とはラベル・値のセル位置が異なる点に注意）。
+function readSpanDiagnosisSpanNo(ws: WorkSheet): number | null {
+  return cellNumber(ws, 3, 10); // K4
+}
+
 export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: string): Promise<BridgeInspectionData | null> {
   const wb: WorkBook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const specSheet = findSheet(wb, SPEC_SHEET_NAME);
@@ -281,6 +365,7 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
 
   const spec = extractSpec(specSheet);
   const overall = extractOverallJudgment(form1Sheet);
+  const memberOverview = extractMemberOverview(form1Sheet);
 
   const imsSheet = findSheet(wb, "IMS設定シート");
   const imsMap = imsSheet ? readLabelValueMap(imsSheet) : new Map<string, string>();
@@ -320,11 +405,26 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
     members.push(...(await extractMembersFromSheet(buffer, sheetName, ws, spanNo, pageNo)));
   }
 
+  // 「定期点検調書（その４）」径間N シート群（径間ごとの損傷評価。
+  // schema.prismaのBridgeInspection.spanDiagnosesコメント参照）。
+  const spanDiagnosisSheetNames = wb.SheetNames.filter((n) => n.trim().startsWith(SPAN_DIAGNOSIS_SHEET_PREFIX));
+  const spanDiagnoses: BridgeInspectionSpanDiagnosis[] = [];
+  for (const sheetName of spanDiagnosisSheetNames) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+    const spanNo = readSpanDiagnosisSpanNo(ws);
+    if (spanNo == null) continue;
+    spanDiagnoses.push({ spanNo, items: extractSpanDiagnosisItems(ws) });
+  }
+  spanDiagnoses.sort((a, b) => a.spanNo - b.spanNo);
+
   return {
     ...spec,
     latitude,
     longitude,
     ...overall,
+    memberOverview,
+    spanDiagnoses,
     members,
     photos,
   };

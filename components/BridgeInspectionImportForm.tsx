@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { importBridgeInspectionExcel } from "@/lib/actions/bridge-inspection-actions";
@@ -12,6 +12,10 @@ import { importBridgeInspectionExcel } from "@/lib/actions/bridge-inspection-act
 type FileStatus = "waiting" | "processing" | "success" | "error";
 
 type FileState = {
+  // GateSignInspectionImportForm.tsxのlistIdと同じ理由（配列indexではなく
+  // 安定したIDをkeyにしないと、途中で1件取りやめた際に後続要素のindexが
+  // ずれて別ファイルを誤って処理・表示してしまう）。
+  listId: string;
   file: File;
   status: FileStatus;
   detail: string;
@@ -31,22 +35,41 @@ export default function BridgeInspectionImportForm() {
   const router = useRouter();
   const [files, setFiles] = useState<FileState[]>([]);
   const [running, setRunning] = useState(false);
+  const filesRef = useRef<FileState[]>([]);
+
+  function setFilesAndRef(updater: (prev: FileState[]) => FileState[]) {
+    setFiles((prev) => {
+      const next = updater(prev);
+      filesRef.current = next;
+      return next;
+    });
+  }
 
   function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
-    setFiles(selected.map((file) => ({ file, status: "waiting", detail: "" })));
+    setFilesAndRef(() => selected.map((file) => ({ listId: crypto.randomUUID(), file, status: "waiting", detail: "" })));
+  }
+
+  // 順番待ち（waiting）のファイルだけを取りやめられるようにする
+  // （GateSignInspectionImportForm.tsxのremoveQueuedFileと同じ方針）。
+  function removeQueuedFile(listId: string) {
+    setFilesAndRef((prev) => prev.filter((f) => !(f.listId === listId && f.status === "waiting")));
   }
 
   async function handleRun() {
     setRunning(true);
-    for (let i = 0; i < files.length; i++) {
-      setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "processing", detail: "解析・登録中..." } : f)));
+    const queueIds = filesRef.current.filter((f) => f.status === "waiting").map((f) => f.listId);
+    for (const listId of queueIds) {
+      const current = filesRef.current.find((f) => f.listId === listId);
+      if (!current || current.status !== "waiting") continue;
+
+      setFilesAndRef((prev) => prev.map((f) => (f.listId === listId ? { ...f, status: "processing", detail: "解析・登録中..." } : f)));
       const fd = new FormData();
-      fd.append("file", files[i].file);
+      fd.append("file", current.file);
       const result = await importBridgeInspectionExcel(null, fd);
-      setFiles((prev) =>
-        prev.map((f, idx) =>
-          idx === i
+      setFilesAndRef((prev) =>
+        prev.map((f) =>
+          f.listId === listId
             ? result.ok
               ? {
                   ...f,
@@ -111,13 +134,14 @@ export default function BridgeInspectionImportForm() {
                   <th className="px-3 py-2">ファイル名</th>
                   <th className="px-3 py-2">状態</th>
                   <th className="px-3 py-2">詳細</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {files.map((f, i) => {
+                {files.map((f) => {
                   const status = STATUS_LABEL[f.status];
                   return (
-                    <tr key={i} className="border-t border-gray-200 dark:border-gray-700">
+                    <tr key={f.listId} className="border-t border-gray-200 dark:border-gray-700">
                       <td className="max-w-[16rem] truncate px-3 py-2 text-gray-800 dark:text-gray-100" title={f.file.name}>
                         {f.file.name}
                       </td>
@@ -131,6 +155,20 @@ export default function BridgeInspectionImportForm() {
                           </Link>
                         ) : (
                           f.detail
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {f.status === "waiting" && (
+                          <button
+                            type="button"
+                            onClick={() => removeQueuedFile(f.listId)}
+                            title="このファイルを取りやめる"
+                            aria-label={`${f.file.name}を取りやめる`}
+                            className="flex items-center gap-0.5 whitespace-nowrap text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
+                          >
+                            <span aria-hidden="true">×</span>
+                            キャンセル
+                          </button>
                         )}
                       </td>
                     </tr>
