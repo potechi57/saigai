@@ -810,6 +810,19 @@ model GateSignInspection {
   overallJudgment String? // 門型標識等毎の健全性の診断（判定区分Ⅰ〜Ⅳ）
   overallFindings String? // 同上の所見
 
+  // 様式（その１）の「部材単位の健全性の診断」総括表（支柱・横梁・標識板または
+  // 道路情報板・基礎・その他の5行固定、各行に判定区分・変状の種類・備考・
+  // 応急措置後の判定区分・応急措置内容・応急措置及び判定実施年月日の6項目）。
+  // GateSignInspectionMember（様式２の詳細カード）と内容が重なる粗い情報だが、
+  // 様式１タブは概要表示という位置づけのため、こちらも表示してほしいとの要望
+  // （会話ログ「様式1は概要を表示するという観点で部材ごとの健全性の診断も
+  // 表示してほしい」参照）を受けて追加した。行数・列構成が固定（Excelの様式上
+  // 常に5部材×6項目）で、GateSignInspectionMemberのように検索・絞り込みの
+  // 対象にする必要も無いため、別テーブル化はせずJSON列としてそのまま保持する
+  // （BridgeLedgerSheetData.gridと同じ考え方）。要素の型は
+  // lib/excel/gate-sign-inspection-import.tsのGateSignInspectionMemberOverviewRow参照。
+  memberOverview Json?
+
   sourceFileName String? // 取込元Excelファイル名（参考情報。再取込時の重複判定にも使う）
 
   members        GateSignInspectionMember[]
@@ -824,9 +837,9 @@ model GateSignInspection {
 }
 
 // 様式２の「損傷箇所ごとの写真付き詳細カード」を1枚＝1レコードとして保持する
-// （様式１側の部材単位の総括表は、様式２のカードと内容が重なりより粗いため
-// 別テーブル化はせず取り込まない。会話ログ「読み込んで表示できる仕様に」に対する
-// 実装上の判断）。
+// （様式１側の部材単位の総括表は、内容が重なりより粗いため別テーブル化はせず、
+// GateSignInspection.memberOverviewにJSONとして保持する。会話ログ「読み込んで
+// 表示できる仕様に」に対する実装上の判断）。
 model GateSignInspectionMember {
   id           String             @id @default(cuid())
   inspectionId String
