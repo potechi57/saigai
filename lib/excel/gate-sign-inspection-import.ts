@@ -125,6 +125,7 @@ export type GateSignInspectionData = {
   facilityForm: string | null;
   routeName: string | null;
   location: string | null;
+  idNumber: string | null;
   latitude: number | null;
   longitude: number | null;
   inspectionDate: Date | null;
@@ -174,6 +175,7 @@ function extractForm1(ws: WorkSheet): Pick<
   | "facilityForm"
   | "routeName"
   | "location"
+  | "idNumber"
   | "inspectorCompany"
   | "inspectorName"
   | "managerOrgName"
@@ -199,6 +201,10 @@ function extractForm1(ws: WorkSheet): Pick<
     facilityForm: cellText(ws, 5, 3),
     routeName: cellText(ws, 5, 6),
     location: cellText(ws, 5, 9),
+    // 様式（その１）行4のQ列（Q4:R4セル結合、値はQ5:R5）。実データ確認済み
+    // （会話ログ「ID欄は確認する限り空白ですが...とりあえず、実装して
+    // おいていください」参照）。
+    idNumber: cellText(ws, 4, 16),
     inspectionDate,
     inspectorCompany: cellText(ws, 7, 13),
     inspectorName: cellText(ws, 7, 16),

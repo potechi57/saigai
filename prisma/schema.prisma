@@ -786,6 +786,10 @@ model GateSignInspection {
   facilityForm String? // 形式（例: 門型式）
   routeName    String?
   location     String?
+  // Excel上の「ＩＤ番号」欄（様式（その１）行4のQ列）。実データでは空欄のことが
+  // 多いが、項目自体は実在するため取り込んでおく（会話ログ「ID欄は確認する限り
+  // 空白ですが、－をいれるなどして、とりあえず、実装しておいていください」参照）。
+  idNumber     String?
 
   // IMS設定シート（緯度(度)(分)(秒)・経度(度)(分)(秒)）から10進度に変換して保持する
   // （karte-import.ts等と同じ方針）。
