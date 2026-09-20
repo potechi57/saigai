@@ -10,8 +10,12 @@ import { logAudit } from "@/lib/audit";
 // ファイルを参考に橋梁の点検様式の取り込みもできるようにしてほしい」参照）。
 // lib/actions/gate-sign-inspection-actions.tsと同じ方針: 管理番号（Excel内の
 // 「橋梁番号」欄。門型標識と異なりファイル名からではなくExcel本体から取得
-// できる）で施設台帳（FacilityListItem）の橋梁行と紐付け、再取込時は同じ
-// 管理番号の既存レコードを写真ごと削除してから作り直す。
+// できる）で施設台帳（FacilityListItem）の橋梁行と紐付ける。
+//
+// 【再取込み時の年度別履歴保存について】gate-sign-inspection-actions.tsと同じ
+// 理由・同じ方式（schema.prismaのBridgeInspection.previousInspectionId、
+// GateSignInspection.previousInspectionIdコメント参照）。削除せず新しい
+// レコードを作り、previousInspectionIdで連鎖させる。
 
 function hasBlobCredentials(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_OIDC_TOKEN);
@@ -56,22 +60,14 @@ export async function importBridgeInspectionExcel(
     ? await prisma.facilityListItem.findUnique({ where: { managementNo: data.managementNo }, select: { id: true } })
     : null;
 
-  // 同じ管理番号の既存レコードがあれば、写真（Blob）ごと削除してから作り直す
-  // （gate-sign-inspection-actions.tsと同じ方針。詳細点検報告書そのものの
-  // 差し替えという性質のため）。
-  if (data.managementNo) {
-    const existing = await prisma.bridgeInspection.findFirst({
-      where: { managementNo: data.managementNo },
-      include: { members: { select: { photoUrl: true } }, photos: { select: { url: true } } },
-    });
-    if (existing) {
-      await Promise.all([
-        ...existing.members.filter((m) => m.photoUrl).map((m) => del(m.photoUrl as string).catch(() => {})),
-        ...existing.photos.map((p) => del(p.url).catch(() => {})),
-      ]);
-      await prisma.bridgeInspection.delete({ where: { id: existing.id } });
-    }
-  }
+  // 同じ管理番号の「現在有効な最新レコード」を探す。見つかっても削除はせず、
+  // 新レコード作成後にpreviousInspectionIdでつなぐ（上記コメント参照）。
+  const previous = data.managementNo
+    ? await prisma.bridgeInspection.findFirst({
+        where: { managementNo: data.managementNo, supersededByInspection: { is: null } },
+        include: { favorite: { select: { id: true } } },
+      })
+    : null;
 
   const folder = data.managementNo ?? `unmatched-${Date.now()}`;
   async function uploadImage(image: { data: Buffer; ext: string }, sub: string): Promise<string> {
@@ -101,6 +97,7 @@ export async function importBridgeInspectionExcel(
     data: {
       facilityListItemId: facility?.id ?? null,
       managementNo: data.managementNo,
+      previousInspectionId: previous?.id ?? null,
       bridgeName: data.bridgeName,
       bridgeNameKana: data.bridgeNameKana,
       routeName: data.routeName,
@@ -136,34 +133,75 @@ export async function importBridgeInspectionExcel(
     },
   });
 
+  // 旧レコードにお気に入り登録があれば、新レコードへ引き継ぐ
+  // （gate-sign-inspection-actions.tsと同じ理由）。
+  if (previous?.favorite) {
+    await prisma.favorite.update({
+      where: { id: previous.favorite.id },
+      data: { bridgeInspectionId: created.id },
+    });
+  }
+
   await logAudit({
     action: "CREATE",
     entityType: "点検調書（橋梁）",
-    summary: `${data.bridgeName ?? data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の橋梁定期点検調書を取込`,
+    summary: `${data.bridgeName ?? data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の橋梁定期点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
     linkHref: `/inspections/bridges/${created.id}`,
   });
 
   revalidatePath("/inspections/bridges");
   revalidatePath("/karte");
+  if (previous) revalidatePath(`/inspections/bridges/${previous.id}`);
 
   return { ok: true, id: created.id, managementNo: data.managementNo, matchedFacility: !!facility };
 }
 
+// 履歴チェーン全体を削除する（gate-sign-inspection-actions.tsの
+// deleteGateSignInspectionと同じ方針。「この点検調書を削除」は施設そのものの
+// 記録を丸ごと消す操作という位置づけ）。
 export async function deleteBridgeInspection(id: string): Promise<void> {
-  const existing = await prisma.bridgeInspection.findUnique({
-    where: { id },
-    include: { members: { select: { photoUrl: true } }, photos: { select: { url: true } } },
+  const chain: { id: string; bridgeName: string | null; managementNo: string | null; sourceFileName: string | null }[] = [];
+  let cursor: string | null = id;
+  while (cursor) {
+    const record: {
+      id: string;
+      bridgeName: string | null;
+      managementNo: string | null;
+      sourceFileName: string | null;
+      previousInspectionId: string | null;
+    } | null = await prisma.bridgeInspection.findUnique({
+      where: { id: cursor },
+      select: { id: true, bridgeName: true, managementNo: true, sourceFileName: true, previousInspectionId: true },
+    });
+    if (!record) break;
+    chain.push(record);
+    cursor = record.previousInspectionId;
+  }
+  if (chain.length === 0) return;
+
+  const photoUrls = await prisma.bridgeInspectionPhoto.findMany({
+    where: { inspectionId: { in: chain.map((c) => c.id) } },
+    select: { url: true },
   });
-  if (!existing) return;
+  const memberPhotoUrls = await prisma.bridgeInspectionMember.findMany({
+    where: { inspectionId: { in: chain.map((c) => c.id) }, photoUrl: { not: null } },
+    select: { photoUrl: true },
+  });
   await Promise.all([
-    ...existing.members.filter((m) => m.photoUrl).map((m) => del(m.photoUrl as string).catch(() => {})),
-    ...existing.photos.map((p) => del(p.url).catch(() => {})),
+    ...photoUrls.map((p) => del(p.url).catch(() => {})),
+    ...memberPhotoUrls.map((m) => del(m.photoUrl as string).catch(() => {})),
   ]);
-  await prisma.bridgeInspection.delete({ where: { id } });
+
+  // previousInspectionIdの一意制約があるため、新しい方（末尾）から順に削除する。
+  for (const record of chain) {
+    await prisma.bridgeInspection.delete({ where: { id: record.id } });
+  }
+
+  const latest = chain[0];
   await logAudit({
     action: "DELETE",
     entityType: "点検調書（橋梁）",
-    summary: `${existing.bridgeName ?? existing.managementNo ?? existing.sourceFileName ?? "点検調書"}を削除`,
+    summary: `${latest.bridgeName ?? latest.managementNo ?? latest.sourceFileName ?? "点検調書"}を削除（${chain.length}年度分）`,
   });
   revalidatePath("/inspections/bridges");
   revalidatePath("/karte");

@@ -1137,6 +1137,12 @@ model BridgeInspection {
 
   sourceFileName String?
 
+  // 年度別履歴保存（GateSignInspection.previousInspectionIdと同じ考え方。
+  // そちらのコメント参照）。
+  previousInspectionId   String?           @unique
+  previousInspection     BridgeInspection? @relation("BridgeInspectionHistory", fields: [previousInspectionId], references: [id], onDelete: SetNull)
+  supersededByInspection BridgeInspection? @relation("BridgeInspectionHistory")
+
   members  BridgeInspectionMember[]
   photos   BridgeInspectionPhoto[]
   favorite Favorite? // GateSignInspection.favoriteと同じ考え方（Favoriteモデルのコメント参照）
