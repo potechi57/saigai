@@ -123,6 +123,7 @@ export async function importGateSignInspectionExcel(
       structureType: data.structureType,
       overallJudgment: data.overallJudgment,
       overallFindings: data.overallFindings,
+      memberOverview: data.memberOverview,
       sourceFileName: file.name,
       overviewPhotos: {
         create: overviewPhotoUrls.map((p, i) => ({ url: p.url, caption: p.caption, sortOrder: i })),

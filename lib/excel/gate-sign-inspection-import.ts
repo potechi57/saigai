@@ -13,8 +13,11 @@ import { extractSheetImages, type ExtractedImage } from "@/lib/excel/karte-image
 // 【セル位置について】karte-import.tsと同じ方針で、固定セル位置を直接指定する
 // （このExcelはテンプレートに直接記入する運用のため、様式Ａ〜Ｄ同様セル位置が
 // ファイルによってずれない前提）。様式（その１）の部材単位の総括表（5行）は、
-// 様式（その２）の詳細カードと内容が重なりより粗い情報のため取り込み対象外にした
-// （様式（その２）のカードだけを部材レコードとして保存する）。
+// 様式（その２）の詳細カードと内容が重なりより粗い情報だが、様式１タブは
+// 概要表示という位置づけのため、GateSignInspection.memberOverview（JSON）として
+// 別途取り込む（会話ログ「様式1は概要を表示するという観点で部材ごとの健全性の
+// 診断も表示してほしい」参照。様式（その２）のカードは従来どおり部材レコードとして
+// 保存する。詳細情報の入力元はどちらも同じ点検結果のため、値自体は重複する）。
 //
 // 【施設名・管理番号について】Excel内の「管理番号」セルは空欄のことが多いため、
 // 呼び出し側でファイル名（例:「A01-AE-010474_01_松江島根線_...xlsx」の先頭）から
@@ -101,6 +104,21 @@ export type GateSignInspectionOverviewPhoto = {
   caption: string | null;
 };
 
+// 様式（その１）の「部材単位の健全性の診断」総括表（行16〜20固定。実データで
+// セル位置確認済み: A列=部材等、F列=判定区分、G:I列=変状の種類、J:L列=備考、
+// M列=応急措置後の判定区分、N:O列=応急措置内容、P:R列=応急措置及び判定実施年月日）。
+// GateSignInspection.memberOverviewにJSONとしてそのまま保存する（schema.prisma
+// のGateSignInspection.memberOverviewコメント参照）。
+export type GateSignInspectionMemberOverviewRow = {
+  memberName: string;
+  judgment: string | null;
+  damageType: string | null;
+  remarks: string | null;
+  postActionJudgment: string | null;
+  postActionContent: string | null;
+  postActionDate: string | null;
+};
+
 export type GateSignInspectionData = {
   managementNo: string | null;
   facilityName: string | null;
@@ -123,6 +141,7 @@ export type GateSignInspectionData = {
   structureType: string | null;
   overallJudgment: string | null;
   overallFindings: string | null;
+  memberOverview: GateSignInspectionMemberOverviewRow[];
   members: GateSignInspectionMemberData[];
   overviewPhotos: GateSignInspectionOverviewPhoto[];
 };
@@ -197,6 +216,26 @@ function extractForm1(ws: WorkSheet): Pick<
   };
 }
 
+const MEMBER_OVERVIEW_ROWS = [
+  { row: 15, defaultName: "支柱" },
+  { row: 16, defaultName: "横梁" },
+  { row: 17, defaultName: "標識板または道路情報板" },
+  { row: 18, defaultName: "基礎" },
+  { row: 19, defaultName: "その他" },
+] as const;
+
+function extractMemberOverview(ws: WorkSheet): GateSignInspectionMemberOverviewRow[] {
+  return MEMBER_OVERVIEW_ROWS.map(({ row, defaultName }) => ({
+    memberName: cellText(ws, row, 0) ?? defaultName,
+    judgment: cellText(ws, row, 5),
+    damageType: cellText(ws, row, 6),
+    remarks: cellText(ws, row, 9),
+    postActionJudgment: cellText(ws, row, 12),
+    postActionContent: cellText(ws, row, 13),
+    postActionDate: cellText(ws, row, 15),
+  }));
+}
+
 async function extractForm1OverviewPhotos(buffer: Buffer): Promise<GateSignInspectionOverviewPhoto[]> {
   const images = await extractSheetImages(buffer, FORM1_SHEET_NAME);
   // 起点側（列が小さい）→終点側（列が大きい）の順に並べる（実データで確認済み。
@@ -264,6 +303,7 @@ export async function parseGateSignInspectionExcel(buffer: Buffer, fileName: str
   if (!form1Sheet) return null;
 
   const form1Fields = extractForm1(form1Sheet);
+  const memberOverview = extractMemberOverview(form1Sheet);
   const overviewPhotos = await extractForm1OverviewPhotos(buffer);
 
   const imsSheet = wb.Sheets["IMS設定シート"];
@@ -289,6 +329,7 @@ export async function parseGateSignInspectionExcel(buffer: Buffer, fileName: str
     ...form1Fields,
     latitude,
     longitude,
+    memberOverview,
     members,
     overviewPhotos,
   };
