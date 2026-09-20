@@ -453,6 +453,9 @@ model Favorite {
   gateSignInspectionId String?             @unique
   gateSignInspection   GateSignInspection? @relation(fields: [gateSignInspectionId], references: [id], onDelete: Cascade)
 
+  bridgeInspectionId String?           @unique
+  bridgeInspection   BridgeInspection? @relation(fields: [bridgeInspectionId], references: [id], onDelete: Cascade)
+
   note String? // お気に入りに追加した際の任意メモ
 
   createdAt DateTime @default(now())
@@ -1090,10 +1093,33 @@ model BridgeInspection {
   overallJudgment String? // 道路橋毎の健全性の診断（判定区分Ⅰ〜Ⅳ）
   overallFindings String? // 所見等
 
+  // 「道路橋様式１」の「部材単位の診断（各部材毎に最悪値を記入）」総括表
+  // （主桁・横桁・床版・下部構造・支承部・その他の6行×判定区分/変状の種類/
+  // 備考/応急措置後の判定区分/応急措置内容/応急措置及び判定実施年月日の6項目。
+  // 実データ「G57-AB-908913_01_富田橋.xlsx」で確認済み）。これは橋全体を通した
+  // 1つだけの総合評価であり、GateSignInspection.memberOverviewと同じ理由・
+  // 同じ形でJSON列として保持する（会話ログ「橋梁にも部材ごとの診断は必要...
+  // 部材ごとの診断のまとめとなるのは一つしか存在していないことから、これを
+  // とりあえず、様式1に記載するようにしてください」参照）。要素の型は
+  // lib/excel/bridge-inspection-import.tsのBridgeInspectionMemberOverviewRow参照。
+  memberOverview Json?
+
+  // 「定期点検調書（その４）径間N」の径間ごとの損傷評価（床版・主桁・横桁・
+  // 橋台橋脚・支承・排水施設・伸縮装置・高欄地覆・路面の9項目×判定区分/
+  // 変状の種類）。様式１の総括表とは別に、径間ごとの粗い評価として存在する
+  // （会話ログ「各径間ごとの判定を定期点検調書(その４)で行い、その総合評価
+  // として、様式1に部材ごとの診断を行っています...各径間ごとの評価は、
+  // 定期点検調書(その４)に書くという形」参照）。径間の数だけ配列要素を持つ
+  // JSON列として保持する（径間ごとに専用テーブル行を作るほどの検索・絞り込み
+  // 需要が無いため、memberOverviewと同じ考え方）。要素の型は
+  // lib/excel/bridge-inspection-import.tsのBridgeInspectionSpanDiagnosis参照。
+  spanDiagnoses Json?
+
   sourceFileName String?
 
-  members BridgeInspectionMember[]
-  photos  BridgeInspectionPhoto[]
+  members  BridgeInspectionMember[]
+  photos   BridgeInspectionPhoto[]
+  favorite Favorite? // GateSignInspection.favoriteと同じ考え方（Favoriteモデルのコメント参照）
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

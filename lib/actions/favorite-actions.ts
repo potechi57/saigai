@@ -16,7 +16,8 @@ export type FavoriteActionResult = { ok: true } | { ok: false; error: string };
 // 下記の分岐にケースを1つ足す形で対応する。
 export type FavoriteTarget =
   | { type: "karte"; id: string; facilityNo: string }
-  | { type: "gateSignInspection"; id: string };
+  | { type: "gateSignInspection"; id: string }
+  | { type: "bridgeInspection"; id: string };
 
 // カルテ詳細画面・地図のポップアップ・検索結果一覧など、複数箇所にある
 // ☆/★ボタンから直接呼ばれる（フォーム経由ではなく、クライアント側でawaitして
@@ -31,7 +32,7 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
         // 存在しない場合にdeleteするとPrismaがエラーを投げるため、deleteManyで無害化する
         await prisma.favorite.deleteMany({ where: { karteId: target.id } });
       }
-    } else {
+    } else if (target.type === "gateSignInspection") {
       if (shouldBeFavorite) {
         await prisma.favorite.upsert({
           where: { gateSignInspectionId: target.id },
@@ -40,6 +41,16 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
         });
       } else {
         await prisma.favorite.deleteMany({ where: { gateSignInspectionId: target.id } });
+      }
+    } else {
+      if (shouldBeFavorite) {
+        await prisma.favorite.upsert({
+          where: { bridgeInspectionId: target.id },
+          create: { bridgeInspectionId: target.id },
+          update: {},
+        });
+      } else {
+        await prisma.favorite.deleteMany({ where: { bridgeInspectionId: target.id } });
       }
     }
   } catch (e) {
@@ -54,9 +65,14 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
     revalidatePath("/karte/favorites");
     revalidatePath(`/m/${target.facilityNo}`); // 現場向け画面（/m）の★ボタンからも呼ばれるため
     revalidatePath("/m/favorites");
-  } else {
+  } else if (target.type === "gateSignInspection") {
     revalidatePath(`/inspections/gate-signs/${target.id}`);
     revalidatePath("/karte"); // 地図（点検調書＞道路＞門型標識）のポップアップの★表示を更新するため
+    revalidatePath("/karte/favorites");
+    revalidatePath("/m/favorites");
+  } else {
+    revalidatePath(`/inspections/bridges/${target.id}`);
+    revalidatePath("/karte");
     revalidatePath("/karte/favorites");
     revalidatePath("/m/favorites");
   }
