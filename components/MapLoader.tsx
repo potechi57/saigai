@@ -20,4 +20,4 @@ const MapView = dynamic(() => import("./MapView"), {
 });
 
 export default MapView;
-export type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSignInspection } from "./MapView";
+export type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSignInspection, MapBridgeInspection } from "./MapView";
