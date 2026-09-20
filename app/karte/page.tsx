@@ -40,6 +40,15 @@ export const dynamic = "force-dynamic";
 // よう__で囲んだ内部専用の値にしている。ラベルと違いUIには出さない。
 const FACILITY_SHISETSU_ALL = "__all__";
 
+// 点検調書（門型標識）の判定区分バッジ。app/inspections/gate-signs/[id]/page.tsx
+// と同じ配色（共通化するほどの複雑さではないため単純に複製している）。
+const JUDGMENT_BADGE: Record<string, string> = {
+  Ⅰ: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  Ⅱ: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
+  Ⅲ: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
+  Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+};
+
 // searchParamsの値は、同名キーが1回だけ現れると文字列、複数回現れると配列に
 // なる（Next.jsの仕様）。施設種別（facShisetsu）はチェックボックスの複数選択に
 // 対応するため配列になりうる唯一のフィールドだが、他の大多数の単一値フィールドと
@@ -1557,6 +1566,70 @@ export default async function KarteListPage({
               <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
                 <Link href="/facility-list" className="text-blue-600 dark:text-blue-400 hover:underline">
                   施設台帳（全件）を見る →
+                </Link>
+              </p>
+            </div>
+
+            <div>
+              {/* 門型標識の点検調書は、これまで地図（MapView）にのみ渡されており、
+                  一覧表示（view === "list"）には他の3種別（法令台帳・点検調書（防災）・
+                  施設台帳）と違って表示されていなかった（会話ログ「点検調書の門型標識は、
+                  地図では表示されますが、検索結果を一覧で表示するに表示されません」参照）。
+                  mapGateSignInspectionsは既にgateSignWhereで絞り込み済みのデータ
+                  （地図表示と共通）。 */}
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">点検調書（門型標識）検索結果</h2>
+              <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2"></th>
+                      <th className="px-3 py-2">管理番号</th>
+                      <th className="px-3 py-2">判定区分</th>
+                      <th className="px-3 py-2">路線名</th>
+                      <th className="px-3 py-2">所在地</th>
+                      <th className="px-3 py-2">定期点検実施年月日</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mapGateSignInspections.map((g) => (
+                      <tr key={g.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-yellow-500">{g.isFavorite ? "★" : ""}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/inspections/gate-signs/${g.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {g.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">
+                          {g.judgment ? (
+                            <span
+                              className={`rounded px-2 py-0.5 text-xs ${JUDGMENT_BADGE[g.judgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+                            >
+                              {g.judgment}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{g.routeName ?? "—"}</td>
+                        <td className="px-3 py-2">{g.location ?? "—"}</td>
+                        <td className="px-3 py-2">{g.inspectionDateLabel ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {mapGateSignInspections.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                          {!gateSignReady
+                            ? "点検調書タブ＞道路＞門型標識を選んで「検索」を押してください。"
+                            : "条件に一致する点検調書がありません。"}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  点検調書（門型標識、全件）を見る →
                 </Link>
               </p>
             </div>
