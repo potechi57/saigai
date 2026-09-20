@@ -1113,6 +1113,23 @@ model BridgeInspection {
   overallJudgment String? // 道路橋毎の健全性の診断（判定区分Ⅰ〜Ⅳ）
   overallFindings String? // 所見等
 
+  // 「道路橋様式１」自体に載っている項目（「定期点検調書（その１）」＝橋梁諸元
+  // シートとは別物。以前は様式１タブにその１の項目を混ぜて表示しており誤りだった。
+  // 会話ログ「エクセルの最初のタブには、径間数についての表記はありませんよね。
+  // ...管理者名、定期点検実施年月日、路下条件、代替路の有無、自専道or一般道、
+  // 緊急避難道路、占有物件(名称)、などエクセルに書いてある通りに実装して
+  // ほしいです」参照）。
+  managerOrgName         String? // 管理者名
+  underRoadCondition     String? // 路下条件
+  hasAlternateRoute      String? // 代替路の有無
+  roadCategory           String? // 自専道or一般道
+  emergencyTransportRoad String? // 緊急輸送道路
+  occupyingObjects       String? // 占用物件（名称）
+  installedYear          Int? // 架設年次
+  bridgeLengthM          Decimal? @db.Decimal(6, 2) // 橋長
+  roadWidthM             Decimal? @db.Decimal(6, 2) // 幅員
+  structureType          String? // 橋梁形式
+
   // 「道路橋様式１」の「部材単位の診断（各部材毎に最悪値を記入）」総括表
   // （主桁・横桁・床版・下部構造・支承部・その他の6行×判定区分/変状の種類/
   // 備考/応急措置後の判定区分/応急措置内容/応急措置及び判定実施年月日の6項目。
@@ -1193,6 +1210,21 @@ model BridgeInspectionPhoto {
   url       String
   caption   String? // 例: 位置図、起点→終点
   sortOrder Int     @default(0)
+
+  // 由来シート（Web側のタブと1対1。以前は様式１・様式２・その２・その３の
+  // 写真を全て1本の配列にまとめて様式１タブに表示していたが、Excelの
+  // シート構成に合わせて別タブに分けるようにした。会話ログ「これ以降は、
+  // エクセルに合わせて次のタブに移ります」参照）。
+  // overview=様式１の全景写真、damageHighlight=様式２の損傷写真、
+  // drawing=その２の橋梁一般図、site=その３の状況写真。
+  category String @default("overview") // BridgeInspectionPhotoCategory（lib/excel/bridge-inspection-import.ts参照）
+
+  // category==="damageHighlight"のときだけ使う（様式２のキャプション文字列を
+  // パースした結果。lib/excel/bridge-inspection-import.tsのコメント参照）。
+  memberName String?
+  damageType String?
+  judgment   String?
+  spanRef    String?
 
   @@index([inspectionId])
 }

@@ -79,9 +79,22 @@ export type BridgeInspectionMemberData = {
   photo: ExtractedImage | null;
 };
 
+// 写真の由来シート（Web側のタブ構成と1対1。schema.prismaの
+// BridgeInspectionPhoto.categoryコメント参照）。
+export type BridgeInspectionPhotoCategory = "overview" | "drawing" | "site" | "damageHighlight";
+
 export type BridgeInspectionPhotoData = {
   image: ExtractedImage;
   caption: string | null;
+  category: BridgeInspectionPhotoCategory;
+  // category==="damageHighlight"（道路橋様式２の損傷写真）のときだけ使う。
+  // キャプション文字列（例:「写真1　（2径間）床版　ひびわれ」）をパースして
+  // 部材名・変状の種類に分ける（会話ログ「文字列をパースして、部材名、損傷
+  // 種類に分けて門型標識と同じようにしてください」参照）。
+  memberName?: string | null;
+  damageType?: string | null;
+  judgment?: string | null;
+  spanRef?: string | null; // キャプション中の「2径間」等の参考表記（そのまま保持。厳密な径間との紐付けには使わない）
 };
 
 // 「道路橋様式１」の「部材単位の診断（各部材毎に最悪値を記入）」総括表
@@ -134,6 +147,22 @@ export type BridgeInspectionData = {
   spanDiagnoses: BridgeInspectionSpanDiagnosis[];
   members: BridgeInspectionMemberData[];
   photos: BridgeInspectionPhotoData[];
+
+  // 「道路橋様式１」自体に載っている項目（その１＝橋梁諸元シートとは別物。
+  // 会話ログ「エクセルの最初のタブには、径間数についての表記はありませんよね。
+  // ...管理者名、定期点検実施年月日、路下条件、代替路の有無、自専道or一般道、
+  // 緊急避難道路、占有物件(名称)、などエクセルに書いてある通りに実装して
+  // ほしいです」参照）。
+  managerOrgName: string | null; // 管理者名
+  underRoadCondition: string | null; // 路下条件
+  hasAlternateRoute: string | null; // 代替路の有無
+  roadCategory: string | null; // 自専道or一般道
+  emergencyTransportRoad: string | null; // 緊急輸送道路
+  occupyingObjects: string | null; // 占用物件（名称）
+  installedYear: number | null; // 架設年次
+  bridgeLengthM: number | null; // 橋長
+  roadWidthM: number | null; // 幅員
+  structureType: string | null; // 橋梁形式
 };
 
 // 【シート名の数字が半角であることについて】門型標識の点検調書（様式（その１）等）
@@ -253,10 +282,111 @@ function findNearbyCaption(ws: WorkSheet, imageFromRow: number, imageFromCol: nu
   return null;
 }
 
-async function extractLabeledPhotos(buffer: Buffer, sheetName: string, ws: WorkSheet): Promise<BridgeInspectionPhotoData[]> {
+async function extractLabeledPhotos(
+  buffer: Buffer,
+  sheetName: string,
+  ws: WorkSheet,
+  category: BridgeInspectionPhotoCategory
+): Promise<BridgeInspectionPhotoData[]> {
   const images = await extractSheetImages(buffer, sheetName);
   const sorted = [...images].sort((a, b) => a.fromRow - b.fromRow || a.fromCol - b.fromCol);
-  return sorted.map((image) => ({ image, caption: findNearbyCaption(ws, image.fromRow, image.fromCol) }));
+  return sorted.map((image) => ({ image, caption: findNearbyCaption(ws, image.fromRow, image.fromCol), category }));
+}
+
+// 「道路橋様式１」の「全景写真」見出し（行26）の直後に貼られた写真だけを拾う
+// （実データ確認済み: 写真はfromRow=27付近。同じシートの行39付近にも無関係な
+// 画像（脚注そばのロゴ等とみられる）があるため、範囲を絞って除外する）。
+const FORM1_OVERVIEW_PHOTO_ROW_MIN = 25;
+const FORM1_OVERVIEW_PHOTO_ROW_MAX = 33;
+async function extractForm1OverviewPhotos(buffer: Buffer, sheetName: string): Promise<BridgeInspectionPhotoData[]> {
+  const images = await extractSheetImages(buffer, sheetName);
+  const inRange = images.filter((img) => img.fromRow >= FORM1_OVERVIEW_PHOTO_ROW_MIN && img.fromRow <= FORM1_OVERVIEW_PHOTO_ROW_MAX);
+  const sorted = [...inRange].sort((a, b) => a.fromCol - b.fromCol);
+  const captions = ["起点側", "終点側"];
+  return sorted.map((image, i) => ({ image, caption: captions[i] ?? null, category: "overview" as const }));
+}
+
+// 「道路橋様式２」の損傷写真（4枚程度。判定区分Ⅱ・Ⅲ・Ⅳの部材に直接関連する
+// 代表的な損傷の写真）。キャプション文字列（例:「写真1　（2径間）床版
+// ひびわれ」）を部材名・変状の種類にパースし、近傍の「【判定区分：」欄から
+// 判定区分も拾う（会話ログ「文字列をパースして、部材名、損傷種類に分けて
+// 門型標識と同じようにしてください」参照）。
+const DAMAGE_CAPTION_PATTERN = /^写真\s*\d+\s*[（(]([^）)]*)[）)]\s*(\S+?)\s+(.+?)\s*$/;
+
+function findJudgmentNearCaption(ws: WorkSheet, row: number, captionCol: number, maxColSearch = 20): string | null {
+  for (let c = captionCol; c < captionCol + maxColSearch; c++) {
+    const text = cellText(ws, row, c);
+    if (text && text.includes("判定区分")) {
+      // ラベルの直後、値が入るまで数セル右を探す（結合セルで空欄が挟まることがある）。
+      for (let vc = c + 1; vc < c + 4; vc++) {
+        const value = cellText(ws, row, vc);
+        if (value && value !== "】" && !value.includes("】")) return value;
+      }
+    }
+  }
+  return null;
+}
+
+async function extractDamageHighlightPhotos(buffer: Buffer, sheetName: string, ws: WorkSheet): Promise<BridgeInspectionPhotoData[]> {
+  const images = await extractSheetImages(buffer, sheetName);
+  const sorted = [...images].sort((a, b) => a.fromRow - b.fromRow || a.fromCol - b.fromCol);
+  return sorted.map((image) => {
+    // キャプションは実データで確認済みの位置（写真の2行上、同じ列）を優先し、
+    // 見つからない場合はfindNearbyCaptionの近傍探索にフォールバックする。
+    const captionRow = image.fromRow - 2;
+    let caption = cellText(ws, captionRow, image.fromCol);
+    let capRow = captionRow;
+    let capCol = image.fromCol;
+    if (!caption) {
+      caption = findNearbyCaption(ws, image.fromRow, image.fromCol);
+      capRow = image.fromRow - 1;
+    }
+    const match = caption ? DAMAGE_CAPTION_PATTERN.exec(caption) : null;
+    const judgment = caption ? findJudgmentNearCaption(ws, capRow, capCol) : null;
+    return {
+      image,
+      caption,
+      category: "damageHighlight" as const,
+      spanRef: match?.[1] ?? null,
+      memberName: match?.[2] ?? null,
+      damageType: match?.[3] ?? null,
+      judgment,
+    };
+  });
+}
+
+// 「道路橋様式１」の「橋梁名・所在地・管理者名等」の下部（管理者名・定期点検
+// 実施年月日・路下条件・代替路の有無・自専道or一般道・緊急輸送道路・占用物件
+// （名称）行8/9）と、「全景写真」の下（架設年次・橋長・幅員行28/29、橋梁形式
+// 行30/31）。実データ「G57-AB-908913_01_富田橋.xlsx」で確認済み（会話ログ
+// 「エクセルの最初のタブには、径間数についての表記はありませんよね...管理者名、
+// 定期点検実施年月日、路下条件、代替路の有無、自専道or一般道、緊急避難道路、
+// 占有物件(名称)、などエクセルに書いてある通りに実装してほしいです」参照）。
+function extractForm1OwnFields(ws: WorkSheet): Pick<
+  BridgeInspectionData,
+  | "managerOrgName"
+  | "underRoadCondition"
+  | "hasAlternateRoute"
+  | "roadCategory"
+  | "emergencyTransportRoad"
+  | "occupyingObjects"
+  | "installedYear"
+  | "bridgeLengthM"
+  | "roadWidthM"
+  | "structureType"
+> {
+  return {
+    managerOrgName: cellText(ws, 8, 0), // A9
+    underRoadCondition: cellText(ws, 8, 5), // F9
+    hasAlternateRoute: cellText(ws, 8, 7), // H9
+    roadCategory: cellText(ws, 8, 8), // I9
+    emergencyTransportRoad: cellText(ws, 8, 10), // K9
+    occupyingObjects: cellText(ws, 8, 11), // L9
+    installedYear: cellNumber(ws, 28, 0), // A29
+    bridgeLengthM: cellNumber(ws, 28, 1), // B29
+    roadWidthM: cellNumber(ws, 28, 2), // C29
+    structureType: cellText(ws, 30, 0), // A31
+  };
 }
 
 // その５（N_径間M）シート1枚から、損傷箇所ごとのカード（最大4枚。左上・右上・
@@ -366,6 +496,7 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
   const spec = extractSpec(specSheet);
   const overall = extractOverallJudgment(form1Sheet);
   const memberOverview = extractMemberOverview(form1Sheet);
+  const form1Own = extractForm1OwnFields(form1Sheet);
 
   const imsSheet = findSheet(wb, "IMS設定シート");
   const imsMap = imsSheet ? readLabelValueMap(imsSheet) : new Map<string, string>();
@@ -373,20 +504,22 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
   const longitude = dmsFromMap(imsMap, "経度(度)", "経度(分)", "経度(秒)");
 
   const photos: BridgeInspectionPhotoData[] = [];
+  const form1SheetName = wb.SheetNames.find((n) => wb.Sheets[n] === form1Sheet)!;
+  photos.push(...(await extractForm1OverviewPhotos(buffer, form1SheetName)));
   const form2Sheet = findSheet(wb, FORM2_SHEET_NAME);
   if (form2Sheet) {
     const name = wb.SheetNames.find((n) => wb.Sheets[n] === form2Sheet)!;
-    photos.push(...(await extractLabeledPhotos(buffer, name, form2Sheet)));
+    photos.push(...(await extractDamageHighlightPhotos(buffer, name, form2Sheet)));
   }
   const drawingSheet = findSheet(wb, DRAWING_SHEET_NAME);
   if (drawingSheet) {
     const name = wb.SheetNames.find((n) => wb.Sheets[n] === drawingSheet)!;
-    photos.push(...(await extractLabeledPhotos(buffer, name, drawingSheet)));
+    photos.push(...(await extractLabeledPhotos(buffer, name, drawingSheet, "drawing")));
   }
   const sitePhotoSheet = findSheet(wb, SITE_PHOTO_SHEET_NAME);
   if (sitePhotoSheet) {
     const name = wb.SheetNames.find((n) => wb.Sheets[n] === sitePhotoSheet)!;
-    photos.push(...(await extractLabeledPhotos(buffer, name, sitePhotoSheet)));
+    photos.push(...(await extractLabeledPhotos(buffer, name, sitePhotoSheet, "site")));
   }
 
   // 「定期点検調書（その５）」N_径間M シート群。径間ごとに何枚シートが
@@ -423,6 +556,7 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
     latitude,
     longitude,
     ...overall,
+    ...form1Own,
     memberOverview,
     spanDiagnoses,
     members,
