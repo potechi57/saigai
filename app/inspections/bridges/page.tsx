@@ -3,15 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { deleteBridgeInspection } from "@/lib/actions/bridge-inspection-actions";
 import ConfirmSubmitButton from "@/components/ConfirmSubmitButton";
 import BackLink from "@/components/BackLink";
+import { JUDGMENT_BADGE } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
-
-const JUDGMENT_BADGE: Record<string, string> = {
-  Ⅰ: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
-  Ⅱ: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
-  Ⅲ: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
-  Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-};
 
 // 点検調書（道路＞橋梁）の一覧画面（components/GateSignInspectionImportForm.tsxと
 // 対になる一覧。app/inspections/gate-signs/page.tsxと同じ構成）。施設台帳

@@ -15,15 +15,15 @@ import type {
   BridgeInspectionMemberOverviewRow,
   BridgeInspectionSpanDiagnosis,
 } from "@/lib/excel/bridge-inspection-import";
+import { Th, Td as BaseTd } from "@/components/ExcelTable";
+import { JUDGMENT_BADGE } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
-const JUDGMENT_BADGE: Record<string, string> = {
-  Ⅰ: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
-  Ⅱ: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
-  Ⅲ: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
-  Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-};
+// gate-signs/[id]/page.tsxと同じ理由（components/ExcelTable.tsxのコメント参照）。
+function Td(props: Omit<Parameters<typeof BaseTd>[0], "wrap">) {
+  return <BaseTd wrap {...props} />;
+}
 
 // 点検調書（道路＞橋梁）1件の詳細画面（app/inspections/gate-signs/[id]/page.tsxと
 // 同じ構成。元Excelのシート構成のまま「様式１」「径間１」「径間２」…と横並びに
@@ -374,47 +374,6 @@ function Field({
         )}
       </dd>
     </div>
-  );
-}
-
-// 様式１タブの表で使うセル。app/inspections/gate-signs/[id]/page.tsxと
-// 同じクラス構成のTh/Tdをこちらにも定義している（ファイルをまたいで共有する
-// ほどの複雑さではないため、単純に複製している）。
-function Th({
-  children,
-  colSpan,
-  className = "",
-}: {
-  children: React.ReactNode;
-  colSpan?: number;
-  className?: string;
-}) {
-  return (
-    <th
-      colSpan={colSpan}
-      className={`border border-gray-400 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 dark:text-gray-300 ${className}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  colSpan,
-  className = "",
-}: {
-  children: React.ReactNode;
-  colSpan?: number;
-  className?: string;
-}) {
-  return (
-    <td
-      colSpan={colSpan}
-      className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-top whitespace-pre-wrap ${className}`}
-    >
-      {children}
-    </td>
   );
 }
 
