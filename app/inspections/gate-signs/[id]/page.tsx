@@ -61,83 +61,164 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   }
   pageGroups.sort((a, b) => a.pageNo - b.pageNo);
 
+  // 元Excel「様式（その１）」の実際のセル配置を直接確認した上で作った表
+  // （会話ログ「門型標識の点検調書の表示はエクセルとWebで大きく乖離している…
+  // エクセル上での表示を確認して、一列にどのような要素を並べているのかを
+  // 確認して、それと同じようにWeb上でも表示するようにしてください」参照）。
+  // 以前は単純な2列の<dl>（項目名の左右並び順がExcelと無関係）だったが、
+  // karte詳細画面の様式Ａ・様式Ｂ（<table>＋Th/Td、Excelの行のまとまりを
+  // そのまま行として再現する方式）と同じ考え方に揃えた。
+  //
+  // 【行の対応関係（Excel行番号は1始まり）】
+  //   行4/6: 施設名・形式（ラベルは行4、値は行6にある構成だが、Web上では
+  //          同じ行にラベル＋値を並べて表示する）
+  //   行4/6: 路線名・所在地
+  //   IMS設定シート由来: 緯度経度（Excel上は行4-5に度分秒で直書きされているが、
+  //          DB側は10進度で保持しているため、lib/geo.tsのformatLatLngDmsで
+          //  度分秒表記に戻して表示する。他の画面と同じ方式）
+  //   行8/9: 定期点検実施年月日・定期点検者・記録者（記録者は行8のQ列。
+  //          管理者名は行8のラベル・行9の値という2行またぎの構成）
+  //   行10/11: 代替路の有無・緊急輸送道路・自専道or一般道・占用物件
+  //   行13-20「部材単位の健全性の診断」表は取り込み対象外
+  //          （lib/excel/gate-sign-inspection-import.tsのコメント参照。
+  //          様式（その２）の詳細カードの方が情報が細かく重複するため）。
+  //   行22-25: 門型標識等毎の健全性の診断（判定区分・所見）
+  //   行27-30: 設置年月・道路幅員・構造形式、および起点側・終点側の全景写真
+  //          （Excel上でも全景写真はこの並びの直後に配置されている）。
+  //
+  // 表の横幅は6ユニット固定（Th1+Td1を1組として、1行に最大3組 or
+  // Th1+Td5の全幅1組で統一し、行ごとに列数がバラバラにならないようにしている）。
   const form1 = (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
       <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">基本情報（様式１）</h2>
       </div>
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 p-4 text-sm sm:grid-cols-2">
-        <Field label="施設名" value={insp.facilityName} />
-        <Field label="形式" value={insp.facilityForm} />
-        <Field
-          label="路線名"
-          value={insp.routeName}
-          // 門型標識は施設台帳タブ上「道路標識」に分類される
-          // （lib/facility-taxonomy.tsのFACILITY_LEDGER_ITEM_TYPES.road参照）。
-          href={insp.routeName ? buildFacilityRouteSearchHref(insp.routeName, "道路標識") : undefined}
-        />
-        <Field label="所在地" value={insp.location} />
-        <Field
-          label="緯度経度"
-          value={
-            insp.latitude != null && insp.longitude != null
-              ? formatLatLngDms(Number(insp.latitude), Number(insp.longitude))
-              : null
-          }
-        />
-        <Field
-          label="定期点検実施年月日"
-          value={insp.inspectionDate ? new Date(insp.inspectionDate).toLocaleDateString("ja-JP") : null}
-        />
-        <Field label="定期点検者" value={insp.inspectorCompany} />
-        <Field label="記録者" value={insp.inspectorName} />
-        <Field label="管理者名" value={insp.managerOrgName} />
-        <Field label="代替路の有無" value={insp.hasAlternateRoute} />
-        <Field label="緊急輸送道路" value={insp.emergencyTransportRoad} />
-        <Field label="自専道or一般道" value={insp.roadCategory} />
-        <Field label="占用物件" value={insp.occupyingObjects} />
-        <Field
-          label="設置年月"
-          value={insp.installedYear ? `${insp.installedYear}年${insp.installedMonth ?? ""}月` : null}
-        />
-        <Field label="道路幅員(ｍ)" value={insp.roadWidthM != null ? String(insp.roadWidthM) : null} />
-        <Field label="構造形式" value={insp.structureType} />
-        <div className="sm:col-span-2">
-          <Field label="門型標識等毎の健全性の診断（所見）" value={insp.overallFindings} />
-        </div>
-      </dl>
 
-      {overviewLightboxPhotos.length > 0 && (
-        <div className="border-t border-gray-300 p-4 dark:border-gray-700">
-          <h3 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">全景写真</h3>
-          {/* 元Excelでは左＝起点側、右＝終点側の並びで貼り付けられており
-              （extractForm1OverviewPhotosで列位置ソート済み）、この並び順自体は
-              維持されているが、キャプション文字列がalt/titleにしか入っておらず
-              画面上に見えていなかったため、起終点のどちらか一目で分からなかった
-              （会話ログ「起終点がどちらかわかるように配置してください」参照）。
-              写真の下にキャプションを常時表示する（karte詳細画面の「現状記録写真」
-              タブと同じ見せ方）。 */}
-          <PhotoLightboxGroup photos={overviewLightboxPhotos}>
-            <div className="grid grid-cols-2 gap-3">
-              {overviewLightboxPhotos.map((p, i) => (
-                <div key={p.id}>
-                  <PhotoLightboxThumbnail index={i}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.url}
-                      alt={p.caption ?? "全景写真"}
-                      className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
-                    />
-                  </PhotoLightboxThumbnail>
-                  {p.caption && (
-                    <p className="mt-1 text-center text-xs font-medium text-gray-600 dark:text-gray-300">{p.caption}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </PhotoLightboxGroup>
-        </div>
-      )}
+      <table className="w-full border-collapse text-xs">
+        <tbody>
+          <tr>
+            <Th>施設名</Th>
+            <Td>{insp.facilityName || "—"}</Td>
+            <Th>形式</Th>
+            <Td colSpan={3}>{insp.facilityForm || "—"}</Td>
+          </tr>
+          <tr>
+            <Th>路線名</Th>
+            <Td>
+              {insp.routeName ? (
+                // 門型標識は施設台帳タブ上「道路標識」に分類される
+                // （lib/facility-taxonomy.tsのFACILITY_LEDGER_ITEM_TYPES.road参照）。
+                <Link
+                  href={buildFacilityRouteSearchHref(insp.routeName, "道路標識")}
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  {insp.routeName}
+                </Link>
+              ) : (
+                "—"
+              )}
+            </Td>
+            <Th>所在地</Th>
+            <Td colSpan={3}>{insp.location || "—"}</Td>
+          </tr>
+          <tr>
+            <Th>緯度経度</Th>
+            <Td colSpan={5}>
+              {insp.latitude != null && insp.longitude != null
+                ? formatLatLngDms(Number(insp.latitude), Number(insp.longitude))
+                : "—"}
+            </Td>
+          </tr>
+          <tr>
+            <Th>定期点検実施年月日</Th>
+            <Td>{insp.inspectionDate ? new Date(insp.inspectionDate).toLocaleDateString("ja-JP") : "—"}</Td>
+            <Th>定期点検者</Th>
+            <Td>{insp.inspectorCompany || "—"}</Td>
+            <Th>記録者</Th>
+            <Td>{insp.inspectorName || "—"}</Td>
+          </tr>
+          <tr>
+            <Th>管理者名</Th>
+            <Td colSpan={5}>{insp.managerOrgName || "—"}</Td>
+          </tr>
+          <tr>
+            <Th>代替路の有無</Th>
+            <Td>{insp.hasAlternateRoute || "—"}</Td>
+            <Th>緊急輸送道路</Th>
+            <Td>{insp.emergencyTransportRoad || "—"}</Td>
+            <Th>自専道or一般道</Th>
+            <Td>{insp.roadCategory || "—"}</Td>
+          </tr>
+          <tr>
+            <Th>占用物件</Th>
+            <td colSpan={5} className="border border-gray-400 bg-white p-2 align-middle whitespace-pre-wrap dark:border-gray-600 dark:bg-gray-900">
+              {insp.occupyingObjects || "—"}
+            </td>
+          </tr>
+          <tr>
+            <Th>設置年月</Th>
+            <Td>{insp.installedYear ? `${insp.installedYear}年${insp.installedMonth ?? ""}月` : "—"}</Td>
+            <Th>道路幅員(ｍ)</Th>
+            <Td>{insp.roadWidthM != null ? String(insp.roadWidthM) : "—"}</Td>
+            <Th>構造形式</Th>
+            <Td>{insp.structureType || "—"}</Td>
+          </tr>
+          <tr>
+            <Th className="align-top">
+              門型標識等毎の
+              <br />
+              健全性の診断
+            </Th>
+            <td colSpan={5} className="border border-gray-400 bg-white p-2 align-top whitespace-pre-wrap dark:border-gray-600 dark:bg-gray-900">
+              <div className="flex flex-wrap items-baseline gap-2">
+                {insp.overallJudgment && (
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[insp.overallJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+                  >
+                    判定区分 {insp.overallJudgment}
+                  </span>
+                )}
+                <span>{insp.overallFindings || "—"}</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <Th className="align-top">全景写真</Th>
+            <td colSpan={5} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
+              {overviewLightboxPhotos.length > 0 ? (
+                // 元Excelでは左＝起点側、右＝終点側の並びで貼り付けられており
+                // （extractForm1OverviewPhotosで列位置ソート済み）、この並び順自体は
+                // 維持されているが、キャプション文字列がalt/titleにしか入っておらず
+                // 画面上に見えていなかったため、起終点のどちらか一目で分からなかった
+                // （会話ログ「起終点がどちらかわかるように配置してください」参照）。
+                // 写真の下にキャプションを常時表示する（karte詳細画面の「現状記録写真」
+                // タブと同じ見せ方）。
+                <PhotoLightboxGroup photos={overviewLightboxPhotos}>
+                  <div className="grid grid-cols-2 gap-3">
+                    {overviewLightboxPhotos.map((p, i) => (
+                      <div key={p.id}>
+                        <PhotoLightboxThumbnail index={i}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={p.url}
+                            alt={p.caption ?? "全景写真"}
+                            className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
+                          />
+                        </PhotoLightboxThumbnail>
+                        {p.caption && (
+                          <p className="mt-1 text-center text-xs font-medium text-gray-600 dark:text-gray-300">{p.caption}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </PhotoLightboxGroup>
+              ) : (
+                "—"
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   );
 
@@ -229,6 +310,47 @@ function Field({
         )}
       </dd>
     </div>
+  );
+}
+
+// 様式１タブの表で使うセル。karte詳細画面の様式Ａ・様式Ｂ（app/karte/[karteNo]/page.tsx）
+// と同じ見た目にするため、同じクラス構成のTh/Tdをこちらにも定義している
+// （ファイルをまたいで共有するほどの複雑さではないため、単純に複製している）。
+function Th({
+  children,
+  colSpan,
+  className = "",
+}: {
+  children: React.ReactNode;
+  colSpan?: number;
+  className?: string;
+}) {
+  return (
+    <th
+      colSpan={colSpan}
+      className={`border border-gray-400 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 dark:text-gray-300 ${className}`}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({
+  children,
+  colSpan,
+  className = "",
+}: {
+  children: React.ReactNode;
+  colSpan?: number;
+  className?: string;
+}) {
+  return (
+    <td
+      colSpan={colSpan}
+      className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle whitespace-nowrap ${className}`}
+    >
+      {children}
+    </td>
   );
 }
 
