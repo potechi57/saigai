@@ -8,6 +8,7 @@ import RecordViewHistory from "@/components/RecordViewHistory";
 import { PhotoLightboxGroup, PhotoLightboxThumbnail } from "@/components/PhotoLightbox";
 import SheetTabs from "@/components/SheetTabs";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
+import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 
@@ -78,7 +79,11 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         <Field label="所在地" value={insp.location} />
         <Field
           label="緯度経度"
-          value={insp.latitude != null && insp.longitude != null ? `${insp.latitude}, ${insp.longitude}` : null}
+          value={
+            insp.latitude != null && insp.longitude != null
+              ? formatLatLngDms(Number(insp.latitude), Number(insp.longitude))
+              : null
+          }
         />
         <Field
           label="定期点検実施年月日"
