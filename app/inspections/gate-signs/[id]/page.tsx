@@ -39,11 +39,31 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
       members: { orderBy: { sortOrder: "asc" } },
       facilityListItem: { select: { id: true, managementNo: true, routeName: true, location: true } },
       favorite: { select: { id: true } },
+      supersededByInspection: { select: { id: true } },
     },
   });
   if (!insp) notFound();
 
   const title = insp.managementNo ?? insp.sourceFileName ?? "（管理番号不明）";
+
+  // 年度別履歴（会話ログ「点検年度ごとに履歴として保存する」参照。schema.prismaの
+  // GateSignInspection.previousInspectionIdコメント参照）。previousInspectionIdを
+  // 遡って過去年度分の一覧を作る（現在の画面が最新かどうかに関わらず、常に
+  // 「このレコードより古い年度」を列挙する）。
+  const pastYears: { id: string; inspectionDate: Date | null; sourceFileName: string | null }[] = [];
+  {
+    let cursor = insp.previousInspectionId;
+    while (cursor) {
+      const past: { id: string; inspectionDate: Date | null; sourceFileName: string | null; previousInspectionId: string | null } | null =
+        await prisma.gateSignInspection.findUnique({
+          where: { id: cursor },
+          select: { id: true, inspectionDate: true, sourceFileName: true, previousInspectionId: true },
+        });
+      if (!past) break;
+      pastYears.push(past);
+      cursor = past.previousInspectionId;
+    }
+  }
   const overviewLightboxPhotos = insp.overviewPhotos.map((p) => ({ id: p.id, url: p.url, caption: p.caption }));
 
   // 元Excelの「状況写真（損傷状況）」シート（様式（その２）／様式（その２）2／
@@ -304,6 +324,20 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         ← 点検調書（門型標識）一覧に戻る
       </BackLink>
 
+      {insp.supersededByInspection && (
+        // このレコードより新しい年度の記録が存在する場合の案内（会話ログ「点検
+        // 年度ごとに履歴として保存する」参照）。リダイレクトはせず、このページ
+        // 自体は過去年度のデータとしてそのまま表示し続ける（URLが無効にならない
+        // ようにするため。schema.prismaのGateSignInspection.previousInspectionId
+        // コメント参照）。
+        <p className="rounded border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+          これは過去年度の記録です。
+          <Link href={`/inspections/gate-signs/${insp.supersededByInspection.id}`} className="ml-1 underline">
+            最新の記録を見る →
+          </Link>
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h1>
         {insp.overallJudgment && (
@@ -331,6 +365,22 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         </p>
       )}
 
+      {pastYears.length > 0 && (
+        // 年度別履歴（会話ログ「点検年度ごとに履歴として保存する」参照）。
+        <div className="rounded border border-gray-300 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-900">
+          <h2 className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">過去の点検履歴</h2>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1">
+            {pastYears.map((p) => (
+              <li key={p.id}>
+                <Link href={`/inspections/gate-signs/${p.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {p.inspectionDate ? new Date(p.inspectionDate).toLocaleDateString("ja-JP") : p.sourceFileName ?? p.id}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <SheetTabs
         tabs={[
           { id: "form1", label: "様式１", content: form1 },
@@ -342,15 +392,25 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
         ]}
       />
 
-      <form action={deleteGateSignInspection.bind(null, insp.id)}>
-        <ConfirmSubmitButton
-          message={`「${title}」を削除しますか？（元に戻せません）`}
-          pendingLabel="削除中..."
-          className="text-sm text-red-600 hover:underline dark:text-red-400"
-        >
-          この点検調書を削除
-        </ConfirmSubmitButton>
-      </form>
+      {!insp.supersededByInspection && (
+        // 削除は「最新レコードから履歴チェーン全体を遡って削除する」実装
+        // （lib/actions/gate-sign-inspection-actions.tsのdeleteGateSignInspection
+        // 参照）のため、過去年度のページには削除ボタンを出さない（そこから
+        // 削除すると、それより新しい年度が孤立して残ってしまうため）。
+        <form action={deleteGateSignInspection.bind(null, insp.id)}>
+          <ConfirmSubmitButton
+            message={
+              pastYears.length > 0
+                ? `「${title}」を削除しますか？過去の年度分を含め、全ての記録（${pastYears.length + 1}件）が削除されます。（元に戻せません）`
+                : `「${title}」を削除しますか？（元に戻せません）`
+            }
+            pendingLabel="削除中..."
+            className="text-sm text-red-600 hover:underline dark:text-red-400"
+          >
+            この点検調書を削除
+          </ConfirmSubmitButton>
+        </form>
+      )}
     </div>
   );
 }

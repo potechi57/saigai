@@ -539,8 +539,12 @@ export default async function KarteListPage({
   if (gateSignReady && params.gsJudgment) {
     gsAndConditions.push({ overallJudgment: params.gsJudgment });
   }
+  // supersededByInspection: null＝年度別履歴チェーンのうち現在有効な最新レコードのみ
+  // （会話ログ「点検年度ごとに履歴として保存する」参照。lib/actions/
+  // gate-sign-inspection-actions.tsのコメント、schema.prismaのGateSignInspection.
+  // previousInspectionIdコメント参照）。過去年度分は地図・検索一覧には出さない。
   const gateSignWhere: Prisma.GateSignInspectionWhereInput = gateSignReady
-    ? { latitude: { not: null }, longitude: { not: null }, AND: gsAndConditions }
+    ? { latitude: { not: null }, longitude: { not: null }, supersededByInspection: { is: null }, AND: gsAndConditions }
     : { id: "__no_data_yet__" };
 
   // 路線名等の選択肢は自由入力だと表記ゆれで検索漏れが起きやすいため、実際に登録されて
