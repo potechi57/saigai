@@ -1,87 +1,14 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
-import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
+import { type ChangeEvent } from "react";
 import Link from "next/link";
-import {
-  importKarteExcel,
-  importPhase1KarteAndFormA,
-  importPhase2FormBTarget,
-  importPhase3Events,
-} from "@/lib/actions/import-actions";
+import { useBulkImport, type FileStatus } from "@/components/BulkImportContext";
 
-// ExcelImportForm.tsxと同じ閾値・同じフェーズ分割方式をそのまま踏襲する
-// （理由はExcelImportForm.tsxのコメント参照）。複数ファイルをまとめて選べる点だけが違う。
-const DIRECT_UPLOAD_THRESHOLD_BYTES = 700 * 1024;
-
-type FileStatus = "waiting" | "uploading" | "processing" | "success" | "error";
-
-type FileState = {
-  file: File;
-  status: FileStatus;
-  detail: string; // 進捗ラベル（処理中）またはエラー内容・完了内容
-  facilityNo?: string;
-};
-
-// 1ファイル分の処理（ExcelImportForm.tsxのhandleSubmitと同じロジック）。
-// バッチ処理では「1件失敗しても他のファイルは止めない」ことが重要なため、
-// 例外を投げず必ずFileStateを返す形にしている。
-async function processOneFile(
-  file: File,
-  onDetail: (detail: string) => void
-): Promise<{ ok: true; facilityNo: string } | { ok: false; error: string }> {
-  try {
-    if (file.size <= DIRECT_UPLOAD_THRESHOLD_BYTES) {
-      onDetail("解析・登録中...");
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await importKarteExcel(null, fd);
-      return r.ok ? { ok: true, facilityNo: r.facilityNo } : { ok: false, error: r.error };
-    }
-
-    onDetail("アップロード中...");
-    let blobUrl: string;
-    try {
-      const blob = await upload(`karte-imports/${Date.now()}-${file.name}`, file, {
-        access: "public",
-        handleUploadUrl: "/api/blob-upload",
-      });
-      blobUrl = blob.url;
-    } catch {
-      // Vercel Blob未設定環境向けのフォールバック（ExcelImportForm.tsxと同じ方針）。
-      onDetail("解析・登録中...");
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await importKarteExcel(null, fd);
-      return r.ok ? { ok: true, facilityNo: r.facilityNo } : { ok: false, error: r.error };
-    }
-
-    onDetail("① カルテ基本情報（様式Ａ）を解析中...");
-    const phase1 = await importPhase1KarteAndFormA(blobUrl, file.name);
-    if (!phase1.ok) return { ok: false, error: phase1.error };
-
-    for (let i = 0; i < phase1.formBSheetNames.length; i++) {
-      onDetail(`② 点検対象を取込中（${i + 1}/${phase1.formBSheetNames.length}）`);
-      const phase2 = await importPhase2FormBTarget(
-        phase1.karteId,
-        blobUrl,
-        phase1.formBSheetNames[i],
-        phase1.historyId,
-        phase1.isNewKarte
-      );
-      if (!phase2.ok) return { ok: false, error: phase2.error };
-    }
-
-    onDetail("③ 点検記録（様式Ｃ）を取込中...");
-    const phase3 = await importPhase3Events(phase1.karteId, phase1.facilityNo, blobUrl, phase1.historyId);
-    if (!phase3.ok) return { ok: false, error: phase3.error };
-
-    return { ok: true, facilityNo: phase1.facilityNo };
-  } catch (err) {
-    return { ok: false, error: `取込に失敗しました（詳細: ${err instanceof Error ? err.message : String(err)}）` };
-  }
-}
+// 実際の取込処理・進捗の状態は、別ページに移動しても続けられるよう
+// components/BulkImportContext.tsx（ルートレイアウトに配置）側に持たせている
+// （会話ログ「取り込んでいる間、別のページを開いてもそのページの処理が自動で
+// 続くようにしてほしい」参照）。このコンポーネント自体はその状態を表示する
+// だけの「見た目」担当になっている。
 
 const STATUS_LABEL: Record<FileStatus, { label: string; className: string }> = {
   waiting: { label: "待機中", className: "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300" },
@@ -92,39 +19,10 @@ const STATUS_LABEL: Record<FileStatus, { label: string; className: string }> = {
 };
 
 export default function BulkExcelImportForm() {
-  const router = useRouter();
-  const [files, setFiles] = useState<FileState[]>([]);
-  const [running, setRunning] = useState(false);
+  const { files, running, setFilesFromInput, removeQueuedFile, start } = useBulkImport();
 
   function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(e.target.files ?? []);
-    setFiles(selected.map((file) => ({ file, status: "waiting", detail: "" })));
-  }
-
-  // 1件ずつ順番に処理する（並列処理はしない）。理由:
-  // - Cloud Run側のEMF変換サービスが1コンテナ内--concurrency=1で動く設計のため、
-  //   同時に複数リクエストを送っても安定して速くなるわけではない。
-  // - 1件が失敗しても他のファイルには影響させず、最後まで通して結果一覧を出す。
-  async function handleRun() {
-    setRunning(true);
-    for (let i = 0; i < files.length; i++) {
-      setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "processing", detail: "" } : f)));
-      const target = files[i].file;
-      const result = await processOneFile(target, (detail) => {
-        setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, detail } : f)));
-      });
-      setFiles((prev) =>
-        prev.map((f, idx) =>
-          idx === i
-            ? result.ok
-              ? { ...f, status: "success", detail: "取込完了", facilityNo: result.facilityNo }
-              : { ...f, status: "error", detail: result.error }
-            : f
-        )
-      );
-    }
-    setRunning(false);
-    router.refresh(); // 取込履歴一覧を最新化する
+    setFilesFromInput(Array.from(e.target.files ?? []));
   }
 
   const doneCount = files.filter((f) => f.status === "success" || f.status === "error").length;
@@ -136,7 +34,8 @@ export default function BulkExcelImportForm() {
       <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">まとめて取り込む（複数ファイル）</h2>
       <p className="text-xs text-gray-500 dark:text-gray-400">
         複数のExcelファイルを選択すると、1件ずつ順番に取り込みます。途中で1件失敗しても他のファイルの取込は続行します。
-        ファイルを選んだ後にタブを閉じると処理は止まりますので、完了まで開いたままにしてください。
+        取込中に他の画面へ移動しても処理は続き、ヘッダーの「📥 取込中」表示から進み具合を確認できます
+        （ブラウザのタブを閉じると処理は止まりますので、完了まで開いたままにしてください）。
       </p>
       <label className="block text-sm">
         <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">防災カルテExcelファイル（複数選択可・.xls / .xlsx）</span>
@@ -154,7 +53,7 @@ export default function BulkExcelImportForm() {
         <>
           <button
             type="button"
-            onClick={handleRun}
+            onClick={start}
             disabled={running || files.every((f) => f.status !== "waiting")}
             className="rounded bg-gray-800 dark:bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-700 dark:hover:bg-gray-600 disabled:opacity-50"
           >
@@ -174,13 +73,14 @@ export default function BulkExcelImportForm() {
                   <th className="px-3 py-2">ファイル名</th>
                   <th className="px-3 py-2">状態</th>
                   <th className="px-3 py-2">詳細</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {files.map((f, i) => {
+                {files.map((f) => {
                   const status = STATUS_LABEL[f.status];
                   return (
-                    <tr key={i} className="border-t border-gray-200 dark:border-gray-700">
+                    <tr key={f.id} className="border-t border-gray-200 dark:border-gray-700">
                       <td className="max-w-[16rem] truncate px-3 py-2 text-gray-800 dark:text-gray-100" title={f.file.name}>
                         {f.file.name}
                       </td>
@@ -194,6 +94,22 @@ export default function BulkExcelImportForm() {
                           </Link>
                         ) : (
                           f.detail
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {/* 順番待ち（waiting）の間だけ取りやめられる（会話ログ
+                            「順番待ちの時に取りやめる×ボタンを追加すること」参照）。
+                            処理開始後は安全に中断する手段が無いため対象外。 */}
+                        {f.status === "waiting" && (
+                          <button
+                            type="button"
+                            onClick={() => removeQueuedFile(f.id)}
+                            title="このファイルを取りやめる"
+                            aria-label={`${f.file.name}を取りやめる`}
+                            className="text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
+                          >
+                            ×
+                          </button>
                         )}
                       </td>
                     </tr>
