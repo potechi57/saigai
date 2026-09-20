@@ -73,18 +73,24 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
   // 「ラベルの行＋値の行」の2行1組として表現している（会話ログ「項目の横に、
   // その内容が表示されているようですが、エクセルと同じように項目の下にその
   // 内容を表示する形にしてほしい」参照。以前はTh/Tdを同じ行に横並びさせていた）。
-  // 表の横幅は4ユニット固定（1ユニット=ラベル+値のペア1組分）で統一し、
-  // フィールド数が4に満たないグループは末尾のセルのcolSpanで埋めている
-  // （施設名・形式・路線名・所在地・緯度経度の行だけは5ユニット。緯度経度は
-  // Excel上は別行だが、1項目だけのために2行使うのは間に合わないとのことで
-  // 所在地の隣に並べている。会話ログ「緯度経度のために２行分をつかうのは
-  // もったいないです。所在地のとなりにおいてはいかがでしょうか」参照）。
+  // 表の横幅は6ユニット固定（1ユニット=ラベル+値のペア1組分）で統一し、
+  // フィールド数が6に満たないグループは末尾のセルのcolSpanで埋めている。
+  // 施設名・形式・路線名・所在地・設置位置・ID番号の行はちょうど6項目で
+  // 自然に埋まる（会話ログ「緯度経度の項目は...他の列とは独立して位置して
+  // いますね。見た感じ不自然なので、設置位置専用の列とならないように...
+  // それ以降の行も調節してください」参照。以前は5ユニットで統一していたため
+  // この行だけが浮いて見えていた。ID番号を追加して6項目ちょうどに揃えた上で、
+  // 他の行も全て6ユニットに合わせている）。
+  //
+  // 「設置位置」はExcel上、緯度・経度をまとめる見出しラベルとして実在する
+  // （様式（その１）M4:M5セル。会話ログ「設置位置は、緯度経度のことを
+  // 指しています。したがって、現在、緯度経度という項目としているところを、
+  // 設置位置に変えてください」参照。値自体はIMS設定シート由来の10進度を
+  // lib/geo.tsのformatLatLngDmsで度分秒表記に戻したもの。他の画面と同じ方式）。
   //
   // 【行の対応関係（Excel行番号は1始まり）】
-  //   行4/6: 施設名・形式・路線名・所在地
-  //   （+IMS設定シート由来の緯度経度。Excel上は行4-5に度分秒で直書きされて
-  //          いるが、DB側は10進度で保持しているため、lib/geo.tsの
-  //          formatLatLngDmsで度分秒表記に戻して表示する。他の画面と同じ方式）
+  //   行4/6: 施設名・形式・路線名・所在地・設置位置（緯度経度）・ID番号
+  //          （ID番号はQ4:R4セル。実データでは空欄のことが多い）
   //   行8/9: 定期点検実施年月日・定期点検者・記録者・管理者名
   //   行10/11: 代替路の有無・緊急輸送道路・自専道or一般道・占用物件
   //   行13-20: 部材単位の健全性の診断（支柱・横梁・標識板または道路情報板・
@@ -111,7 +117,8 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
             <Th>形式</Th>
             <Th>路線名</Th>
             <Th>所在地</Th>
-            <Th>緯度経度</Th>
+            <Th>設置位置</Th>
+            <Th>ID番号</Th>
           </tr>
           <tr>
             <Td>{insp.facilityName || "—"}</Td>
@@ -136,42 +143,43 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
                 ? formatLatLngDms(Number(insp.latitude), Number(insp.longitude))
                 : "—"}
             </Td>
+            <Td>{insp.idNumber || "—"}</Td>
           </tr>
 
           <tr>
             <Th>定期点検実施年月日</Th>
             <Th>定期点検者</Th>
             <Th>記録者</Th>
-            <Th>管理者名</Th>
+            <Th colSpan={3}>管理者名</Th>
           </tr>
           <tr>
             <Td>{insp.inspectionDate ? new Date(insp.inspectionDate).toLocaleDateString("ja-JP") : "—"}</Td>
             <Td>{insp.inspectorCompany || "—"}</Td>
             <Td>{insp.inspectorName || "—"}</Td>
-            <Td>{insp.managerOrgName || "—"}</Td>
+            <Td colSpan={3}>{insp.managerOrgName || "—"}</Td>
           </tr>
 
           <tr>
             <Th>代替路の有無</Th>
             <Th>緊急輸送道路</Th>
             <Th>自専道or一般道</Th>
-            <Th>占用物件</Th>
+            <Th colSpan={3}>占用物件</Th>
           </tr>
           <tr>
             <Td>{insp.hasAlternateRoute || "—"}</Td>
             <Td>{insp.emergencyTransportRoad || "—"}</Td>
             <Td>{insp.roadCategory || "—"}</Td>
-            <Td>{insp.occupyingObjects || "—"}</Td>
+            <Td colSpan={3}>{insp.occupyingObjects || "—"}</Td>
           </tr>
 
           {memberOverview.length > 0 && (
             <tr>
-              <Th colSpan={4}>部材単位の健全性の診断（部材毎に最も厳しい健全性の診断結果を記入）</Th>
+              <Th colSpan={6}>部材単位の健全性の診断（部材毎に最も厳しい健全性の診断結果を記入）</Th>
             </tr>
           )}
           {memberOverview.length > 0 && (
             <tr>
-              <td colSpan={4} className="border border-gray-400 p-0 dark:border-gray-600">
+              <td colSpan={6} className="border border-gray-400 p-0 dark:border-gray-600">
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr>
@@ -213,10 +221,10 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
           )}
 
           <tr>
-            <Th colSpan={4}>門型標識等毎の健全性の診断</Th>
+            <Th colSpan={6}>門型標識等毎の健全性の診断</Th>
           </tr>
           <tr>
-            <td colSpan={4} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
+            <td colSpan={6} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
               <div className="flex flex-wrap items-baseline gap-2">
                 {insp.overallJudgment && (
                   <span
@@ -233,19 +241,19 @@ export default async function GateSignInspectionDetailPage({ params }: { params:
           <tr>
             <Th>設置年月</Th>
             <Th>道路幅員(ｍ)</Th>
-            <Th colSpan={2}>構造形式</Th>
+            <Th colSpan={4}>構造形式</Th>
           </tr>
           <tr>
             <Td>{insp.installedYear ? `${insp.installedYear}年${insp.installedMonth ?? ""}月` : "—"}</Td>
             <Td>{insp.roadWidthM != null ? String(insp.roadWidthM) : "—"}</Td>
-            <Td colSpan={2}>{insp.structureType || "—"}</Td>
+            <Td colSpan={4}>{insp.structureType || "—"}</Td>
           </tr>
 
           <tr>
-            <Th colSpan={4}>全景写真</Th>
+            <Th colSpan={6}>全景写真</Th>
           </tr>
           <tr>
-            <td colSpan={4} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
+            <td colSpan={6} className="border border-gray-400 bg-white p-2 align-top dark:border-gray-600 dark:bg-gray-900">
               {overviewLightboxPhotos.length > 0 ? (
                 // 元Excelでは左＝起点側、右＝終点側の並びで貼り付けられており
                 // （extractForm1OverviewPhotosで列位置ソート済み）、この並び順自体は

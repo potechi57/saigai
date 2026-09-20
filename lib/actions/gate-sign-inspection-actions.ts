@@ -107,6 +107,7 @@ export async function importGateSignInspectionExcel(
       facilityForm: data.facilityForm,
       routeName: data.routeName,
       location: data.location,
+      idNumber: data.idNumber,
       latitude: data.latitude,
       longitude: data.longitude,
       inspectionDate: data.inspectionDate,
