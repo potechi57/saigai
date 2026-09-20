@@ -8,6 +8,7 @@ import PhotoUploadForm from "@/components/PhotoUploadForm";
 import PhotoSlot from "@/components/PhotoSlot";
 import { KARTE_TYPE_LABEL, WEATHER_LABEL } from "@/lib/labels";
 import BackLink from "@/components/BackLink";
+import { Th, Td } from "@/components/ExcelTable";
 
 export const dynamic = "force-dynamic";
 
@@ -172,18 +173,3 @@ export default async function EditInspectionTargetPage({
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th className="border border-gray-400 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 dark:text-gray-300">
-      {children}
-    </th>
-  );
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle whitespace-nowrap">
-      {children}
-    </td>
-  );
-}

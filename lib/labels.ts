@@ -20,6 +20,16 @@ export const FACILITY_LEDGER_DOC_CLASS_LABEL: Record<string, string> = {
   FACILITY: "施設台帳",
 };
 
+// 点検調書の判定区分（Ⅰ〜Ⅳ）バッジの配色。門型標識・橋梁・カルテ検索結果一覧の
+// 5箇所に同じ内容がそれぞれ別々に定義されていたため、ここに一元化した
+// （会話ログ「共通コンポーネント化」参照。Th/Tdはcomponents/ExcelTable.tsx参照）。
+export const JUDGMENT_BADGE: Record<string, string> = {
+  Ⅰ: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  Ⅱ: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
+  Ⅲ: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
+  Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+};
+
 // 台帳（画像。FacilityLedger）の表示名。Excelのような構造化データの裏付けが
 // 無いまま登録されることが多く、管理番号が分かっていない・そもそも採番されて
 // いない施設も存在するため、管理番号（managementNo）が無い場合は台帳名

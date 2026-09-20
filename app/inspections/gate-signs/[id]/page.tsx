@@ -12,15 +12,16 @@ import { formatLatLngDms } from "@/lib/geo";
 import type { GateSignInspectionMemberOverviewRow } from "@/lib/excel/gate-sign-inspection-import";
 import BackLink from "@/components/BackLink";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
+import { Th, Td as BaseTd } from "@/components/ExcelTable";
+import { JUDGMENT_BADGE } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
-const JUDGMENT_BADGE: Record<string, string> = {
-  Ⅰ: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
-  Ⅱ: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
-  Ⅲ: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
-  Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-};
+// 様式１タブは「ラベル上・値下」で長文を折り返す表示のため、共通コンポーネント
+// のTdをwrap=trueで固定して使う（components/ExcelTable.tsxのコメント参照）。
+function Td(props: Omit<Parameters<typeof BaseTd>[0], "wrap">) {
+  return <BaseTd wrap {...props} />;
+}
 
 // 点検調書（道路＞門型標識）1件の詳細画面（会話ログ参照）。様式（その１）
 // 相当の基本情報タブと、様式（その２）相当（状況写真・損傷箇所ごとの詳細）の
@@ -439,47 +440,6 @@ function Field({
         )}
       </dd>
     </div>
-  );
-}
-
-// 様式１タブの表で使うセル。karte詳細画面の様式Ａ・様式Ｂ（app/karte/[karteNo]/page.tsx）
-// と同じ見た目にするため、同じクラス構成のTh/Tdをこちらにも定義している
-// （ファイルをまたいで共有するほどの複雑さではないため、単純に複製している）。
-function Th({
-  children,
-  colSpan,
-  className = "",
-}: {
-  children: React.ReactNode;
-  colSpan?: number;
-  className?: string;
-}) {
-  return (
-    <th
-      colSpan={colSpan}
-      className={`border border-gray-400 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 dark:text-gray-300 ${className}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  colSpan,
-  className = "",
-}: {
-  children: React.ReactNode;
-  colSpan?: number;
-  className?: string;
-}) {
-  return (
-    <td
-      colSpan={colSpan}
-      className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-top whitespace-pre-wrap ${className}`}
-    >
-      {children}
-    </td>
   );
 }
 

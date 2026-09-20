@@ -3,7 +3,14 @@ import Link from "next/link";
 import Form from "next/form";
 import { type Prisma, type FacilityLedgerDocClass, KarteType, ResponseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { KARTE_TYPE_LABEL, responseMeta, RESPONSE_META, formatFacilityType, FACILITY_LEDGER_DOC_CLASS_LABEL } from "@/lib/labels";
+import {
+  KARTE_TYPE_LABEL,
+  responseMeta,
+  RESPONSE_META,
+  formatFacilityType,
+  FACILITY_LEDGER_DOC_CLASS_LABEL,
+  JUDGMENT_BADGE,
+} from "@/lib/labels";
 import MapView from "@/components/MapLoader";
 import type { MapKarte, HomeLocation, MapLedger, MapFacilityListItem, MapGateSignInspection } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
@@ -39,15 +46,6 @@ export const dynamic = "force-dynamic";
 // （会話ログ「施設種別の複数選択検索」参照）。個別のラベルと衝突しない
 // よう__で囲んだ内部専用の値にしている。ラベルと違いUIには出さない。
 const FACILITY_SHISETSU_ALL = "__all__";
-
-// 点検調書（門型標識）の判定区分バッジ。app/inspections/gate-signs/[id]/page.tsx
-// と同じ配色（共通化するほどの複雑さではないため単純に複製している）。
-const JUDGMENT_BADGE: Record<string, string> = {
-  Ⅰ: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
-  Ⅱ: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
-  Ⅲ: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
-  Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-};
 
 // searchParamsの値は、同名キーが1回だけ現れると文字列、複数回現れると配列に
 // なる（Next.jsの仕様）。施設種別（facShisetsu）はチェックボックスの複数選択に

@@ -12,6 +12,7 @@ import RecordViewHistory from "@/components/RecordViewHistory";
 import { karteRouteDisplayName } from "@/lib/karte-route-classification";
 import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
+import { Th, Td } from "@/components/ExcelTable";
 
 // 一覧画面と同じ理由で静的プリレンダリングを無効化する。
 export const dynamic = "force-dynamic";
@@ -1071,47 +1072,6 @@ function HeaderItem({ label, children }: { label: string; children: React.ReactN
       <span className="text-gray-400 dark:text-gray-500">{label}: </span>
       {children}
     </span>
-  );
-}
-
-function Th({
-  children,
-  colSpan,
-  rowSpan,
-  className = "",
-}: {
-  children: React.ReactNode;
-  colSpan?: number;
-  rowSpan?: number;
-  className?: string;
-}) {
-  return (
-    <th
-      colSpan={colSpan}
-      rowSpan={rowSpan}
-      className={`border border-gray-400 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-2 py-1 text-left align-middle font-medium whitespace-nowrap text-gray-600 dark:text-gray-300 ${className}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  colSpan,
-  className = "",
-}: {
-  children: React.ReactNode;
-  colSpan?: number;
-  className?: string;
-}) {
-  return (
-    <td
-      colSpan={colSpan}
-      className={`border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 align-middle whitespace-nowrap ${className}`}
-    >
-      {children}
-    </td>
   );
 }
 
