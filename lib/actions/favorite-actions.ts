@@ -17,7 +17,8 @@ export type FavoriteActionResult = { ok: true } | { ok: false; error: string };
 export type FavoriteTarget =
   | { type: "karte"; id: string; facilityNo: string }
   | { type: "gateSignInspection"; id: string }
-  | { type: "bridgeInspection"; id: string };
+  | { type: "bridgeInspection"; id: string }
+  | { type: "bridgeLedger"; id: string };
 
 // カルテ詳細画面・地図のポップアップ・検索結果一覧など、複数箇所にある
 // ☆/★ボタンから直接呼ばれる（フォーム経由ではなく、クライアント側でawaitして
@@ -42,7 +43,7 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
       } else {
         await prisma.favorite.deleteMany({ where: { gateSignInspectionId: target.id } });
       }
-    } else {
+    } else if (target.type === "bridgeInspection") {
       if (shouldBeFavorite) {
         await prisma.favorite.upsert({
           where: { bridgeInspectionId: target.id },
@@ -51,6 +52,16 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
         });
       } else {
         await prisma.favorite.deleteMany({ where: { bridgeInspectionId: target.id } });
+      }
+    } else {
+      if (shouldBeFavorite) {
+        await prisma.favorite.upsert({
+          where: { bridgeLedgerId: target.id },
+          create: { bridgeLedgerId: target.id },
+          update: {},
+        });
+      } else {
+        await prisma.favorite.deleteMany({ where: { bridgeLedgerId: target.id } });
       }
     }
   } catch (e) {
@@ -70,8 +81,13 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
     revalidatePath("/karte"); // 地図（点検調書＞道路＞門型標識）のポップアップの★表示を更新するため
     revalidatePath("/karte/favorites");
     revalidatePath("/m/favorites");
-  } else {
+  } else if (target.type === "bridgeInspection") {
     revalidatePath(`/inspections/bridges/${target.id}`);
+    revalidatePath("/karte");
+    revalidatePath("/karte/favorites");
+    revalidatePath("/m/favorites");
+  } else {
+    revalidatePath(`/bridge-ledgers/${target.id}`);
     revalidatePath("/karte");
     revalidatePath("/karte/favorites");
     revalidatePath("/m/favorites");

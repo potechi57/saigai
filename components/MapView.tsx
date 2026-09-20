@@ -132,6 +132,21 @@ export type MapBridgeInspection = {
   isFavorite?: boolean;
 };
 
+// 橋梁台帳（prisma/schema.prismaのBridgeLedger参照）。台帳（画像。
+// MapLedger）・施設一覧と同様、常時表示する（検索条件による絞り込みは
+// 呼び出し元で行うが、点検調書のような「分類を選ぶまで非表示」のゲートは
+// 掛けない。会話ログ「橋梁台帳：お気に入り・地図一覧・キャンセルボタン」参照）。
+export type MapBridgeLedgerRecord = {
+  id: string;
+  title: string;
+  routeName?: string | null;
+  location?: string | null;
+  latitude: number;
+  longitude: number;
+  facilityListItemId?: string | null;
+  isFavorite?: boolean;
+};
+
 export type HomeLocation = { latitude: number; longitude: number; label: string | null } | null;
 
 // 地図APIはGoogle Maps等への差し替えを見据え、業務データ（MapKarte）とは疎結合にしている
@@ -151,6 +166,7 @@ export default function MapView({
   facilityListItems = [],
   gateSignInspections = [],
   bridgeInspections = [],
+  bridgeLedgers = [],
 }: {
   kartes: MapKarte[];
   home?: HomeLocation;
@@ -164,6 +180,7 @@ export default function MapView({
   facilityListItems?: MapFacilityListItem[];
   gateSignInspections?: MapGateSignInspection[];
   bridgeInspections?: MapBridgeInspection[];
+  bridgeLedgers?: MapBridgeLedgerRecord[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -187,7 +204,9 @@ export default function MapView({
   const gateSignLayerRef = useRef<L.LayerGroup | null>(null);
   // 点検調書（橋梁）のマーカー一式（門型標識と同じ考え方）。
   const bridgeLayerRef = useRef<L.LayerGroup | null>(null);
-  // ledgers/facilityListItems/gateSignInspections/bridgeInspectionsも、kartesと同じ理由
+  // 橋梁台帳のマーカー一式（施設一覧と同じ、常時表示のレイヤー）。
+  const bridgeLedgerLayerRef = useRef<L.LayerGroup | null>(null);
+  // ledgers/facilityListItems/gateSignInspections/bridgeInspections/bridgeLedgersも、kartesと同じ理由
   // （lastKarteIdsKeyRef参照）でID集合の差分チェックを行う。以前は「件数が少ない
   // 想定なので毎回作り直す」という単純化をしていたが、お気に入りの☆/★切替や
   // ホーム位置設定のたびに呼ばれるrouter.refresh()でもこれらのレイヤーを
@@ -197,6 +216,7 @@ export default function MapView({
   const lastFacilityListIdsKeyRef = useRef<string | null>(null);
   const lastGateSignIdsKeyRef = useRef<string | null>(null);
   const lastBridgeIdsKeyRef = useRef<string | null>(null);
+  const lastBridgeLedgerIdsKeyRef = useRef<string | null>(null);
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const currentLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const currentLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -237,6 +257,9 @@ export default function MapView({
   const bridgeFavoriteIdsRef = useRef<Set<string>>(
     new Set(bridgeInspections.filter((b) => b.isFavorite).map((b) => b.id))
   );
+  const bridgeLedgerFavoriteIdsRef = useRef<Set<string>>(
+    new Set(bridgeLedgers.filter((b) => b.isFavorite).map((b) => b.id))
+  );
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -258,6 +281,7 @@ export default function MapView({
     facilityListLayerRef.current = L.layerGroup().addTo(map);
     gateSignLayerRef.current = L.layerGroup().addTo(map);
     bridgeLayerRef.current = L.layerGroup().addTo(map);
+    bridgeLedgerLayerRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
@@ -267,6 +291,7 @@ export default function MapView({
       facilityListLayerRef.current = null;
       gateSignLayerRef.current = null;
       bridgeLayerRef.current = null;
+      bridgeLedgerLayerRef.current = null;
       // レイヤーグループを作り直す（＝上のkarteLayerRef等が新しい空のグループに
       // 差し替わる）ため、「前回どのID集合を描画したか」を覚えているこれらのrefも
       // 一緒にリセットする。リセットしないと、直後の各マーカー構築effectが
@@ -281,6 +306,7 @@ export default function MapView({
       lastFacilityListIdsKeyRef.current = null;
       lastGateSignIdsKeyRef.current = null;
       lastBridgeIdsKeyRef.current = null;
+      lastBridgeLedgerIdsKeyRef.current = null;
     };
     // home/現在地は下記の通りrefで参照するため、ここでは依存にしない
     // （変更のたびに地図全体を作り直すと、ズーム・パン位置が失われるため）。
@@ -742,6 +768,85 @@ export default function MapView({
     }
   }, [bridgeInspections]);
 
+  // 橋梁台帳のマーカーを構築する専用effect（施設一覧と同じ、常時表示の
+  // レイヤー。判定区分の概念が無いため、マーカー色は固定・お気に入り☆★のみ
+  // 表示する。会話ログ「橋梁台帳：お気に入り・地図一覧・キャンセルボタン」参照）。
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = bridgeLedgerLayerRef.current;
+    if (!map || !layer) return;
+
+    const idsKey = bridgeLedgers
+      .map((b) => b.id)
+      .sort()
+      .join("|");
+    if (idsKey === lastBridgeLedgerIdsKeyRef.current) return;
+    lastBridgeLedgerIdsKeyRef.current = idsKey;
+
+    layer.clearLayers();
+    bridgeLedgerFavoriteIdsRef.current = new Set(bridgeLedgers.filter((b) => b.isFavorite).map((b) => b.id));
+
+    for (const b of bridgeLedgers) {
+      const marker = L.marker([b.latitude, b.longitude], {
+        icon: buildBridgeLedgerMarkerIcon(bridgeLedgerFavoriteIdsRef.current.has(b.id)),
+      }).addTo(layer);
+      const detailHref = `/bridge-ledgers/${b.id}`;
+      const favSlotId = `bridge-ledger-fav-slot-${b.id}`;
+      marker.bindPopup(
+        `<div style="font-size:13px;min-width:180px;">
+           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+             <div style="font-weight:600;">${escapeHtml(b.title)}</div>
+             <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+               <span id="${favSlotId}"></span>
+               <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
+             </div>
+           </div>
+           ${b.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(b.routeName)}</div>` : ""}
+           ${b.location ? `<div style="color:#374151;">所在地: ${escapeHtml(b.location)}</div>` : ""}
+           ${
+             b.facilityListItemId
+               ? `<div style="margin-top:6px;"><a href="/facility-list/${escapeHtml(b.facilityListItemId)}" style="color:#2563eb;">施設台帳を見る →</a></div>`
+               : ""
+           }
+         </div>`,
+        { maxWidth: 360 }
+      );
+
+      marker.on("popupopen", () => renderBridgeLedgerFavSlot(favSlotId, b, marker));
+    }
+
+    function renderBridgeLedgerFavSlot(slotId: string, b: MapBridgeLedgerRecord, marker: L.Marker) {
+      const slot = document.getElementById(slotId);
+      if (!slot) return;
+      const isFav = bridgeLedgerFavoriteIdsRef.current.has(b.id);
+      const btnId = `bridge-ledger-fav-toggle-${b.id}`;
+      slot.innerHTML = isFav
+        ? `<span style="font-size:12px;color:#a16207;">★ お気に入り済み</span> <button type="button" id="${btnId}" style="margin-left:6px;font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">外す</button>`
+        : `<button type="button" id="${btnId}" style="font-size:12px;color:#2563eb;background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;">☆ お気に入りに追加</button>`;
+      const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+      btn?.addEventListener(
+        "click",
+        () => {
+          const next = !bridgeLedgerFavoriteIdsRef.current.has(b.id);
+          btn.disabled = true;
+          btn.textContent = "処理中...";
+          setFavorite({ type: "bridgeLedger", id: b.id }, next).then((result) => {
+            if (!result.ok) {
+              btn.disabled = false;
+              btn.textContent = `失敗（${result.error}）`;
+              return;
+            }
+            if (next) bridgeLedgerFavoriteIdsRef.current.add(b.id);
+            else bridgeLedgerFavoriteIdsRef.current.delete(b.id);
+            marker.setIcon(buildBridgeLedgerMarkerIcon(next));
+            renderBridgeLedgerFavSlot(slotId, b, marker);
+          });
+        },
+        { once: true }
+      );
+    }
+  }, [bridgeLedgers]);
+
   // ホーム位置ピンは、地図本体を作り直さずに独立して追加・更新・削除する
   // （上の初期化effectとは別立てにする理由は直上のコメントの通り）。
   useEffect(() => {
@@ -1146,6 +1251,28 @@ function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite
     iconSize: [26, 26],
     iconAnchor: [13, 13],
     popupAnchor: [0, -13],
+  });
+}
+
+// 橋梁台帳のマーカーアイコン。判定区分の概念が無いため固定色（紺色。台帳
+// （画像）の紫円・施設一覧のオレンジ角丸とも見分けられる色にしている）。
+function buildBridgeLedgerMarkerIcon(isFavorite: boolean): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+        position:relative;
+        background:#1e3a8a;
+        width:24px;height:24px;border-radius:6px;
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        display:flex;align-items:center;justify-content:center;
+        font-size:13px;
+      ">🌉${
+        isFavorite ? '<span style="position:absolute;top:-8px;right:-6px;font-size:13px;">★</span>' : ""
+      }</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
   });
 }
 

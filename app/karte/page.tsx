@@ -19,6 +19,7 @@ import type {
   MapFacilityListItem,
   MapGateSignInspection,
   MapBridgeInspection,
+  MapBridgeLedgerRecord,
 } from "@/components/MapLoader";
 import SearchHistoryPanel from "@/components/SearchHistoryPanel";
 import { getStartEndRecordPhotos, getFormAThumbnails } from "@/lib/map-photos";
@@ -594,6 +595,7 @@ export default async function KarteListPage({
     ledgerRouteNameOptions,
     gateSignInspectionsRaw,
     bridgeInspectionsRaw,
+    bridgeLedgersRaw,
     kartesBeforeLocationFilter,
     karteTotalCount,
     facilityItems,
@@ -648,6 +650,18 @@ export default async function KarteListPage({
       orderBy: { createdAt: "desc" },
       include: {
         photos: { where: { category: "overview" }, orderBy: { sortOrder: "asc" } },
+        facilityListItem: { select: { id: true } },
+        favorite: { select: { id: true } },
+      },
+      take: SEARCH_RESULT_LIMIT,
+    }),
+    // 橋梁台帳は件数が少ない想定（施設一覧・台帳（画像）と同じ）のため、
+    // 点検調書のような「分類を選ぶまで非表示」のゲートを掛けず常時取得する
+    // （会話ログ「橋梁台帳：お気に入り・地図一覧・キャンセルボタン」参照）。
+    prisma.bridgeLedger.findMany({
+      where: { latitude: { not: null }, longitude: { not: null } },
+      orderBy: { createdAt: "desc" },
+      include: {
         facilityListItem: { select: { id: true } },
         favorite: { select: { id: true } },
       },
@@ -766,6 +780,17 @@ export default async function KarteListPage({
     latitude: Number(b.latitude),
     longitude: Number(b.longitude),
     overviewPhotos: b.photos.map((p) => ({ url: p.url, caption: p.caption })),
+    facilityListItemId: b.facilityListItem?.id ?? null,
+    isFavorite: b.favorite != null,
+  }));
+
+  const mapBridgeLedgers: MapBridgeLedgerRecord[] = bridgeLedgersRaw.map((b) => ({
+    id: b.id,
+    title: b.bridgeName ?? b.managementNo ?? b.sourceFileName ?? "（橋名不明）",
+    routeName: b.routeName,
+    location: b.location,
+    latitude: Number(b.latitude),
+    longitude: Number(b.longitude),
     facilityListItemId: b.facilityListItem?.id ?? null,
     isFavorite: b.favorite != null,
   }));
@@ -1768,6 +1793,50 @@ export default async function KarteListPage({
                 </Link>
               </p>
             </div>
+
+            <div>
+              {/* 橋梁台帳は施設一覧・台帳（画像）と同じく常時表示（会話ログ
+                  「橋梁台帳：お気に入り・地図一覧・キャンセルボタン」参照）。 */}
+              <h2 className="mb-2 text-sm font-bold text-gray-700 dark:text-gray-200">橋梁台帳検索結果</h2>
+              <div className="overflow-x-auto rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
+                    <tr>
+                      <th className="px-3 py-2"></th>
+                      <th className="px-3 py-2">橋名</th>
+                      <th className="px-3 py-2">路線名</th>
+                      <th className="px-3 py-2">所在地</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mapBridgeLedgers.map((b) => (
+                      <tr key={b.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-3 py-2 text-yellow-500">{b.isFavorite ? "★" : ""}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/bridge-ledgers/${b.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {b.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">{b.routeName ?? "—"}</td>
+                        <td className="px-3 py-2">{b.location ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {mapBridgeLedgers.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                          橋梁台帳はまだ登録されていません。
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                <Link href="/bridge-ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
+                  橋梁台帳（全件）を見る →
+                </Link>
+              </p>
+            </div>
           </div>
         ) : (
           <MapView
@@ -1779,6 +1848,7 @@ export default async function KarteListPage({
             facilityListItems={mapFacilityListItems}
             gateSignInspections={mapGateSignInspections}
             bridgeInspections={mapBridgeInspections}
+            bridgeLedgers={mapBridgeLedgers}
           />
         )}
       </main>

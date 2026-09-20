@@ -456,6 +456,9 @@ model Favorite {
   bridgeInspectionId String?           @unique
   bridgeInspection   BridgeInspection? @relation(fields: [bridgeInspectionId], references: [id], onDelete: Cascade)
 
+  bridgeLedgerId String?      @unique
+  bridgeLedger   BridgeLedger? @relation(fields: [bridgeLedgerId], references: [id], onDelete: Cascade)
+
   note String? // お気に入りに追加した際の任意メモ
 
   createdAt DateTime @default(now())
@@ -1034,7 +1037,8 @@ model BridgeLedger {
 
   // 「橋梁台帳」「画像」「付属図」シートの汎用グリッド再現データ
   // （上記コメント参照）。
-  sheets BridgeLedgerSheet[]
+  sheets   BridgeLedgerSheet[]
+  favorite Favorite? // GateSignInspection.favoriteと同じ考え方（Favoriteモデルのコメント参照）
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -10,6 +10,7 @@ import type { ExtractedGrid } from "@/lib/excel/excel-grid-extract";
 import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
+import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export default async function BridgeLedgerDetailPage({ params }: { params: Promi
     include: {
       sheets: { orderBy: { sortOrder: "asc" } },
       facilityListItem: { select: { id: true, managementNo: true } },
+      favorite: { select: { id: true } },
     },
   });
   if (!bridge) notFound();
@@ -194,6 +196,10 @@ export default async function BridgeLedgerDetailPage({ params }: { params: Promi
             {bridge.managementNo}
           </span>
         )}
+        <FavoriteToggleButton
+          target={{ type: "bridgeLedger", id: bridge.id }}
+          initialIsFavorite={bridge.favorite != null}
+        />
       </div>
       {bridge.facilityListItem ? (
         <Link
