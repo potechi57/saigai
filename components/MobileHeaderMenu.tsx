@@ -58,6 +58,10 @@ export default function MobileHeaderMenu() {
             <span className="text-base">★</span>
             お気に入り
           </a>
+          <a href="/action-required" className={MENU_ROW_CLASS} onClick={() => setOpen(false)}>
+            <span className="text-base">⚠</span>
+            要対応一覧
+          </a>
           <ViewHistoryButton className={`w-full ${MENU_ROW_CLASS}`} />
           <a href="/m/settings" className={MENU_ROW_CLASS} onClick={() => setOpen(false)}>
             <span className="text-base">⚙️</span>

@@ -117,6 +117,12 @@ export default function RootLayout({
                 <Link href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                   ★ お気に入り
                 </Link>
+                {/* 横断的な「要対応一覧」ダッシュボード（会話ログ「横断的な『要対応一覧』
+                    ダッシュボード」参照。app/action-required/page.tsx）。カルテ・
+                    点検調書3種を横断して経過観察/要対策の箇所を一覧できる。 */}
+                <Link href="/action-required" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                  ⚠ 要対応一覧
+                </Link>
                 <Link href="/karte/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                   編集履歴
                 </Link>
