@@ -19,6 +19,9 @@ export type MapKarte = {
   latitude: number;
   longitude: number;
   isFavorite?: boolean; // ★を地図上でも見分けられるようにする（お気に入り機能）
+  // 緊急輸送道路への指定（会話ログ「緊急輸送道路の絞り込み・強調表示」参照。
+  // lib/emergency-road.ts）。trueのときマーカーに強調表示（赤枠）を付ける。
+  isEmergencyRoad?: boolean;
   // 現状記録写真のうち、キャプションに「起点」「終点」を含む最初の1枚ずつ
   // （lib/map-photos.ts参照）。ポップアップにサムネイルとして表示するためのもので、
   // 無ければ単に表示しない。
@@ -114,6 +117,7 @@ export type MapGateSignInspection = {
   // MapKarte.isFavoriteと同じ理由（お気に入り機能を防災カルテ以外の点検調書にも
   // 一般化した。lib/actions/favorite-actions.tsのFavoriteTarget参照）。
   isFavorite?: boolean;
+  isEmergencyRoad?: boolean; // MapKarte.isEmergencyRoadと同じ（lib/emergency-road.ts）
 };
 
 // 点検調書＞道路＞橋梁（prisma/schema.prismaのBridgeInspection参照）。
@@ -133,6 +137,7 @@ export type MapBridgeInspection = {
   overviewPhotos: { url: string; caption: string | null }[];
   facilityListItemId?: string | null;
   isFavorite?: boolean;
+  isEmergencyRoad?: boolean;
 };
 
 // 橋梁台帳（prisma/schema.prismaのBridgeLedger参照）。台帳（画像。
@@ -148,6 +153,7 @@ export type MapBridgeLedgerRecord = {
   longitude: number;
   facilityListItemId?: string | null;
   isFavorite?: boolean;
+  isEmergencyRoad?: boolean;
 };
 
 // 点検調書＞道路＞法面構造物（prisma/schema.prismaのSlopeStructureInspection
@@ -371,9 +377,9 @@ export default function MapView({
 
     for (const k of kartes) {
       const meta = responseMeta(k.responseCategory);
-      const marker = L.marker([k.latitude, k.longitude], { icon: buildMarkerIcon(meta, favoriteIdsRef.current.has(k.id)) }).addTo(
-        layer
-      );
+      const marker = L.marker([k.latitude, k.longitude], {
+        icon: buildMarkerIcon(meta, favoriteIdsRef.current.has(k.id), k.isEmergencyRoad ?? false),
+      }).addTo(layer);
       const routeBtnId = `route-btn-${k.id}`;
       const favSlotId = `fav-slot-${k.id}`;
       // お気に入りボタン・「詳細を見る」リンクは、以前はそれぞれ独立した行として
@@ -400,6 +406,7 @@ export default function MapView({
              </div>
            </div>
            <div style="color:#374151;">路線名: ${escapeHtml(k.routeName)} ・ 防災種別: ${escapeHtml(k.karteTypeLabel)}</div>
+           ${emergencyBadgeHtml(k.isEmergencyRoad)}
            <div style="margin-top:6px;color:#374151;">所在地: ${escapeHtml(k.location || "—")}（${escapeHtml(formatLatLngDms(k.latitude, k.longitude))}）</div>
            <div style="margin-top:4px;color:#374151;">延長: ${k.extensionLengthM != null ? `${k.extensionLengthM} m` : "—"} ・ 対応区分: ${escapeHtml(meta.label)} ・ 最終点検日時: ${escapeHtml(k.lastInspectionDateLabel || "—")}</div>
            ${buildKartePhotosHtml(k)}
@@ -506,7 +513,7 @@ export default function MapView({
             }
             if (next) favoriteIdsRef.current.add(k.id);
             else favoriteIdsRef.current.delete(k.id);
-            marker.setIcon(buildMarkerIcon(meta, next));
+            marker.setIcon(buildMarkerIcon(meta, next, k.isEmergencyRoad ?? false));
             renderFavSlot(slotId, k, marker, meta);
             // 以前はここでrouter.refresh()を呼び、ページ全体（このマップに渡す
             // 全検索クエリを含む）を再取得していたが、性能監査で「☆/★を1件切り替える
@@ -677,7 +684,7 @@ export default function MapView({
 
     for (const g of gateSignInspections) {
       const marker = L.marker([g.latitude, g.longitude], {
-        icon: buildGateSignMarkerIcon(g.judgment, gateSignFavoriteIdsRef.current.has(g.id)),
+        icon: buildGateSignMarkerIcon(g.judgment, gateSignFavoriteIdsRef.current.has(g.id), g.isEmergencyRoad ?? false),
       }).addTo(layer);
       const detailHref = `/inspections/gate-signs/${g.id}`;
       const favSlotId = `gate-fav-slot-${g.id}`;
@@ -701,6 +708,7 @@ export default function MapView({
              </div>
            </div>
            ${g.judgment ? `<div style="color:#666;">判定区分 ${escapeHtml(g.judgment)}</div>` : ""}
+           ${emergencyBadgeHtml(g.isEmergencyRoad)}
            ${g.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(g.routeName)}</div>` : ""}
            ${g.location ? `<div style="color:#374151;">所在地: ${escapeHtml(g.location)}</div>` : ""}
            ${g.inspectionDateLabel ? `<div style="color:#374151;">点検実施日: ${escapeHtml(g.inspectionDateLabel)}</div>` : ""}
@@ -747,7 +755,7 @@ export default function MapView({
             }
             if (next) gateSignFavoriteIdsRef.current.add(g.id);
             else gateSignFavoriteIdsRef.current.delete(g.id);
-            marker.setIcon(buildGateSignMarkerIcon(g.judgment, next));
+            marker.setIcon(buildGateSignMarkerIcon(g.judgment, next, g.isEmergencyRoad ?? false));
             renderGateSignFavSlot(slotId, g, marker);
             // router.refresh()を呼ばない理由はrenderFavSlot（防災カルテ側）の
             // コメントと同じ。
@@ -777,7 +785,7 @@ export default function MapView({
 
     for (const b of bridgeInspections) {
       const marker = L.marker([b.latitude, b.longitude], {
-        icon: buildBridgeMarkerIcon(b.judgment, bridgeFavoriteIdsRef.current.has(b.id)),
+        icon: buildBridgeMarkerIcon(b.judgment, bridgeFavoriteIdsRef.current.has(b.id), b.isEmergencyRoad ?? false),
       }).addTo(layer);
       const detailHref = `/inspections/bridges/${b.id}`;
       const favSlotId = `bridge-fav-slot-${b.id}`;
@@ -791,6 +799,7 @@ export default function MapView({
              </div>
            </div>
            ${b.judgment ? `<div style="color:#666;">判定区分 ${escapeHtml(b.judgment)}</div>` : ""}
+           ${emergencyBadgeHtml(b.isEmergencyRoad)}
            ${b.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(b.routeName)}</div>` : ""}
            ${b.location ? `<div style="color:#374151;">所在地: ${escapeHtml(b.location)}</div>` : ""}
            ${b.inspectionDateLabel ? `<div style="color:#374151;">点検日: ${escapeHtml(b.inspectionDateLabel)}</div>` : ""}
@@ -830,7 +839,7 @@ export default function MapView({
             }
             if (next) bridgeFavoriteIdsRef.current.add(b.id);
             else bridgeFavoriteIdsRef.current.delete(b.id);
-            marker.setIcon(buildBridgeMarkerIcon(b.judgment, next));
+            marker.setIcon(buildBridgeMarkerIcon(b.judgment, next, b.isEmergencyRoad ?? false));
             renderBridgeFavSlot(slotId, b, marker);
           });
         },
@@ -941,7 +950,7 @@ export default function MapView({
 
     for (const b of bridgeLedgers) {
       const marker = L.marker([b.latitude, b.longitude], {
-        icon: buildBridgeLedgerMarkerIcon(bridgeLedgerFavoriteIdsRef.current.has(b.id)),
+        icon: buildBridgeLedgerMarkerIcon(bridgeLedgerFavoriteIdsRef.current.has(b.id), b.isEmergencyRoad ?? false),
       }).addTo(layer);
       const detailHref = `/bridge-ledgers/${b.id}`;
       const favSlotId = `bridge-ledger-fav-slot-${b.id}`;
@@ -954,6 +963,7 @@ export default function MapView({
                <a href="${escapeHtml(detailHref)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
              </div>
            </div>
+           ${emergencyBadgeHtml(b.isEmergencyRoad)}
            ${b.routeName ? `<div style="margin-top:4px;color:#374151;">路線名: ${escapeHtml(b.routeName)}</div>` : ""}
            ${b.location ? `<div style="color:#374151;">所在地: ${escapeHtml(b.location)}</div>` : ""}
            ${
@@ -991,7 +1001,7 @@ export default function MapView({
             }
             if (next) bridgeLedgerFavoriteIdsRef.current.add(b.id);
             else bridgeLedgerFavoriteIdsRef.current.delete(b.id);
-            marker.setIcon(buildBridgeLedgerMarkerIcon(next));
+            marker.setIcon(buildBridgeLedgerMarkerIcon(next, b.isEmergencyRoad ?? false));
             renderBridgeLedgerFavSlot(slotId, b, marker);
           });
         },
@@ -1288,10 +1298,18 @@ export default function MapView({
   );
 }
 
+// 緊急輸送道路への指定（会話ログ「緊急輸送道路の絞り込み・強調表示」参照。
+// lib/emergency-road.ts）を、マーカー周りの赤いハロー（box-shadowのリング）で
+// 強調表示するための共通スタイル片。既存の白枠・影を残したまま外側にリングを
+// 足すだけなので、お気に入り☆★の表現（右肩の重ね絵文字）とも干渉しない。
+function emergencyHighlightBoxShadow(isEmergencyRoad: boolean): string {
+  return isEmergencyRoad ? "box-shadow:0 0 0 3px #dc2626, 0 1px 3px rgba(0,0,0,0.4);" : "box-shadow:0 1px 3px rgba(0,0,0,0.4);";
+}
+
 // カルテ地点マーカーのアイコン。お気に入り済みかどうかで右肩に★を重ねるかを
 // 切り替えるだけなので、初期表示時とお気に入り切り替え時（marker.setIcon）の
 // 両方から呼べる関数として切り出している。
-function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: boolean): L.DivIcon {
+function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: boolean, isEmergencyRoad: boolean = false): L.DivIcon {
   return L.divIcon({
     className: "",
     html: `<div style="
@@ -1299,7 +1317,7 @@ function buildMarkerIcon(meta: ReturnType<typeof responseMeta>, isFavorite: bool
         width:28px;height:28px;border-radius:50% 50% 50% 0;
         transform:rotate(-45deg);
         border:2px solid white;
-        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        ${emergencyHighlightBoxShadow(isEmergencyRoad)}
         display:flex;align-items:center;justify-content:center;
       "><span style="transform:rotate(45deg);color:white;font-size:11px;font-weight:bold;">${meta.mark}</span>${
         isFavorite
@@ -1393,7 +1411,7 @@ const GATE_SIGN_JUDGMENT_COLOR: Record<string, string> = {
 // 判定区分が分かる場合は背景色で重大度を示す（不明な場合はグレー）。
 // お気に入り済みかどうかで右肩に★を重ねる（buildMarkerIcon＝防災カルテの
 // マーカーと同じ表現。お気に入り機能を一般化したことに伴う追加）。
-function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite: boolean): L.DivIcon {
+function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite: boolean, isEmergencyRoad: boolean = false): L.DivIcon {
   const color = (judgment && GATE_SIGN_JUDGMENT_COLOR[judgment]) || "#6b7280";
   return L.divIcon({
     className: "",
@@ -1402,7 +1420,7 @@ function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite
         background:${color};
         width:26px;height:26px;border-radius:6px;
         border:2px solid white;
-        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        ${emergencyHighlightBoxShadow(isEmergencyRoad)}
         display:flex;align-items:center;justify-content:center;
         font-size:14px;
       ">🪧${
@@ -1416,7 +1434,7 @@ function buildGateSignMarkerIcon(judgment: string | null | undefined, isFavorite
 
 // 橋梁台帳のマーカーアイコン。判定区分の概念が無いため固定色（紺色。台帳
 // （画像）の紫円・施設一覧のオレンジ角丸とも見分けられる色にしている）。
-function buildBridgeLedgerMarkerIcon(isFavorite: boolean): L.DivIcon {
+function buildBridgeLedgerMarkerIcon(isFavorite: boolean, isEmergencyRoad: boolean = false): L.DivIcon {
   return L.divIcon({
     className: "",
     html: `<div style="
@@ -1424,7 +1442,7 @@ function buildBridgeLedgerMarkerIcon(isFavorite: boolean): L.DivIcon {
         background:#1e3a8a;
         width:24px;height:24px;border-radius:6px;
         border:2px solid white;
-        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        ${emergencyHighlightBoxShadow(isEmergencyRoad)}
         display:flex;align-items:center;justify-content:center;
         font-size:13px;
       ">🌉${
@@ -1440,7 +1458,7 @@ const BRIDGE_JUDGMENT_COLOR = GATE_SIGN_JUDGMENT_COLOR; // 判定区分Ⅰ〜Ⅳ
 
 // 点検調書（橋梁）のマーカーアイコン。門型標識（🪧）と見分けられるよう橋を
 // 連想させる🌉を使う（会話ログ「橋梁：地図・検索結果一覧への表示」参照）。
-function buildBridgeMarkerIcon(judgment: string | null | undefined, isFavorite: boolean): L.DivIcon {
+function buildBridgeMarkerIcon(judgment: string | null | undefined, isFavorite: boolean, isEmergencyRoad: boolean = false): L.DivIcon {
   const color = (judgment && BRIDGE_JUDGMENT_COLOR[judgment]) || "#6b7280";
   return L.divIcon({
     className: "",
@@ -1449,7 +1467,7 @@ function buildBridgeMarkerIcon(judgment: string | null | undefined, isFavorite: 
         background:${color};
         width:26px;height:26px;border-radius:6px;
         border:2px solid white;
-        box-shadow:0 1px 3px rgba(0,0,0,0.4);
+        ${emergencyHighlightBoxShadow(isEmergencyRoad)}
         display:flex;align-items:center;justify-content:center;
         font-size:14px;
       ">🌉${
@@ -1621,6 +1639,15 @@ function buildBridgeOverviewPhotosHtml(b: MapBridgeInspection, detailHref: strin
   return `<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:nowrap;">
       ${b.overviewPhotos.map((p) => thumb(p.url, p.caption)).join("")}
     </div>`;
+}
+
+// ポップアップ内の緊急輸送道路バッジ（会話ログ「緊急輸送道路の絞り込み・
+// 強調表示」参照。lib/emergency-road.ts）。マーカー自体の赤いハロー
+// （emergencyHighlightBoxShadow）だけでは、ポップアップを開いた際に理由が
+// 伝わらないため、ポップアップ内にも明示的なバッジを出す。
+function emergencyBadgeHtml(isEmergencyRoad: boolean | undefined): string {
+  if (!isEmergencyRoad) return "";
+  return `<div style="margin-top:2px;"><span style="display:inline-block;border-radius:4px;background:#fee2e2;color:#dc2626;font-size:11px;padding:1px 6px;font-weight:600;">🚨 緊急輸送道路</span></div>`;
 }
 
 function escapeHtml(s: string) {

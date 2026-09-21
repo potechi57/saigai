@@ -42,6 +42,7 @@ import {
 } from "@/lib/facility-taxonomy";
 import { groupOfFacilityRouteType, facilityRouteDisplayName, type RoadTypeGroupKey } from "@/lib/road-type-groups";
 import { karteRouteGroup, karteRouteDisplayName } from "@/lib/karte-route-classification";
+import { isEmergencyTransportRoad, NOT_DESIGNATED_VALUES } from "@/lib/emergency-road";
 import SearchSubmitButton from "@/components/SearchSubmitButton";
 import PendingLink from "@/components/PendingLink";
 import FacilityShisetsuCheckboxes from "@/components/FacilityShisetsuCheckboxes";
@@ -88,6 +89,7 @@ const KARTE_PARAM_KEYS = [
   "karteType",
   "responseCategory",
   "landmark",
+  "emergencyOnly",
 ] as const;
 const FACILITY_PARAM_KEYS = [
   "fq",
@@ -237,6 +239,11 @@ type SearchParams = {
   // 点検調書が増えた場合も同様の判定区分を持つ想定だが、様式が未確認のため
   // 今は門型標識専用のパラメータ名にしている（会話ログ参照）。
   gsJudgment?: string;
+  // 緊急輸送道路のみ表示（会話ログ「緊急輸送道路の絞り込み・強調表示」参照。
+  // lib/emergency-road.ts）。"1"のときだけ絞り込む。カルテ（災害）・点検調書
+  // ＞道路（門型標識・橋梁）・橋梁台帳の全てで共通のチェックボックス（name）を使う
+  // （gsJudgmentと同じくbunya/shisetsuで排他的に使われるため衝突しない）。
+  emergencyOnly?: string;
   cat?: string; // 最上位タブ: "ledger"（法令台帳）|"facility"（施設台帳）|"inspection"（点検調書。既定）
   view?: string; // "list" のときだけ地図の代わりに一覧表示にする（既定は地図）
   // "1"のとき、地図を「地図をクリックしてホーム位置を設定」モードで開始する
@@ -363,6 +370,11 @@ export default async function KarteListPage({
   }
   if (params.responseCategory && params.responseCategory in ResponseCategory) {
     where.responseCategory = params.responseCategory as ResponseCategory;
+  }
+  // 緊急輸送道路の絞り込み（会話ログ「緊急輸送道路の絞り込み・強調表示」参照。
+  // lib/emergency-road.ts）。「指定無」等の非指定値を除いた行だけに絞る。
+  if (params.emergencyOnly === "1") {
+    where.emergencyRoadCategory = { notIn: [...NOT_DESIGNATED_VALUES] };
   }
 
   const hasCondition = KARTE_PARAM_KEYS.some((k) => params[k]);
@@ -546,6 +558,9 @@ export default async function KarteListPage({
   if (gateSignReady && params.gsJudgment) {
     gsAndConditions.push({ overallJudgment: params.gsJudgment });
   }
+  if (gateSignReady && params.emergencyOnly === "1") {
+    gsAndConditions.push({ emergencyTransportRoad: { notIn: [...NOT_DESIGNATED_VALUES] } });
+  }
   // supersededByInspection: null＝年度別履歴チェーンのうち現在有効な最新レコードのみ
   // （会話ログ「点検年度ごとに履歴として保存する」参照。lib/actions/
   // gate-sign-inspection-actions.tsのコメント、schema.prismaのGateSignInspection.
@@ -565,6 +580,9 @@ export default async function KarteListPage({
     : [];
   if (bridgeReady && params.gsJudgment) {
     bridgeAndConditions.push({ overallJudgment: params.gsJudgment });
+  }
+  if (bridgeReady && params.emergencyOnly === "1") {
+    bridgeAndConditions.push({ emergencyTransportRoad: { notIn: [...NOT_DESIGNATED_VALUES] } });
   }
   const bridgeWhere: Prisma.BridgeInspectionWhereInput = bridgeReady
     ? { latitude: { not: null }, longitude: { not: null }, supersededByInspection: { is: null }, AND: bridgeAndConditions }
@@ -678,7 +696,14 @@ export default async function KarteListPage({
     // 点検調書のような「分類を選ぶまで非表示」のゲートを掛けず常時取得する
     // （会話ログ「橋梁台帳：お気に入り・地図一覧・キャンセルボタン」参照）。
     prisma.bridgeLedger.findMany({
-      where: { latitude: { not: null }, longitude: { not: null } },
+      where: {
+        latitude: { not: null },
+        longitude: { not: null },
+        // 緊急輸送道路の絞り込み（会話ログ「緊急輸送道路の絞り込み・強調表示」
+        // 参照）。橋梁台帳は常時表示のため、他の点検調書系のような「〜Ready」
+        // ゲートを介さずここで直接判定する。
+        ...(params.emergencyOnly === "1" ? { emergencyTransportRoad: { notIn: [...NOT_DESIGNATED_VALUES] } } : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         facilityListItem: { select: { id: true } },
@@ -806,6 +831,7 @@ export default async function KarteListPage({
     overviewPhotos: g.overviewPhotos.map((p) => ({ url: p.url, caption: p.caption })),
     facilityListItemId: g.facilityListItem?.id ?? null,
     isFavorite: g.favorite != null,
+    isEmergencyRoad: isEmergencyTransportRoad(g.emergencyTransportRoad),
   }));
 
   const mapBridgeInspections: MapBridgeInspection[] = bridgeInspectionsRaw.map((b) => ({
@@ -820,6 +846,7 @@ export default async function KarteListPage({
     overviewPhotos: b.photos.map((p) => ({ url: p.url, caption: p.caption })),
     facilityListItemId: b.facilityListItem?.id ?? null,
     isFavorite: b.favorite != null,
+    isEmergencyRoad: isEmergencyTransportRoad(b.emergencyTransportRoad),
   }));
 
   const mapBridgeLedgers: MapBridgeLedgerRecord[] = bridgeLedgersRaw.map((b) => ({
@@ -831,6 +858,7 @@ export default async function KarteListPage({
     longitude: Number(b.longitude),
     facilityListItemId: b.facilityListItem?.id ?? null,
     isFavorite: b.favorite != null,
+    isEmergencyRoad: isEmergencyTransportRoad(b.emergencyTransportRoad),
   }));
 
   const mapSlopeStructureInspections: MapSlopeStructureInspection[] = slopeStructureInspectionsRaw.map((s) => ({
@@ -888,6 +916,7 @@ export default async function KarteListPage({
     latitude: Number(k.latitude),
     longitude: Number(k.longitude),
     isFavorite: k.favorite != null,
+    isEmergencyRoad: isEmergencyTransportRoad(k.emergencyRoadCategory),
     startPhotoUrl: startEndPhotos.get(k.id)?.startPhotoUrl,
     endPhotoUrl: startEndPhotos.get(k.id)?.endPhotoUrl,
     formAPhotoUrl: formAThumbnails.get(k.id),
@@ -1263,6 +1292,22 @@ export default async function KarteListPage({
                     </PendingLink>
                   ))}
                 </div>
+                {/* 緊急輸送道路のみ表示（会話ログ「緊急輸送道路の絞り込み・強調表示」
+                    参照。lib/emergency-road.ts）。カルテ・門型標識・橋梁・橋梁台帳の
+                    いずれも対応する実データ項目を持つため、分野を問わず点検調書タブ
+                    全体で共通の1つのチェックボックスにしている（橋梁台帳は常時表示
+                    のため、この分野選択に関わらず絞り込みが効く）。法令台帳・施設台帳・
+                    法面構造物は対応する項目が無いため対象外。 */}
+                <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    name="emergencyOnly"
+                    value="1"
+                    defaultChecked={params.emergencyOnly === "1"}
+                    className="h-3.5 w-3.5"
+                  />
+                  🚨 緊急輸送道路のみ表示
+                </label>
                 {inspectionBunya === INSPECTION_BUNYA_NONE ? (
                   // 分野ボタンをもう一度押して選択解除した状態（会話ログ「もう一度
                   // 押して、何も表示しないというようにしたい」参照）。検索条件・
