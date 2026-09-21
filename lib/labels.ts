@@ -30,6 +30,12 @@ export const JUDGMENT_BADGE: Record<string, string> = {
   Ⅳ: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
 };
 
+// 判定区分の直接編集フォーム（components/JudgmentEditForm.tsx）用の選択肢。
+// 門型標識・橋梁はⅠ〜Ⅳ（判定区分）、法面構造物はⅠ〜Ⅲ（点検者の評価。
+// prisma/schema.prismaのSlopeStructureInspection.overallJudgmentコメント参照）。
+export const JUDGMENT_OPTIONS_1_TO_4 = ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ"] as const;
+export const JUDGMENT_OPTIONS_1_TO_3 = ["Ⅰ", "Ⅱ", "Ⅲ"] as const;
+
 // 台帳（画像。FacilityLedger）の表示名。Excelのような構造化データの裏付けが
 // 無いまま登録されることが多く、管理番号が分かっていない・そもそも採番されて
 // いない施設も存在するため、管理番号（managementNo）が無い場合は台帳名
