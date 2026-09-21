@@ -12,8 +12,9 @@ import { buildFacilityRouteSearchHref } from "@/lib/facility-taxonomy";
 import { formatLatLngDms } from "@/lib/geo";
 import BackLink from "@/components/BackLink";
 import FavoriteToggleButton from "@/components/FavoriteToggleButton";
+import JudgmentEditForm from "@/components/JudgmentEditForm";
 import { Th, Td as BaseTd } from "@/components/ExcelTable";
-import { JUDGMENT_BADGE } from "@/lib/labels";
+import { JUDGMENT_BADGE, JUDGMENT_OPTIONS_1_TO_3 } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -339,12 +340,20 @@ export default async function SlopeStructureInspectionDetailPage({ params }: { p
 
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{title}</h1>
-        {insp.overallJudgment && (
-          <span
-            className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[insp.overallJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
-          >
-            {insp.overallJudgment}
-          </span>
+        {insp.supersededByInspection ? (
+          insp.overallJudgment && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-xs ${JUDGMENT_BADGE[insp.overallJudgment] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
+            >
+              {insp.overallJudgment}
+            </span>
+          )
+        ) : (
+          <JudgmentEditForm
+            target={{ type: "slopeStructureInspection", id: insp.id, title }}
+            initialValue={insp.overallJudgment}
+            options={JUDGMENT_OPTIONS_1_TO_3}
+          />
         )}
         <FavoriteToggleButton
           target={{ type: "slopeStructureInspection", id: insp.id }}
