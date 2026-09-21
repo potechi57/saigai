@@ -126,6 +126,12 @@ export default function RootLayout({
                 <Link href="/karte/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                   編集履歴
                 </Link>
+                {/* 既存データの健全性チェック（会話ログ「既存データの健全性チェック」
+                    参照。app/data-health/page.tsx）。使用頻度が高くない管理系機能
+                    のため、設定へのリンクと同じグループにまとめている。 */}
+                <Link href="/data-health" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                  🩺 健全性チェック
+                </Link>
                 <ViewHistoryButton />
                 {/* PC向け設定画面（会話ログ「基本的な機能ではないので、設定画面などに
                     あるとよいかと思います」「ホーム位置の設定やダークモードなどの
