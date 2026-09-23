@@ -3,7 +3,11 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { importSlopeStructureInspectionExcel } from "@/lib/actions/slope-structure-inspection-actions";
+import {
+  importSlopeStructureInspectionExcel,
+  importSlopeStructureInspectionExcelFromBlob,
+} from "@/lib/actions/slope-structure-inspection-actions";
+import { DIRECT_UPLOAD_THRESHOLD_BYTES, uploadFileToBlob } from "@/lib/client-blob-upload";
 
 // 法面構造物点検調書Excelの取込フォーム（components/BridgeInspectionImportForm.tsx
 // と同じ方針。1ファイル＝1箇所の詳細報告書のため、複数ファイルをまとめて選んで
@@ -30,6 +34,28 @@ const STATUS_LABEL: Record<FileStatus, { label: string; className: string }> = {
   success: { label: "成功", className: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
   error: { label: "失敗", className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
 };
+
+// 一定サイズを超えるファイルはブラウザから直接Vercel Blobへアップロードしてから
+// 取り込む（lib/client-blob-upload.tsのコメント、lib/actions/bridge-inspection-actions.ts
+// のimportBridgeInspectionExcelFromBlob参照。本番でのリクエストサイズ上限回避が目的）。
+async function runImport(file: File): ReturnType<typeof importSlopeStructureInspectionExcel> {
+  if (file.size <= DIRECT_UPLOAD_THRESHOLD_BYTES) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return importSlopeStructureInspectionExcel(null, fd);
+  }
+  try {
+    const blobUrl = await uploadFileToBlob(file, "slope-structure-inspection-imports");
+    return await importSlopeStructureInspectionExcelFromBlob(blobUrl, file.name);
+  } catch {
+    // Vercel Blobが未設定の環境（ローカル開発など）ではここで失敗しうる。
+    // その場合は従来どおりファイル本体を直接Server Actionに送る経路にフォールバックする
+    // （components/ExcelImportForm.tsxと同じ方針）。
+    const fd = new FormData();
+    fd.append("file", file);
+    return importSlopeStructureInspectionExcel(null, fd);
+  }
+}
 
 export default function SlopeStructureInspectionImportForm() {
   const router = useRouter();
@@ -64,9 +90,7 @@ export default function SlopeStructureInspectionImportForm() {
       if (!current || current.status !== "waiting") continue;
 
       setFilesAndRef((prev) => prev.map((f) => (f.listId === listId ? { ...f, status: "processing", detail: "解析・登録中..." } : f)));
-      const fd = new FormData();
-      fd.append("file", current.file);
-      const result = await importSlopeStructureInspectionExcel(null, fd);
+      const result = await runImport(current.file);
       setFilesAndRef((prev) =>
         prev.map((f) =>
           f.listId === listId

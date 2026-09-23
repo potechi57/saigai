@@ -9,6 +9,7 @@ import {
 } from "@/lib/excel/slope-structure-inspection-import";
 import { logAudit } from "@/lib/audit";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { fetchOwnBlobBuffer } from "@/lib/blob-fetch";
 
 // 写真アップロードの同時実行数上限（lib/concurrency.tsのコメント参照）。
 const UPLOAD_CONCURRENCY = 6;
@@ -37,6 +38,31 @@ export async function importSlopeStructureInspectionExcel(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "ファイルが選択されていません。" };
   }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return runImportSlopeStructureInspection(buffer, file.name);
+}
+
+// 本番（Vercel）のServer Actionリクエストサイズ上限を回避するため、写真埋め込みで
+// 数MB以上になりがちなファイルはブラウザから直接Vercel Blobへアップロードし、
+// ここにはそのURLだけを渡す経路（lib/actions/bridge-inspection-actions.tsの
+// importBridgeInspectionExcelFromBlobと同じ理由・同じ方式）。
+export async function importSlopeStructureInspectionExcelFromBlob(
+  blobUrl: string,
+  fileName: string
+): Promise<ImportSlopeStructureInspectionResult> {
+  let buffer: Buffer;
+  try {
+    buffer = await fetchOwnBlobBuffer(blobUrl);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  return runImportSlopeStructureInspection(buffer, fileName);
+}
+
+async function runImportSlopeStructureInspection(
+  buffer: Buffer,
+  fileName: string
+): Promise<ImportSlopeStructureInspectionResult> {
   if (!hasBlobCredentials()) {
     return {
       ok: false,
@@ -44,10 +70,9 @@ export async function importSlopeStructureInspectionExcel(
     };
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   let data: SlopeStructureInspectionData | null;
   try {
-    data = await parseSlopeStructureInspectionExcel(buffer, file.name);
+    data = await parseSlopeStructureInspectionExcel(buffer, fileName);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `Excelの解析に失敗しました（詳細: ${detail}）` };
@@ -115,7 +140,7 @@ export async function importSlopeStructureInspectionExcel(
       summaryComment: data.summaryComment,
       inspectionFindings: data.inspectionFindings,
       dailyInspectionPoints: data.dailyInspectionPoints,
-      sourceFileName: file.name,
+      sourceFileName: fileName,
       sheets: {
         create: data.sheets.map((s, i) => ({
           sheetName: s.sheetName,
@@ -145,7 +170,7 @@ export async function importSlopeStructureInspectionExcel(
   await logAudit({
     action: "CREATE",
     entityType: "点検調書（法面構造物）",
-    summary: `${data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の法面構造物点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
+    summary: `${data.managementNo ?? fileName}（${data.routeName ?? "路線不明"}）の法面構造物点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
     linkHref: `/inspections/slopes/${created.id}`,
   });
 

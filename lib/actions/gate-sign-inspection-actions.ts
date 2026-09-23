@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { parseGateSignInspectionExcel, type GateSignInspectionData } from "@/lib/excel/gate-sign-inspection-import";
 import { logAudit } from "@/lib/audit";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { fetchOwnBlobBuffer } from "@/lib/blob-fetch";
 
 // 写真アップロードの同時実行数上限（lib/concurrency.tsのコメント参照）。
 const UPLOAD_CONCURRENCY = 6;
@@ -41,6 +42,29 @@ export async function importGateSignInspectionExcel(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "ファイルが選択されていません。" };
   }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return runImportGateSignInspection(buffer, file.name);
+}
+
+// 本番（Vercel）のServer Actionリクエストサイズ上限を回避するため、写真埋め込みで
+// 数MB以上になりがちなファイルはブラウザから直接Vercel Blobへアップロードし、
+// ここにはそのURLだけを渡す経路（lib/actions/bridge-inspection-actions.tsの
+// importBridgeInspectionExcelFromBlobと同じ理由・同じ方式。会話ログ「橋梁点検の
+// 調書を追加しましたが、読み込まれません」原因調査より）。
+export async function importGateSignInspectionExcelFromBlob(
+  blobUrl: string,
+  fileName: string
+): Promise<ImportGateSignInspectionResult> {
+  let buffer: Buffer;
+  try {
+    buffer = await fetchOwnBlobBuffer(blobUrl);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  return runImportGateSignInspection(buffer, fileName);
+}
+
+async function runImportGateSignInspection(buffer: Buffer, fileName: string): Promise<ImportGateSignInspectionResult> {
   if (!hasBlobCredentials()) {
     return {
       ok: false,
@@ -48,10 +72,9 @@ export async function importGateSignInspectionExcel(
     };
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   let data: GateSignInspectionData | null;
   try {
-    data = await parseGateSignInspectionExcel(buffer, file.name);
+    data = await parseGateSignInspectionExcel(buffer, fileName);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `Excelの解析に失敗しました（詳細: ${detail}）` };
@@ -129,7 +152,7 @@ export async function importGateSignInspectionExcel(
       overallJudgment: data.overallJudgment,
       overallFindings: data.overallFindings,
       memberOverview: data.memberOverview,
-      sourceFileName: file.name,
+      sourceFileName: fileName,
       overviewPhotos: {
         create: overviewPhotoUrls.map((p, i) => ({ url: p.url, caption: p.caption, sortOrder: i })),
       },
@@ -166,7 +189,7 @@ export async function importGateSignInspectionExcel(
   await logAudit({
     action: "CREATE",
     entityType: "点検調書（門型標識）",
-    summary: `${data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の門型標識点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
+    summary: `${data.managementNo ?? fileName}（${data.routeName ?? "路線不明"}）の門型標識点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
     linkHref: `/inspections/gate-signs/${created.id}`,
   });
 

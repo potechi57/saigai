@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { parseBridgeInspectionExcel, type BridgeInspectionData } from "@/lib/excel/bridge-inspection-import";
 import { logAudit } from "@/lib/audit";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { fetchOwnBlobBuffer } from "@/lib/blob-fetch";
 
 // 写真アップロードの同時実行数上限（lib/concurrency.tsのコメント参照）。
 const UPLOAD_CONCURRENCY = 6;
@@ -37,6 +38,33 @@ export async function importBridgeInspectionExcel(
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "ファイルが選択されていません。" };
   }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return runImportBridgeInspection(buffer, file.name);
+}
+
+// 本番（Vercel）ではServer Action（ひいてはVercel Functions）のリクエスト本文
+// サイズに約4.5MBの上限があり、写真埋め込みで数MB〜20MB超になりがちな橋梁点検
+// 調書Excelを直接ここへ渡すと、取込が完了しない場合がある（会話ログ「橋梁点検の
+// 調書を追加しましたが、読み込まれません」原因調査より）。そのため、一定サイズを
+// 超えるファイルはブラウザから直接Vercel Blobへアップロードし（lib/client-blob-upload.ts、
+// components/BridgeInspectionImportForm.tsx参照）、ここにはそのURLだけを渡す
+// （lib/actions/import-actions.tsのフェーズ分割Excel取込と同じ理由・同じ考え方。
+// あちらと異なり複数フェーズに分ける必要は無い＝1ファイル＝1回のDB書き込みで
+// 完結するため、URLを受け取って処理するだけのシンプルな1関数にしている）。
+export async function importBridgeInspectionExcelFromBlob(
+  blobUrl: string,
+  fileName: string
+): Promise<ImportBridgeInspectionResult> {
+  let buffer: Buffer;
+  try {
+    buffer = await fetchOwnBlobBuffer(blobUrl);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  return runImportBridgeInspection(buffer, fileName);
+}
+
+async function runImportBridgeInspection(buffer: Buffer, fileName: string): Promise<ImportBridgeInspectionResult> {
   if (!hasBlobCredentials()) {
     return {
       ok: false,
@@ -44,10 +72,9 @@ export async function importBridgeInspectionExcel(
     };
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   let data: BridgeInspectionData | null;
   try {
-    data = await parseBridgeInspectionExcel(buffer, file.name);
+    data = await parseBridgeInspectionExcel(buffer, fileName);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `Excelの解析に失敗しました（詳細: ${detail}）` };
@@ -128,7 +155,7 @@ export async function importBridgeInspectionExcel(
       structureType: data.structureType,
       memberOverview: data.memberOverview,
       spanDiagnoses: data.spanDiagnoses,
-      sourceFileName: file.name,
+      sourceFileName: fileName,
       photos: {
         create: photoUrls.map((p, i) => ({
           url: p.url,
@@ -169,7 +196,7 @@ export async function importBridgeInspectionExcel(
   await logAudit({
     action: "CREATE",
     entityType: "点検調書（橋梁）",
-    summary: `${data.bridgeName ?? data.managementNo ?? file.name}（${data.routeName ?? "路線不明"}）の橋梁定期点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
+    summary: `${data.bridgeName ?? data.managementNo ?? fileName}（${data.routeName ?? "路線不明"}）の橋梁定期点検調書を取込${previous ? "（前回記録を引き継ぎ）" : ""}`,
     linkHref: `/inspections/bridges/${created.id}`,
   });
 
