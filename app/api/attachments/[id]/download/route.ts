@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 // カルテ資料（AttachmentDocument）のダウンロード用プロキシ。
 //
-// 【なぜ必要か】カルテ資料一覧（app/karte/[karteNo]/page.tsx）は元々a.url
+// 【なぜ必要か】カルテ資料一覧（app/map/[karteNo]/page.tsx）は元々a.url
 // （Vercel Blobの実URL）へ直接リンクしていたが、そのBlobの保存パスは
 // アップロード経路によって以下のようにDB上の識別子・タイムスタンプ等が
 // 混ざったものになっており、ブラウザがダウンロード時に提案するファイル名

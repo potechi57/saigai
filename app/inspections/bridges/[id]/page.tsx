@@ -503,6 +503,58 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
     </section>
   );
 
+  // 「定期点検調書（その４）」径間別の損傷評価タブ。以前は「径間N」タブの
+  // 中にその５（損傷箇所カード）と地続きに表示していたが、様式１〜その３と
+  // 同じ「独立したタブ」の並びに無いため見落とされ、「その4が実装されて
+  // いない／読み込まれていない」と誤解される事例があった（会話ログ「タブは
+  // 様式１、２とその1、２、３と径間1のタブしかありません。その4タブを用意
+  // してください」参照）。その１〜その３と同じ、様式Excelの並び順どおりの
+  // 独立タブとして追加する（径間が複数ある場合は、径間Nごとにサブタブで
+  // 分ける。その５（損傷箇所カード）は写真点数が多く「径間N」タブ配下に
+  // 残したほうが自然なため、そちらは従来どおり「径間N」タブ側に残す）。
+  const form4 = (
+    <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">径間別の損傷評価（その４）</h2>
+      </div>
+      {spanDiagnoses.length === 0 ? (
+        <p className="p-4 text-sm text-gray-400 dark:text-gray-500">その４（径間別の損傷評価）はありません。</p>
+      ) : spanDiagnoses.length === 1 ? (
+        <>
+          <BridgeSpanHeaderInfo
+            spanNo={spanDiagnoses[0].spanNo}
+            managementNo={insp.managementNo}
+            bridgeName={insp.bridgeName}
+            location={insp.location}
+            routeName={insp.routeName}
+            officeName={insp.officeName}
+          />
+          <BridgeSpanDiagnosisTable diagnosis={spanDiagnoses[0]} />
+        </>
+      ) : (
+        <SheetTabs
+          tabs={spanDiagnoses.map((d) => ({
+            id: `form4-span-${d.spanNo}`,
+            label: `径間${d.spanNo}`,
+            content: (
+              <div key={d.spanNo}>
+                <BridgeSpanHeaderInfo
+                  spanNo={d.spanNo}
+                  managementNo={insp.managementNo}
+                  bridgeName={insp.bridgeName}
+                  location={insp.location}
+                  routeName={insp.routeName}
+                  officeName={insp.officeName}
+                />
+                <BridgeSpanDiagnosisTable diagnosis={d} />
+              </div>
+            ),
+          }))}
+        />
+      )}
+    </section>
+  );
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
       <RecordViewHistory
@@ -583,6 +635,7 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
           { id: "spec1", label: "その１", content: spec1 },
           { id: "drawing2", label: "その２", content: drawing2 },
           { id: "sitePhoto3", label: "その３", content: sitePhoto3 },
+          { id: "spanDiagnosis4", label: "その４", content: form4 },
           ...spanNos.map((spanNo) => ({
             id: `span-${spanNo}`,
             label: `径間${spanNo}`,
@@ -596,7 +649,6 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
                 routeName={insp.routeName}
                 officeName={insp.officeName}
                 members={spanGroups.find((g) => g.spanNo === spanNo)?.members ?? []}
-                diagnosis={spanDiagnoses.find((d) => d.spanNo === spanNo) ?? null}
               />
             ),
           })),
@@ -647,11 +699,41 @@ function Field({
   );
 }
 
+// その４・その５（径間タブ）共通のヘッダー情報（橋梁番号・橋梁名・径間番号・
+// 所在地・路線名・事務所名）。元Excelでは両シートの上部に同じ項目が繰り返し
+// 載っている（BridgeSpanPageのコメント参照）。
+function BridgeSpanHeaderInfo({
+  spanNo,
+  managementNo,
+  bridgeName,
+  location,
+  routeName,
+  officeName,
+}: {
+  spanNo: number;
+  managementNo: string | null;
+  bridgeName: string | null;
+  location: string | null;
+  routeName: string | null;
+  officeName: string | null;
+}) {
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-b border-gray-400 bg-gray-50 p-3 text-xs dark:border-gray-600 dark:bg-gray-800 sm:grid-cols-3">
+      <Field label="橋梁番号" value={managementNo} />
+      <Field label="橋梁名" value={bridgeName} />
+      <Field label="径間番号" value={String(spanNo)} />
+      <Field label="所在地" value={location} />
+      <Field label="路線名" value={routeName} />
+      <Field label="事務所名" value={officeName} />
+    </dl>
+  );
+}
+
 // 径間ごとの損傷評価（定期点検調書（その４）径間N。床版・主桁・横桁等9項目
 // ×判定区分/変状の種類）。様式１の総括表とは別に径間ごとに存在する
 // （会話ログ「各径間ごとの判定を定期点検調書(その４)で行い...各径間ごとの
-// 評価は、定期点検調書(その４)に書くという形」参照）。損傷箇所カード
-// （その５）と同じ「径間N」タブの中に、カードより上に表示する。
+// 評価は、定期点検調書(その４)に書くという形」参照）。独立した「その４」
+// タブ（form4）から使う。
 function BridgeSpanDiagnosisTable({ diagnosis }: { diagnosis: BridgeInspectionSpanDiagnosis }) {
   return (
     <div className="overflow-x-auto border-b border-gray-300 p-3 dark:border-gray-700">
@@ -687,25 +769,19 @@ function BridgeSpanDiagnosisTable({ diagnosis }: { diagnosis: BridgeInspectionSp
   );
 }
 
-// 1径間分の内容（「径間N」タブの中身）。その４由来の損傷評価表を上部に、
-// その５由来の損傷箇所カードをページ（元Excelのシート1枚単位）ごとの
-// サブタブに分けて表示する（会話ログ「現在径間のみで一つのタブとしていますが、
-// そうすると一つのタブが長くなります。そのため、径間１のタブの中にさらに
-// タブを設けて定期点検調書(その５)の１、２と続けてください」参照。
-// 門型標識の様式２(1)(2)(3)と同じ考え方を、径間タブの中でネストして使う）。
+// 1径間分の内容（「径間N」タブの中身）。その５由来の損傷箇所カードを
+// ページ（元Excelのシート1枚単位）ごとのサブタブに分けて表示する（会話ログ
+// 「現在径間のみで一つのタブとしていますが、そうすると一つのタブが長く
+// なります。そのため、径間１のタブの中にさらにタブを設けて定期点検調書
+// (その５)の１、２と続けてください」参照。門型標識の様式２(1)(2)(3)と
+// 同じ考え方を、径間タブの中でネストして使う）。
 //
-// 「その４」の見出しが無く損傷評価表がその５のカード群と地続きに見えていた
-// ため、「実装されていないのか、読み込まれていないのか」と見分けが付かない
-// との指摘を受けた（会話ログ「その4が抜けています。なぜでしょうか」参照。
-// データ自体は元々読み込めていた）。その４・その５それぞれに見出しを分け、
-// 元Excel側で両シートの上部に共通して載っている橋梁番号・橋梁名・径間番号・
-// 所在地・路線名・事務所名も表示するようにした（会話ログ「エクセルを確認
-// すれば分かりますが、その4以降では、上に橋梁番号、橋梁名、径間番号、所在地、
-// 路線名、事務所名を表示しています」参照。実データ「G57-AB-909596_01_
-// 宮ノ前橋.xlsx」の「定期点検調書（その4） 径間1」シート（C4=橋梁番号、
-// F5=橋梁名、K4=径間番号、O4=所在地、T4=路線名、Y4=事務所名）で配置を確認
-// 済み。値自体は既にinsp（BridgeInspection本体。その1由来）から取得できて
-// いるため、その4・その5シートから新たに読み直す必要は無い）。
+// その４（径間別の損傷評価）は、以前はこのタブの中にその５と地続きで
+// 表示していたが、様式１〜その３と同じ「独立したタブ」の並びに無いため
+// 見落とされ、「その4が実装されていない／読み込まれていない」と誤解される
+// 事例があった（会話ログ「タブは様式１、２とその1、２、３と径間1のタブしか
+// ありません。その4タブを用意してください」参照）。そのため、その４は独立
+// タブ（form4）に分離し、このタブにはヘッダー情報とその５のみを残している。
 function BridgeSpanPage({
   spanNo,
   managementNo,
@@ -714,7 +790,6 @@ function BridgeSpanPage({
   routeName,
   officeName,
   members,
-  diagnosis,
 }: {
   spanNo: number;
   managementNo: string | null;
@@ -723,7 +798,6 @@ function BridgeSpanPage({
   routeName: string | null;
   officeName: string | null;
   members: BridgeInspectionMember[];
-  diagnosis: BridgeInspectionSpanDiagnosis | null;
 }) {
   const pageGroups: { pageNo: number; members: BridgeInspectionMember[] }[] = [];
   for (const m of members) {
@@ -738,25 +812,14 @@ function BridgeSpanPage({
 
   return (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-b border-gray-400 bg-gray-50 p-3 text-xs dark:border-gray-600 dark:bg-gray-800 sm:grid-cols-3">
-        <Field label="橋梁番号" value={managementNo} />
-        <Field label="橋梁名" value={bridgeName} />
-        <Field label="径間番号" value={String(spanNo)} />
-        <Field label="所在地" value={location} />
-        <Field label="路線名" value={routeName} />
-        <Field label="事務所名" value={officeName} />
-      </dl>
-
-      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">径間別の損傷評価（その４）</h2>
-      </div>
-      {diagnosis ? (
-        <BridgeSpanDiagnosisTable diagnosis={diagnosis} />
-      ) : (
-        <p className="border-b border-gray-300 p-4 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
-          この径間の損傷評価（その４）はありません。
-        </p>
-      )}
+      <BridgeSpanHeaderInfo
+        spanNo={spanNo}
+        managementNo={managementNo}
+        bridgeName={bridgeName}
+        location={location}
+        routeName={routeName}
+        officeName={officeName}
+      />
 
       <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">損傷箇所（その５）（{members.length}件）</h2>

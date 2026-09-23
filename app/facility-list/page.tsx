@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
 // 施設).xlsx」「門型標識の施設一覧.xlsx」で列構成が一致することを確認済み。表示は
 // lib/labels.tsのformatFacilityType()参照）。
 // 防災カルテ（自然災害・斜面災害リスクの点検。落石・崩壊等が対象）の検索・一覧画面
-// （/karte）とは別の、シンプルな全件テーブル表示にしている
+// （/map）とは別の、シンプルな全件テーブル表示にしている
 // （件数規模が施設一覧＝台帳全体であり、カルテほど複雑な検索条件は
-// 今のところ不要なため）。地図（/karte）にはピンとして表示される。
+// 今のところ不要なため）。地図（/map）にはピンとして表示される。
 // この一覧は台帳（施設諸元＋直近点検のスナップショット）だけを見せる。
 export default async function FacilityListPage() {
   const items = await prisma.facilityListItem.findMany({

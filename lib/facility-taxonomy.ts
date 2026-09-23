@@ -12,11 +12,11 @@
 // 個別に転記し、混ぜないようにする。
 //
 // FACILITY_FIELDS/TYPES＝【法令台帳一覧】、FACILITY_LEDGER_ITEM_FIELDS/TYPES＝
-// 【施設台帳一覧】。【点検調書一覧】はapp/karte/page.tsxのINSPECTION_FIELDS/TYPES
+// 【施設台帳一覧】。【点検調書一覧】はapp/map/page.tsxのINSPECTION_FIELDS/TYPES
 // （災害＝カルテ点検はこのページの表に無いアプリ独自の拡張のため、あちらにのみ
 // ローカル定義している）。
 //
-// 検索・地図画面（app/karte/page.tsx）と、台帳（画像）登録フォーム
+// 検索・地図画面（app/map/page.tsx）と、台帳（画像）登録フォーム
 // （components/FacilityLedgerForm.tsx。分類（法令台帳／施設台帳）に応じて
 // FACILITY_FIELDS/TYPESとFACILITY_LEDGER_ITEM_FIELDS/TYPESを切り替える）、
 // 台帳登録画面の「施設台帳から選んで自動入力」ピッカー（app/ledgers/new/page.tsx。
@@ -26,7 +26,7 @@ export type FieldDef = { key: FieldKey; label: string };
 // 施設名称のmatchは、実データのfacilityType/facilitySubType文字列に対する
 // 部分一致キーワード（いずれかを含めば該当）。matchが無いものは実データが無く
 // 未検証のため、検索画面では選択すると「準備中」表示になる
-// （app/karte/page.tsxのFieldDrilldown参照）。
+// （app/map/page.tsxのFieldDrilldown参照）。
 export type FacilityTypeDef = { label: string; match?: string[] };
 
 // 【法令台帳一覧】（Shimaneのページの表をそのまま転記。台帳様式が複数あっても
@@ -130,7 +130,7 @@ export function facilityTaxonomyEmoji(facilityType: string | null | undefined, f
 // facilityType/facilitySubType（自由記述文字列）から、【施設台帳一覧】
 // （FACILITY_LEDGER_ITEM_FIELDS/TYPES）上の分野・施設名称を逆引きする
 // （会話ログ「路線名をクリックして、その路線の関連施設を表示」参照）。
-// 検索側（app/karte/page.tsx）の「施設名称→facilityType/facilitySubTypeの
+// 検索側（app/map/page.tsx）の「施設名称→facilityType/facilitySubTypeの
 // 部分一致」という順方向の判定を、同じmatchキーワード定義を使って逆向きに
 // 引くだけなので、新しい分類基準を作るのではなく既存の分類をそのまま再利用
 // している。該当が無ければnull（無理に「その他」等へ分類しない）。
@@ -154,7 +154,7 @@ export function findFacilityLedgerItemType(
 // 「新しい独立した検索機能を作るのではなく、既存の検索機能へのコンテキスト
 // 検索として実装する」参照）。施設種別が特定できない場合は路線名だけで絞り込む
 // （施設台帳タブは「施設名称まで特定されるまでは何も表示しない」方針だが、
-// facRouteNameが指定されていれば例外的に横断検索できる。app/karte/page.tsxの
+// facRouteNameが指定されていれば例外的に横断検索できる。app/map/page.tsxの
 // facAndConditions組み立てロジック参照）。
 export function buildFacilityRouteSearchHref(
   routeName: string,
@@ -167,5 +167,5 @@ export function buildFacilityRouteSearchHref(
     usp.set("facBunya", match.bunya);
     usp.set("facShisetsu", match.type.label);
   }
-  return `/karte?${usp.toString()}`;
+  return `/map?${usp.toString()}`;
 }

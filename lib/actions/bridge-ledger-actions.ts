@@ -138,7 +138,7 @@ export async function importBridgeLedgerExcel(
   });
 
   revalidatePath("/bridge-ledgers");
-  revalidatePath("/karte");
+  revalidatePath("/map");
 
   return { ok: true, id: created.id, managementNo: data.managementNo, matchedFacility: !!facility };
 }
@@ -153,5 +153,5 @@ export async function deleteBridgeLedger(id: string): Promise<void> {
     summary: `${existing.managementNo ?? existing.sourceFileName ?? "橋梁台帳"}を削除`,
   });
   revalidatePath("/bridge-ledgers");
-  revalidatePath("/karte");
+  revalidatePath("/map");
 }

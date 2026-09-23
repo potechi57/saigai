@@ -106,8 +106,8 @@ export async function createKarte(formData: FormData) {
     karteFacilityNo: karte.facilityNo,
   });
 
-  revalidatePath("/karte");
-  redirect(`/karte/${karte.facilityNo}`);
+  revalidatePath("/map");
+  redirect(`/map/${karte.facilityNo}`);
 }
 
 export async function updateKarte(karteId: string, formData: FormData) {
@@ -145,9 +145,9 @@ export async function updateKarte(karteId: string, formData: FormData) {
     karteFacilityNo: data.facilityNo,
   });
 
-  revalidatePath(`/karte/${data.facilityNo}`);
-  revalidatePath("/karte");
-  redirect(`/karte/${data.facilityNo}`);
+  revalidatePath(`/map/${data.facilityNo}`);
+  revalidatePath("/map");
+  redirect(`/map/${data.facilityNo}`);
 }
 
 // カルテ自体の削除。点検対象・点検記録・災害履歴・写真・資料は全てKarteとの
@@ -186,8 +186,8 @@ export async function deleteKarte(karteId: string) {
     karteFacilityNo: karte.facilityNo,
   });
 
-  revalidatePath("/karte");
-  redirect("/karte");
+  revalidatePath("/map");
+  redirect("/map");
 }
 
 // ── 点検対象（変状No.相当） ──────────────────────────────────
@@ -219,8 +219,8 @@ export async function createInspectionTarget(karteId: string, karteFacilityNo: s
     karteFacilityNo,
   });
 
-  revalidatePath(`/karte/${karteFacilityNo}`);
-  redirect(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/map/${karteFacilityNo}`);
+  redirect(`/map/${karteFacilityNo}`);
 }
 
 export async function updateInspectionTarget(targetId: string, karteFacilityNo: string, formData: FormData) {
@@ -247,8 +247,8 @@ export async function updateInspectionTarget(targetId: string, karteFacilityNo: 
     karteFacilityNo,
   });
 
-  revalidatePath(`/karte/${karteFacilityNo}`);
-  redirect(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/map/${karteFacilityNo}`);
+  redirect(`/map/${karteFacilityNo}`);
 }
 
 // 削除については誤操作防止のため物理削除ではなく論理削除にする（指示書12章の方針）。
@@ -266,8 +266,8 @@ export async function setInspectionTargetActive(targetId: string, karteFacilityN
     karteFacilityNo,
   });
 
-  revalidatePath(`/karte/${karteFacilityNo}`);
-  redirect(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/map/${karteFacilityNo}`);
+  redirect(`/map/${karteFacilityNo}`);
 }
 
 // ── 点検記録（点検イベント＋点検対象ごとの結果をまとめて1回で登録） ────────────
@@ -311,8 +311,8 @@ export async function createInspectionEvent(
     karteFacilityNo,
   });
 
-  revalidatePath(`/karte/${karteFacilityNo}`);
-  redirect(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/map/${karteFacilityNo}`);
+  redirect(`/map/${karteFacilityNo}`);
 }
 
 // ── 点検記録の簡易登録（現場＝/m向け） ─────────────────────────────
@@ -324,7 +324,7 @@ export async function createInspectionEvent(
 // 「点検結果の簡易登録（判定区分・コメント等）」に合わせ、点検対象ごとの結果
 // （InspectionResult）は作らず、点検イベント本体（点検日・判定区分・特記事項）
 // だけを登録する軽量版として別関数にしている。PC側の詳細な記録は従来通り
-// /karte/[karteNo]/events/new から行う想定で、この関数は置き換えない。
+// /map/[karteNo]/events/new から行う想定で、この関数は置き換えない。
 export async function createQuickInspectionEvent(karteId: string, karteFacilityNo: string, formData: FormData) {
   const inspectionDate = dateVal(formData, "inspectionDate");
   if (!inspectionDate) throw new Error("点検日は必須です");
@@ -346,7 +346,7 @@ export async function createQuickInspectionEvent(karteId: string, karteFacilityN
     karteFacilityNo,
   });
 
-  revalidatePath(`/karte/${karteFacilityNo}`);
+  revalidatePath(`/map/${karteFacilityNo}`);
   revalidatePath(`/m/${karteFacilityNo}`);
   redirect(`/m/${karteFacilityNo}`);
 }

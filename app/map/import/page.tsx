@@ -84,7 +84,7 @@ export default async function ImportKartePage() {
                       </td>
                       <td className="px-3 py-2">
                         {h.facilityNo ? (
-                          <Link href={`/karte/${h.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                          <Link href={`/map/${h.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                             {h.facilityNo}
                           </Link>
                         ) : (

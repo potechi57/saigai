@@ -8,13 +8,13 @@ import type { FacilityTypeDef } from "@/lib/facility-taxonomy";
 // 即ページ遷移）のピルボタンで単一選択のみだったが、複数同時選択には
 // 「いくつか選んでから検索を押す」という通常のフォーム部品が必要なため、
 // 本物の<input type="checkbox">に置き換えた（name="facShisetsu"で、
-// app/karte/page.tsxの同じ<Form>の他の項目と一緒に送信される）。
+// app/map/page.tsxの同じ<Form>の他の項目と一緒に送信される）。
 //
 // 「すべて」は個別選択と同時に選べると意味が矛盾する（すべて＋橋梁、は
 // 「すべて」に矛盾する）ため、ここでのonChangeで相互排他にする
 // （会話ログ「「すべて」と個別選択を同時に選択するなど、矛盾した状態に
 // ならないUIとする」参照）。ただし、これはあくまでUI上の使い勝手のための
-// ガードであり、サーバー側（app/karte/page.tsx）でも「すべて」が含まれて
+// ガードであり、サーバー側（app/map/page.tsx）でも「すべて」が含まれて
 // いれば個別選択より優先する形で防御的に扱っている＝JSが効かない場合や
 // 想定外の送信でも矛盾した絞り込みにはならない。
 export default function FacilityShisetsuCheckboxes({
@@ -24,7 +24,7 @@ export default function FacilityShisetsuCheckboxes({
 }: {
   types: FacilityTypeDef[];
   selected: string[]; // サーバー側で算出した現在の選択（URLのfacShisetsuを正規化したもの）
-  allValue: string; // 「すべて」を表す特別な値（app/karte/page.tsxのFACILITY_SHISETSU_ALL）
+  allValue: string; // 「すべて」を表す特別な値（app/map/page.tsxのFACILITY_SHISETSU_ALL）
 }) {
   const [checked, setChecked] = useState<string[]>(selected);
 

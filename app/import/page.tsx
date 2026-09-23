@@ -159,7 +159,7 @@ export default async function ImportHubPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 検索・一覧に戻る
       </BackLink>
       <div className="space-y-1">
@@ -259,7 +259,7 @@ export default async function ImportHubPage({
           {form === "disaster" ? (
             <>
               <Link
-                href="/karte/import"
+                href="/map/import"
                 className="block rounded border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
               >
                 <div className="px-4 py-3">
@@ -275,7 +275,7 @@ export default async function ImportHubPage({
               </Link>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Excelも画像も無い場合は、
-                <Link href="/karte/new" className="text-blue-600 dark:text-blue-400 hover:underline">
+                <Link href="/map/new" className="text-blue-600 dark:text-blue-400 hover:underline">
                   手入力で新規登録
                 </Link>
                 することもできます。
@@ -360,7 +360,7 @@ export default async function ImportHubPage({
           <Link href="/bridge-ledgers" className="text-blue-600 dark:text-blue-400 hover:underline">
             橋梁台帳を見る →
           </Link>
-          <Link href="/karte/import" className="text-blue-600 dark:text-blue-400 hover:underline">
+          <Link href="/map/import" className="text-blue-600 dark:text-blue-400 hover:underline">
             点検調書（防災）の取込履歴を見る →
           </Link>
           <Link href="/inspections/gate-signs" className="text-blue-600 dark:text-blue-400 hover:underline">

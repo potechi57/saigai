@@ -19,7 +19,7 @@ export default async function NewInspectionTargetPage({ params }: { params: Prom
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref={`/karte/${karte.facilityNo}`}>
+      <BackLink fallbackHref={`/map/${karte.facilityNo}`}>
         ← カルテ詳細に戻る
       </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">点検対象の追加: {karte.routeName}</h1>

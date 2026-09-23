@@ -84,7 +84,7 @@ function PhotoGrid({ photos, bigFirst }: { photos: PhotoItem[]; bigFirst?: boole
 // 様式B（詳細スケッチ・写真張付欄）は点検対象（変状No.）ごとに撮るものなので、
 // 複数の点検対象がある場合は対象ごとにさらにタブを分ける（会話ログ「様式Bを
 // さらに点検対象ごとに分ける」。PC側のSheetTabs入れ子と同じ考え方
-// 〔app/karte/[karteNo]/page.tsx参照〕）。対象が実質1つしか無ければ、
+// 〔app/map/[karteNo]/page.tsx参照〕）。対象が実質1つしか無ければ、
 // タブを分ける意味が無いので通常のグリッドのままにする。
 function FormBContent({
   photos,
@@ -201,7 +201,7 @@ export default async function MobilePhotoPage({
     <div className="mx-auto max-w-md space-y-4 p-4">
       {/* 閲覧履歴（localStorage）への記録。ヘッダーの「🕘閲覧履歴」から辿れるように
           する（会話ログ「ここのヘッダーにお気に入り・閲覧履歴があると…すぐに
-          戻れてよい」）。リンク先はPC版(/karte/...)ではなくこの現場向け画面に
+          戻れてよい」）。リンク先はPC版(/map/...)ではなくこの現場向け画面に
           しておく（PC版は画面が崩れるため）。 */}
       <RecordViewHistory
         kind="karte"

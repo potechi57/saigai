@@ -8,7 +8,7 @@ import { ROAD_TYPE_GROUPS, type RoadTypeGroupKey } from "@/lib/road-type-groups"
 // （facRouteName。道路種別は全路線が施設台帳自身のrouteTypeから判明済み）と
 // 点検調書タブ（routeName。道路種別はKarte.roadTypeという実データから判明する。
 // lib/karte-route-classification.ts参照）の両方で使うため、groupの判定方法・
-// 表示用テキスト（displayName）の組み立て方は呼び出し側（app/karte/page.tsx）
+// 表示用テキスト（displayName）の組み立て方は呼び出し側（app/map/page.tsx）
 // に任せ、このコンポーネントは「routeNameごとに解決済みのgroup・displayName」
 // を受け取るだけにしている（施設台帳側の路線名は国道・主要地方道・一般県道で
 // 既に「（国）」「（主）」「（一）」を含んでいるため、ここでさらに記号を付ける
@@ -26,7 +26,7 @@ export type RouteGroupOption = {
   // 松江市、出雲市、安来市のように市町村名が出て、どれか選択できる仕様に
   // してください」参照。点検調書タブ（Karte.locationTown由来）のみ持ち、
   // 施設台帳タブは対応するクリーンな項目が無いため常にnull
-  // （app/karte/page.tsxのkarteRouteGroupOptions参照）。
+  // （app/map/page.tsxのkarteRouteGroupOptions参照）。
   municipality?: string | null;
 };
 

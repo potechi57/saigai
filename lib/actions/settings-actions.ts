@@ -46,7 +46,7 @@ export async function setHomeLocation(
   // マップだけでなく、他画面から距離を参照する可能性も見据えてカルテ配下全体を対象にする。
   // /settings（会話ログ「ホーム位置の設定やダークモードなどの設定も設定に加えて
   // ください」参照）にも現在のホーム位置を表示するため、そちらも対象にする。
-  revalidatePath("/karte", "layout");
+  revalidatePath("/map", "layout");
   revalidatePath("/settings");
   return { ok: true };
 }
@@ -64,7 +64,7 @@ export async function clearHomeLocation(): Promise<SettingsActionResult> {
       error: `ホーム位置の解除に失敗しました（詳細: ${e instanceof Error ? e.message : String(e)}）`,
     };
   }
-  revalidatePath("/karte", "layout");
+  revalidatePath("/map", "layout");
   revalidatePath("/settings");
   return { ok: true };
 }

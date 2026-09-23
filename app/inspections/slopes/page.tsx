@@ -24,7 +24,7 @@ export default async function SlopeStructureInspectionListPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <div className="flex items-center justify-between">

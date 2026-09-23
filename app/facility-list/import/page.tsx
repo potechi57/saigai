@@ -4,7 +4,7 @@ import BackLink from "@/components/BackLink";
 export const dynamic = "force-dynamic";
 
 // 「施設一覧」形式のExcel（道路施設の管理台帳の出力）を取り込む画面。
-// 防災カルテのExcel取込（/karte/import）とは別の画面にしている
+// 防災カルテのExcel取込（/map/import）とは別の画面にしている
 // （形式も目的も別のデータのため）。
 export default function FacilityListImportPage() {
   return (

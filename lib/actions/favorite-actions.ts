@@ -93,35 +93,35 @@ export async function setFavorite(target: FavoriteTarget, shouldBeFavorite: bool
     };
   }
   if (target.type === "karte") {
-    revalidatePath(`/karte/${target.facilityNo}`);
-    revalidatePath("/karte");
-    revalidatePath("/karte/favorites");
+    revalidatePath(`/map/${target.facilityNo}`);
+    revalidatePath("/map");
+    revalidatePath("/map/favorites");
     revalidatePath(`/m/${target.facilityNo}`); // 現場向け画面（/m）の★ボタンからも呼ばれるため
     revalidatePath("/m/favorites");
   } else if (target.type === "gateSignInspection") {
     revalidatePath(`/inspections/gate-signs/${target.id}`);
-    revalidatePath("/karte"); // 地図（点検調書＞道路＞門型標識）のポップアップの★表示を更新するため
-    revalidatePath("/karte/favorites");
+    revalidatePath("/map"); // 地図（点検調書＞道路＞門型標識）のポップアップの★表示を更新するため
+    revalidatePath("/map/favorites");
     revalidatePath("/m/favorites");
   } else if (target.type === "bridgeInspection") {
     revalidatePath(`/inspections/bridges/${target.id}`);
-    revalidatePath("/karte");
-    revalidatePath("/karte/favorites");
+    revalidatePath("/map");
+    revalidatePath("/map/favorites");
     revalidatePath("/m/favorites");
   } else if (target.type === "bridgeLedger") {
     revalidatePath(`/bridge-ledgers/${target.id}`);
-    revalidatePath("/karte");
-    revalidatePath("/karte/favorites");
+    revalidatePath("/map");
+    revalidatePath("/map/favorites");
     revalidatePath("/m/favorites");
   } else if (target.type === "facilityLedger") {
     revalidatePath(`/ledgers/${target.id}`);
-    revalidatePath("/karte");
-    revalidatePath("/karte/favorites");
+    revalidatePath("/map");
+    revalidatePath("/map/favorites");
     revalidatePath("/m/favorites");
   } else {
     revalidatePath(`/inspections/slopes/${target.id}`);
-    revalidatePath("/karte");
-    revalidatePath("/karte/favorites");
+    revalidatePath("/map");
+    revalidatePath("/map/favorites");
     revalidatePath("/m/favorites");
   }
   return { ok: true };
@@ -142,7 +142,7 @@ export async function createFavoriteGroup(_prevState: FavoriteActionResult | nul
     }
     return { ok: false, error: `グループの作成に失敗しました（詳細: ${detail}）` };
   }
-  revalidatePath("/karte/favorites");
+  revalidatePath("/map/favorites");
   return { ok: true };
 }
 
@@ -150,7 +150,7 @@ export async function deleteFavoriteGroup(groupId: string): Promise<void> {
   // グループを消してもお気に入り自体（Favorite）は消えない
   // （@@relation onDelete: Cascade はFavoriteGroupItem側にのみかかる）。
   await prisma.favoriteGroup.delete({ where: { id: groupId } });
-  revalidatePath("/karte/favorites");
+  revalidatePath("/map/favorites");
 }
 
 // 1件のお気に入りが所属するグループを一括で置き換える（チェックボックスの一覧から
@@ -180,6 +180,6 @@ export async function setFavoriteGroups(
       error: `グループ分けの更新に失敗しました（詳細: ${e instanceof Error ? e.message : String(e)}）`,
     };
   }
-  revalidatePath("/karte/favorites");
+  revalidatePath("/map/favorites");
   return { ok: true };
 }

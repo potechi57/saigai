@@ -11,7 +11,7 @@ import FavoriteToggleButton from "@/components/FavoriteToggleButton";
 
 export const dynamic = "force-dynamic";
 
-// 台帳（画像。FacilityLedger）1件の詳細画面。地図（/karte）のピンから
+// 台帳（画像。FacilityLedger）1件の詳細画面。地図（/map）のピンから
 // ここへ飛べるようにしている（会話ログ「map上からこの施設専用のページに
 // 飛べる仕様にできませんか」参照）。
 //

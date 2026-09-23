@@ -7,7 +7,7 @@ import { LAST_SECTION_STORAGE_KEY, type Section } from "@/components/NavigationT
 
 // ヘッダー左上のロゴ・アプリ名（「ホームボタン」）。
 //
-// 【背景・会話ログより】以前は常に/karte（PC版の検索・地図画面）へ固定
+// 【背景・会話ログより】以前は常に/map（PC版の検索・地図画面）へ固定
 // リンクしていたが、/m以下（現場向け画面）を開いている最中にこれをタップすると、
 // レスポンシブ対応していないPC版画面に飛んでしまい「画面が崩れる」問題があった。
 // 現在地・地図を含む同じ1つのWebアプリ内でPC向け・現場（スマホ）向けの
@@ -22,7 +22,7 @@ import { LAST_SECTION_STORAGE_KEY, type Section } from "@/components/NavigationT
 // しまっていた（会話ログ「ヘッダーのタイトルを押したときもPC画面に飛びます」
 // 参照。components/BackLink.tsxの「戻る」ボタンと同じ根本原因）。そこで、
 // 現在のpathnameだけで判定できない場合は、components/NavigationTracker.tsxが
-// 記録している「直近に/mまたは/karteのどちらへ来たか」（sessionStorage）を
+// 記録している「直近に/mまたは/mapのどちらへ来たか」（sessionStorage）を
 // 併用する。sessionStorage参照はクライアントでのみ行えるため、SSR/初回描画時は
 // 既定値（PC版）のままにし、マウント後のuseEffectで必要なら上書きする
 // （わずかな遅延はあるが、ヘッダーロゴは初回描画直後にすぐ押されるものではない
@@ -32,7 +32,7 @@ export default function HeaderHomeLink() {
   const pathSection: Section | null =
     pathname === "/m" || pathname?.startsWith("/m/")
       ? "mobile"
-      : pathname === "/karte" || pathname?.startsWith("/karte/")
+      : pathname === "/map" || pathname?.startsWith("/map/")
         ? "desktop"
         : null;
 
@@ -51,7 +51,7 @@ export default function HeaderHomeLink() {
 
   return (
     <Link
-      href={section === "mobile" ? "/m" : "/karte"}
+      href={section === "mobile" ? "/m" : "/map"}
       className="truncate text-base font-bold text-gray-800 dark:text-gray-100 sm:text-lg"
     >
       道路施設管理 Web GIS{" "}

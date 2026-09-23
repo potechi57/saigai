@@ -64,7 +64,7 @@ export default async function KarteDetailPage({
         orderBy: { displayOrder: "asc" },
         // Excel取込写真はtakenAtを設定しない（全てnull）ため、takenAtだけでは
         // 順序が不定になる（PostgreSQLはnull同士の順序を保証しない）。詳細スケッチ欄の
-        // 合成画像を必ず先頭にするため（app/karte/[karteNo]/page.tsxの表示ロジック参照）、
+        // 合成画像を必ず先頭にするため（app/map/[karteNo]/page.tsxの表示ロジック参照）、
         // createdAtを第2キーにして挿入順を保証する。
         include: { photos: { orderBy: [{ takenAt: "asc" }, { createdAt: "asc" }] } },
       },
@@ -135,7 +135,7 @@ export default async function KarteDetailPage({
               施設種別は引き継がず、点検調書タブの路線名検索へ遷移する。 */}
           {karte.routeName ? (
             <Link
-              href={`/karte?cat=inspection&routeName=${encodeURIComponent(karte.routeName)}`}
+              href={`/map?cat=inspection&routeName=${encodeURIComponent(karte.routeName)}`}
               className="text-blue-600 dark:text-blue-400 hover:underline"
             >
               {routeDisplayName}
@@ -456,7 +456,7 @@ export default async function KarteDetailPage({
                           {targetCode} {t.name}
                           {!t.isActive && <span className="ml-2 text-gray-500 dark:text-gray-400">（解消済み）</span>}
                           <Link
-                            href={`/karte/${karte.facilityNo}/targets/${t.id}/edit`}
+                            href={`/map/${karte.facilityNo}/targets/${t.id}/edit`}
                             className="ml-3 font-normal text-blue-600 dark:text-blue-400 hover:underline"
                           >
                             編集
@@ -537,10 +537,10 @@ export default async function KarteDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
         <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">防災カルテ様式Ｃ　（点検履歴）</h2>
         <div className="flex gap-3 text-sm">
-          <Link href={`/karte/${karte.facilityNo}/targets/new`} className="text-blue-600 dark:text-blue-400 hover:underline">
+          <Link href={`/map/${karte.facilityNo}/targets/new`} className="text-blue-600 dark:text-blue-400 hover:underline">
             ＋ 点検対象を追加
           </Link>
-          <Link href={`/karte/${karte.facilityNo}/events/new`} className="text-blue-600 dark:text-blue-400 hover:underline">
+          <Link href={`/map/${karte.facilityNo}/events/new`} className="text-blue-600 dark:text-blue-400 hover:underline">
             ＋ 点検記録を登録
           </Link>
         </div>
@@ -583,7 +583,7 @@ export default async function KarteDetailPage({
                     {karte.facilityNo}-T{String(t.sequenceNo).padStart(2, "0")} {t.name}
                     {!t.isActive && <span className="ml-2 text-gray-500 dark:text-gray-400">（解消済み）</span>}
                     <Link
-                      href={`/karte/${karte.facilityNo}/targets/${t.id}/edit`}
+                      href={`/map/${karte.facilityNo}/targets/${t.id}/edit`}
                       className="ml-3 font-normal text-blue-600 dark:text-blue-400 hover:underline"
                     >
                       編集
@@ -1024,10 +1024,10 @@ export default async function KarteDetailPage({
         id={karte.facilityNo}
         title={routeDisplayName}
         subtitle={karte.facilityNo}
-        href={`/karte/${karte.facilityNo}`}
+        href={`/map/${karte.facilityNo}`}
       />
       <div className="flex items-center justify-between">
-        <BackLink fallbackHref="/karte">
+        <BackLink fallbackHref="/map">
           ← 検索・一覧に戻る
       </BackLink>
         <div className="flex items-center gap-2">
@@ -1036,7 +1036,7 @@ export default async function KarteDetailPage({
             initialIsFavorite={karte.favorite != null}
           />
           <Link
-            href={`/karte/${karte.facilityNo}/edit`}
+            href={`/map/${karte.facilityNo}/edit`}
             className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
           >
             カルテを編集

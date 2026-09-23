@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 // 閲覧履歴（直近に開いたカルテ・施設台帳・台帳（画像）の詳細画面）。編集履歴
-// （/karte/history）とは異なり、「誰が何を見たか」は個人の端末内だけの関心事であり、
+// （/map/history）とは異なり、「誰が何を見たか」は個人の端末内だけの関心事であり、
 // 事務所で共有する必要が無い（むしろ共有すべきではない）と考え、サーバー側には
 // 一切保存せずlocalStorageのみで完結させている。記録自体は各詳細画面に埋め込んだ
 // components/RecordViewHistory.tsx が行い、このボタンは保存された履歴を読んで

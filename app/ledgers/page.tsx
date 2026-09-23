@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // （prisma/schema.prismaのFacilityLedgerコメント参照）。法令台帳・施設台帳の
 // どちらの分類にも属しうる（docClassで区別。会話ログ参照。以前はこの画像登録＝
 // 法令台帳と誤って対応付けていたが、実際にはトンネル台帳は施設台帳に属する）。
-// 地図（/karte）にもピンとして表示される（緯度経度が登録されている場合のみ）。
+// 地図（/map）にもピンとして表示される（緯度経度が登録されている場合のみ）。
 // 1施設は複数枚の画像を持てるため（会話ログ参照）、カードには先頭（sortOrder最小）の
 // 画像だけをサムネイルとして表示し、詳細（/ledgers/[id]）で全ての画像をタブ切替で見せる。
 export default async function LedgersPage() {
@@ -29,7 +29,7 @@ export default async function LedgersPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <div className="flex flex-wrap items-center justify-between gap-2">

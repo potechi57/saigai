@@ -7,7 +7,7 @@
 // 検索できるようにした。
 //
 // いずれも「路線名・所在地・緯度経度」という共通の形でデータを持っているため
-// （PC側の検索画面 app/karte/page.tsx と同じ分類体系）、同じOR検索・距離計算の
+// （PC側の検索画面 app/map/page.tsx と同じ分類体系）、同じOR検索・距離計算の
 // 考え方をそのまま4テーブルぶん並べている。データ件数はいずれも小規模
 // （確認時点でKarte 127件・FacilityListItem 82件・FacilityLedger 5件・
 // GateSignInspection 1件）のため、PostGIS等の専用の仕組みは導入せず、
@@ -62,7 +62,7 @@ export type MobileSearchResult = {
 
 // kartes配列（karte.findMany結果）に、起点／終点／様式Ａの参考写真URLを付与した
 // MobileSearchResultの配列を作る。searchMobileByText・searchMobileNearby共通の
-// 末尾処理としてまとめている（PC版地図のapp/karte/page.tsxと同じ
+// 末尾処理としてまとめている（PC版地図のapp/map/page.tsxと同じ
 // getStartEndRecordPhotos・getFormAThumbnailsを再利用。会話ログ「スマホでも、
 // ポイントをタップした際に関連する画像を表示してください」参照）。
 async function attachStartEndPhotos<T extends MobileSearchResult>(

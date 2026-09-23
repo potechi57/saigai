@@ -90,10 +90,10 @@ export async function importFacilityListExcel(
     else created++;
   }
 
-  revalidatePath("/karte");
+  revalidatePath("/map");
   revalidatePath("/facility-list");
 
-  // 編集履歴（/karte/history）には行ごとではなく取込1回につき1件だけ記録する
+  // 編集履歴（/map/history）には行ごとではなく取込1回につき1件だけ記録する
   // （数百行に及ぶこともあるExcel取込で、行単位に記録すると履歴が埋め尽くされて
   // しまうため。カルテのExcel取込＝lib/actions/import-actions.tsと同じ方針）。
   // 取込結果は一覧画面へのリンクにする（複数施設にまたがるため特定の1件には
@@ -116,5 +116,5 @@ export async function deleteFacilityListItem(id: string): Promise<void> {
     summary: `${item.managementNo}を削除`,
   });
   revalidatePath("/facility-list");
-  revalidatePath("/karte");
+  revalidatePath("/map");
 }

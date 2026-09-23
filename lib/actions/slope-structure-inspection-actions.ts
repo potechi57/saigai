@@ -175,7 +175,7 @@ async function runImportSlopeStructureInspection(
   });
 
   revalidatePath("/inspections/slopes");
-  revalidatePath("/karte");
+  revalidatePath("/map");
   if (previous) revalidatePath(`/inspections/slopes/${previous.id}`);
 
   return { ok: true, id: created.id, managementNo: data.managementNo, matchedFacility: !!facility };
@@ -220,5 +220,5 @@ export async function deleteSlopeStructureInspection(id: string): Promise<void> 
     summary: `${latest.managementNo ?? latest.sourceFileName ?? "点検調書"}を削除（${chain.length}年度分）`,
   });
   revalidatePath("/inspections/slopes");
-  revalidatePath("/karte");
+  revalidatePath("/map");
 }

@@ -7,7 +7,7 @@ import PendingLink from "@/components/PendingLink";
 // 事務所で共有するのではなく端末（ブラウザ）ごとのlocalStorageに保持する
 // （閲覧履歴 components/ViewHistoryButton.tsx と同じ考え方）。
 // currentLabelは現在の検索条件を人が読める形にまとめた文字列で、サーバー側
-// （app/karte/page.tsx）が条件が1つも無い場合はnullを渡す＝記録しない。
+// （app/map/page.tsx）が条件が1つも無い場合はnullを渡す＝記録しない。
 type HistoryEntry = { query: string; label: string; savedAt: number };
 
 const STORAGE_KEY = "karteSearchHistory";
@@ -68,7 +68,7 @@ export default function SearchHistoryPanel({
         {history.map((h) => (
           <li key={h.query + h.savedAt}>
             <PendingLink
-              href={`/karte${h.query ? `?${h.query}` : ""}`}
+              href={`/map${h.query ? `?${h.query}` : ""}`}
               title={h.label}
               className="block truncate rounded px-2 py-1 text-xs text-blue-600 hover:bg-gray-100 dark:text-blue-400 dark:hover:bg-gray-800"
             >

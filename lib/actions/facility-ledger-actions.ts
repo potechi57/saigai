@@ -129,7 +129,7 @@ export async function createFacilityLedger(
   });
 
   revalidatePath("/ledgers");
-  revalidatePath("/karte");
+  revalidatePath("/map");
   redirect("/ledgers");
 }
 
@@ -172,7 +172,7 @@ export async function updateFacilityLedger(
 
   revalidatePath(`/ledgers/${id}`);
   revalidatePath("/ledgers");
-  revalidatePath("/karte");
+  revalidatePath("/map");
   return { ok: true };
 }
 
@@ -195,7 +195,7 @@ export async function deleteFacilityLedger(id: string): Promise<void> {
     summary: `${facilityLedgerDisplayName(ledger.managementNo, ledger.name)}を削除`,
   });
   revalidatePath("/ledgers");
-  revalidatePath("/karte");
+  revalidatePath("/map");
   redirect("/ledgers");
 }
 
@@ -262,7 +262,7 @@ export async function addFacilityLedgerImage(
   });
 
   revalidatePath(`/ledgers/${ledgerId}`);
-  revalidatePath("/karte");
+  revalidatePath("/map");
   return { ok: true };
 }
 
@@ -309,7 +309,7 @@ export async function deleteFacilityLedgerImage(imageId: string, ledgerId: strin
     linkHref: `/ledgers/${ledgerId}`,
   });
   revalidatePath(`/ledgers/${ledgerId}`);
-  revalidatePath("/karte");
+  revalidatePath("/map");
 }
 
 // ── FormDataから安全に値を取り出す小さなヘルパー（lib/actions/karte-actions.tsと同じ方針） ──

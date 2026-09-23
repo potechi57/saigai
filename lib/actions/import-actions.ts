@@ -172,7 +172,7 @@ async function resolveFormAImages(sourceBuffer: Buffer): Promise<ExtractedImage[
 //
 // 【フォールバック時の列位置による分類】Cloud Run変換が未設定・失敗した場合、
 // 以前は単純にextractSheetImagesの結果をそのまま返し、呼び出し元
-// （app/karte/[karteNo]/page.tsxの`const [sketchPhoto, ...pastePhotos] = t.photos`）が
+// （app/map/[karteNo]/page.tsxの`const [sketchPhoto, ...pastePhotos] = t.photos`）が
 // 「先頭1枚＝詳細スケッチ欄、残り全部＝写真張付欄」と決め打ちしていた。しかし
 // 詳細スケッチ欄には実データで2枚の写真が縦に並ぶ構成があり（B1432A070で確認。
 // 会話ログ「様式Bの①露岩の詳細スケッチ欄の写真がおかしくなっています」参照）、
@@ -196,7 +196,7 @@ async function resolveFormBImages(sourceBuffer: Buffer, sheetName: string): Prom
 }
 
 // ── Excel取込履歴 ───────────────────────────────────────────
-// 「どのExcelファイルをいつ取り込んだか」をExcel取込画面（app/karte/import/page.tsx）に
+// 「どのExcelファイルをいつ取り込んだか」をExcel取込画面（app/map/import/page.tsx）に
 // 表示するための履歴。取込処理の開始時にIN_PROGRESSで作成し、完了時にSUCCESS/FAILUREへ
 // 更新する（本体の一括版importKarteExcel、フェーズ分割版importPhase1〜3の両方から使う）。
 // 履歴の読み書き自体が失敗しても本来の取込処理には影響させない（ベストエフォート。
@@ -402,7 +402,7 @@ async function runImportPhase1(blobUrl: string, fileName: string, historyId: str
 
   // 施設管理番号が未入力（今回のテストファイルのように空）の場合は、
   // 後から編集画面で修正できることを前提に、ファイル名から仮の番号を組み立てる。
-  // facilityNoはURLのパスセグメント（/karte/[karteNo]）としてそのまま使われるため、
+  // facilityNoはURLのパスセグメント（/map/[karteNo]）としてそのまま使われるため、
   // 半角英数字・ハイフン・アンダースコアのみに正規化する（空白や日本語を含む値を
   // 実際にVercel本番環境で使ったところ、詳細画面が404になる不具合を実データで確認したため）。
   const facilityNo = extracted.facilityNo || `IMPORT-${sanitizeForUrl(fileName)}-${Date.now()}`;
@@ -773,9 +773,9 @@ async function runImportPhase3(karteId: string, facilityNo: string, blobUrl: str
     karteFacilityNo: facilityNo,
   });
 
-  revalidatePath(`/karte/${facilityNo}`);
-  revalidatePath("/karte");
-  revalidatePath("/karte/import"); // 取込履歴一覧を最新化する
+  revalidatePath(`/map/${facilityNo}`);
+  revalidatePath("/map");
+  revalidatePath("/map/import"); // 取込履歴一覧を最新化する
 
   return { ok: true, eventsImported: imported };
 }
@@ -1101,9 +1101,9 @@ async function runImportKarteExcel(file: File, historyId: string): Promise<Impor
     karteFacilityNo: facilityNo,
   });
 
-  revalidatePath(`/karte/${facilityNo}`);
-  revalidatePath("/karte");
-  revalidatePath("/karte/import"); // 取込履歴一覧を最新化する
+  revalidatePath(`/map/${facilityNo}`);
+  revalidatePath("/map");
+  revalidatePath("/map/import"); // 取込履歴一覧を最新化する
 
   await finishImportHistorySuccess(historyId, {
     facilityNo,

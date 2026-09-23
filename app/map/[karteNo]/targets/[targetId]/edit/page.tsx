@@ -55,7 +55,7 @@ export default async function EditInspectionTargetPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref={`/karte/${karteNo}`}>
+      <BackLink fallbackHref={`/map/${karteNo}`}>
         ← カルテ詳細に戻る
       </BackLink>
 
@@ -80,7 +80,7 @@ export default async function EditInspectionTargetPage({
 
         <div className="grid grid-cols-1 divide-y divide-gray-400 dark:divide-gray-600 border-t border-gray-400 dark:border-gray-600 md:grid-cols-2 md:divide-x md:divide-y-0">
           {/* 左: <詳細スケッチ欄>（合成画像1枚）。PhotoSlotの既定aspectClass（aspect-video）
-              は横長すぎるため、実際の縦横比（app/karte/[karteNo]/page.tsxの同箇所の
+              は横長すぎるため、実際の縦横比（app/map/[karteNo]/page.tsxの同箇所の
               コメント参照。幅501pt÷高さ540pt≒0.93）に合わせて指定している。 */}
           <div className="p-3">
             <h2 className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">&lt;詳細スケッチ欄&gt;</h2>
@@ -91,7 +91,7 @@ export default async function EditInspectionTargetPage({
 
           {/* 右: <写真張付欄>（個別抽出した写真。0枚以上）＋着目すべき点／チェック項目。
               列自体は既にmd:grid-cols-2（実際のExcelの列幅比率＝ほぼ1:1に合わせた等分。
-              app/karte/[karteNo]/page.tsxの同箇所のコメント参照）だが、この中の写真は
+              app/map/[karteNo]/page.tsxの同箇所のコメント参照）だが、この中の写真は
               w-2/3でさらに縮小されており、実際のExcelでは<写真張付欄>がその列の幅
               いっぱいに写真を配置していることと合っていなかった（会話ログ「様式Bの
               写真張付欄の写真が非常に小さい」参照）ため、w-fullに変更している。 */}

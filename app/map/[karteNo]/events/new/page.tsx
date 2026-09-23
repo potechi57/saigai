@@ -34,7 +34,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref={`/karte/${karte.facilityNo}`}>
+      <BackLink fallbackHref={`/map/${karte.facilityNo}`}>
         ← カルテ詳細に戻る
       </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">点検記録の登録: {karte.routeName}</h1>
@@ -42,7 +42,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
       {karte.targets.length === 0 && (
         <p className="rounded border border-yellow-300 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950 p-3 text-sm text-yellow-800 dark:text-yellow-300">
           追跡中の点検対象がまだありません。先に
-          <Link href={`/karte/${karte.facilityNo}/targets/new`} className="mx-1 underline">
+          <Link href={`/map/${karte.facilityNo}/targets/new`} className="mx-1 underline">
             点検対象を追加
           </Link>
           してください。
@@ -56,7 +56,7 @@ export default async function NewInspectionEventPage({ params }: { params: Promi
             <DateField name="inspectionDate" label="点検日" required />
             <SelectField name="weather" label="天候" options={WEATHER_LABEL} />
             {/* 以下、様式Ｃの実際のExcel上の並び順に合わせている
-                （app/karte/[karteNo]/page.tsxの様式Ｃ表示・lib/excel/karte-import.tsの
+                （app/map/[karteNo]/page.tsxの様式Ｃ表示・lib/excel/karte-import.tsの
                 extractInspectionEvents参照）。 */}
             <TextAreaField name="specialTopics" label="点検時の特記事項（点検時の対応）" />
             <TextField name="inspectorName" label="点検者名" />

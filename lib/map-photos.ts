@@ -43,11 +43,11 @@ export async function getStartEndRecordPhotos(karteIds: string[]): Promise<Map<s
 // （会話ログ「起点終点のみでは、どういう箇所なのかわからない」参照）、
 // 様式Ａの点検地点位置図（スケッチ・地図の合成画像）も合わせて表示できるようにした。
 //
-// app/karte/[karteNo]/page.tsxのformAPhotos（sourceForm!==GENERAL_RECORDのカルテ
+// app/map/[karteNo]/page.tsxのformAPhotos（sourceForm!==GENERAL_RECORDのカルテ
 // 本体写真）と同じ考え方で、最初の1枚（＝合成画像。lib/excel/karte-image-extract.ts
 // のextractFormAImagesがsketchImageを常に先頭に置くため）だけを採用する。
 // takenAtはExcel取込写真では常にnullのため、createdAt（挿入順）で確定させる
-// （app/karte/[karteNo]/page.tsxのphotos取得と同じorderBy）。
+// （app/map/[karteNo]/page.tsxのphotos取得と同じorderBy）。
 export async function getFormAThumbnails(karteIds: string[]): Promise<Map<string, string>> {
   if (karteIds.length === 0) return new Map();
 

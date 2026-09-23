@@ -1003,17 +1003,17 @@ export default async function KarteListPage({
   }
   const currentSearchLabel = conditionLabels.length > 0 ? conditionLabels.join(" ・ ") : null;
 
-  const toggleViewHref = `/karte?${buildQuery(params, { overrides: { view: view === "list" ? "map" : "list" } })}`;
-  const clearKarteHref = `/karte?${buildQuery(params, { remove: KARTE_PARAM_KEYS })}`;
-  const clearFacHref = `/karte?${buildQuery(params, { remove: FACILITY_PARAM_KEYS })}`;
+  const toggleViewHref = `/map?${buildQuery(params, { overrides: { view: view === "list" ? "map" : "list" } })}`;
+  const clearKarteHref = `/map?${buildQuery(params, { remove: KARTE_PARAM_KEYS })}`;
+  const clearFacHref = `/map?${buildQuery(params, { remove: FACILITY_PARAM_KEYS })}`;
   // タブ切替時、共通フィールド（管理番号・路線名・所在地）に今入力済みの値を、
   // 切替先タブの項目名へそのまま引き継ぐ（同じ意味の条件を再入力させないため）。
   // 法令台帳タブには対応する共通フィールドが無いため、切替時に引き継ぐものは無い。
-  const ledgerTabHref = `/karte?${buildQuery(params, { overrides: { cat: "ledger" } })}`;
-  const facilityTabHref = `/karte?${buildQuery(params, {
+  const ledgerTabHref = `/map?${buildQuery(params, { overrides: { cat: "ledger" } })}`;
+  const facilityTabHref = `/map?${buildQuery(params, {
     overrides: { cat: "facility", fq: params.q, facRouteName: params.routeName, facLocation: params.location },
   })}`;
-  const inspectionTabHref = `/karte?${buildQuery(params, {
+  const inspectionTabHref = `/map?${buildQuery(params, {
     overrides: { cat: "inspection", q: params.fq, routeName: params.facRouteName, location: params.facLocation },
   })}`;
 
@@ -1025,16 +1025,16 @@ export default async function KarteListPage({
   // components/FacilityShisetsuCheckboxes.tsx（チェックボックス＋検索ボタン）に
   // なった（会話ログ「施設種別の複数選択検索」参照）。
   const facilityFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "facility", facBunya: fieldKey, facShisetsu: undefined } })}`;
+    `/map?${buildQuery(params, { overrides: { cat: "facility", facBunya: fieldKey, facShisetsu: undefined } })}`;
   const ledgerFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: undefined } })}`;
+    `/map?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: undefined } })}`;
   const ledgerShisetsuHref = (fieldKey: string, label: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: label } })}`;
+    `/map?${buildQuery(params, { overrides: { cat: "ledger", ledgerBunya: fieldKey, ledgerShisetsu: label } })}`;
   // 既に選択中の分野ボタンをもう一度押した場合は、選択を解除する
   // （INSPECTION_BUNYA_NONEへ切り替える。会話ログ「もう一度押して、何も
   // 表示しないというようにしたい」参照）。
   const inspectionFieldHref = (fieldKey: string) =>
-    `/karte?${buildQuery(params, {
+    `/map?${buildQuery(params, {
       overrides: {
         cat: "inspection",
         inspBunya: inspectionBunya === fieldKey ? INSPECTION_BUNYA_NONE : fieldKey,
@@ -1042,7 +1042,7 @@ export default async function KarteListPage({
       },
     })}`;
   const inspectionShisetsuHref = (fieldKey: string, label: string) =>
-    `/karte?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey, inspShisetsu: label } })}`;
+    `/map?${buildQuery(params, { overrides: { cat: "inspection", inspBunya: fieldKey, inspShisetsu: label } })}`;
 
   return (
     // ヘッダー(h-14)を除いた画面の残り全体を、左の検索条件パネルと中央の地図/一覧で
@@ -1144,7 +1144,7 @@ export default async function KarteListPage({
                 </SearchSubmitButton>
                 {(params.ledgerName || params.ledgerRouteName || params.ledgerLocation) && (
                   <PendingLink
-                    href={`/karte?${buildQuery(params, { remove: ["ledgerName", "ledgerRouteName", "ledgerLocation"] })}`}
+                    href={`/map?${buildQuery(params, { remove: ["ledgerName", "ledgerRouteName", "ledgerLocation"] })}`}
                     className="text-sm text-gray-500 dark:text-gray-400 hover:underline"
                   >
                     検索条件をクリア
@@ -1159,7 +1159,7 @@ export default async function KarteListPage({
               selectedType={ledgerShisetsu}
               fieldHref={ledgerFieldHref}
               typeHref={ledgerShisetsuHref}
-              clearHref={`/karte?${buildQuery(params, { remove: LEDGER_PARAM_KEYS })}`}
+              clearHref={`/map?${buildQuery(params, { remove: LEDGER_PARAM_KEYS })}`}
               renderSelection={() => (
                 <p className="mt-3 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
                   この分類の法令台帳（画像）は、
@@ -1703,7 +1703,7 @@ export default async function KarteListPage({
                         <tr key={k.id} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                           <td className="px-3 py-2 text-yellow-500">{k.favorite ? "★" : ""}</td>
                           <td className="px-3 py-2">
-                            <Link href={`/karte/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                            <Link href={`/map/${k.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                               {k.facilityNo}
                             </Link>
                           </td>

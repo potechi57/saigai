@@ -51,7 +51,7 @@ export default async function FavoritesPage({
       include: {
         karte: {
           include: {
-            // 地図ポップアップの「最終点検日時」表示用（app/karte/page.tsxと同じ考え方）
+            // 地図ポップアップの「最終点検日時」表示用（app/map/page.tsxと同じ考え方）
             events: { orderBy: { inspectionDate: "desc" }, take: 1, select: { inspectionDate: true } },
           },
         },
@@ -240,7 +240,7 @@ export default async function FavoritesPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">★ お気に入り</h1>
@@ -250,7 +250,7 @@ export default async function FavoritesPage({
         <CreateFavoriteGroupForm />
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Link
-            href="/karte/favorites"
+            href="/map/favorites"
             className={`rounded px-2.5 py-1 ${
               !groupId
                 ? "bg-gray-800 text-white dark:bg-gray-700"
@@ -262,7 +262,7 @@ export default async function FavoritesPage({
           {groups.map((g) => (
             <div key={g.id} className="flex items-center gap-1">
               <Link
-                href={`/karte/favorites?group=${g.id}`}
+                href={`/map/favorites?group=${g.id}`}
                 className={`rounded px-2.5 py-1 ${
                   groupId === g.id
                     ? "bg-gray-800 text-white dark:bg-gray-700"
@@ -328,7 +328,7 @@ export default async function FavoritesPage({
                   <li key={f.id} className="space-y-1.5 px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm">
-                        <Link href={`/karte/${k.facilityNo}`} className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                        <Link href={`/map/${k.facilityNo}`} className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
                           {k.routeName}
                         </Link>
                         <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{k.facilityNo}</span>

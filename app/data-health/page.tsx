@@ -110,7 +110,7 @@ export default async function DataHealthPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">🩺 既存データの健全性チェック</h1>

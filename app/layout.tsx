@@ -80,7 +80,7 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <NavigationTracker />
         <BulkImportProvider>
-          {/* h-14固定にしているのは、地図中心の検索画面（app/karte/page.tsx）が
+          {/* h-14固定にしているのは、地図中心の検索画面（app/map/page.tsx）が
               ヘッダー分を差し引いた高さ(h-[calc(100vh-3.5rem)])で地図を敷き詰めるため、
               ヘッダーの実高さを正確に把握できる必要があるため（曖昧なpy-*任せにすると
               ずれて二重スクロールが発生する）。
@@ -101,7 +101,7 @@ export default function RootLayout({
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 sm:gap-4">
               {/* sm未満（スマホ幅）ではPC向けの補助的なリンク群を隠す。h-14固定の
                   ヘッダーに全項目を詰め込むと折り返してヘッダーの実高さがずれ、
-                  /karteの地図がヘッダー分を引いた高さ計算からはみ出すため
+                  /mapの地図がヘッダー分を引いた高さ計算からはみ出すため
                   （スマホ側は/m以下の別画面を使う想定で、これらのリンクは元々不要）。
                   以前は📱現場用・★お気に入り・🕘閲覧履歴・⚙️設定をアイコンのみの
                   個別リンクとして横並びに置いていたが、スマホでは小さすぎて押しにくい
@@ -114,7 +114,7 @@ export default function RootLayout({
               <BulkImportStatusBadge />
               <MobileHeaderMenu />
               <nav className="hidden items-center gap-4 sm:flex">
-                <Link href="/karte/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                <Link href="/map/favorites" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                   ★ お気に入り
                 </Link>
                 {/* 横断的な「要対応一覧」ダッシュボード（会話ログ「横断的な『要対応一覧』
@@ -123,14 +123,8 @@ export default function RootLayout({
                 <Link href="/action-required" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                   ⚠ 要対応一覧
                 </Link>
-                <Link href="/karte/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
+                <Link href="/map/history" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
                   編集履歴
-                </Link>
-                {/* 既存データの健全性チェック（会話ログ「既存データの健全性チェック」
-                    参照。app/data-health/page.tsx）。使用頻度が高くない管理系機能
-                    のため、設定へのリンクと同じグループにまとめている。 */}
-                <Link href="/data-health" className="hover:text-gray-900 hover:underline dark:hover:text-gray-100">
-                  🩺 健全性チェック
                 </Link>
                 <ViewHistoryButton />
                 {/* PC向け設定画面（会話ログ「基本的な機能ではないので、設定画面などに

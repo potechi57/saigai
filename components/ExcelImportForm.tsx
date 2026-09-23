@@ -201,7 +201,7 @@ export default function ExcelImportForm() {
       {result && result.ok && (
         <p className="rounded border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950 p-3 text-sm text-green-800 dark:text-green-400">
           取り込みが完了しました（点検記録 {result.eventsImported} 件）。{" "}
-          <Link href={`/karte/${result.facilityNo}`} className="underline">
+          <Link href={`/map/${result.facilityNo}`} className="underline">
             カルテを確認する →
           </Link>
         </p>

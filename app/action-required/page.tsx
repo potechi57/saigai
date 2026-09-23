@@ -112,7 +112,7 @@ export default async function ActionRequiredPage({
       tier,
       rawLabel: `${meta.label}（${KARTE_TYPE_LABEL[k.karteType] ?? k.karteType}）`,
       rawBadgeClass: meta.badgeColor,
-      href: `/karte/${k.facilityNo}`,
+      href: `/map/${k.facilityNo}`,
     });
   }
 
@@ -175,9 +175,15 @@ export default async function ActionRequiredPage({
   const countsByTier: Record<UnifiedTier, number> = { no_action: 0, monitor: 0, action_needed: 0 };
   for (const r of rows) countsByTier[r.tier]++;
 
-  const visibleRows = rows
-    .filter((r) => !tierFilter || r.tier === tierFilter)
-    .filter((r) => !kindFilter || r.kind === kindFilter);
+  // 統一区分・種別のどちらも絞り込んでいない初期状態では、一覧本体は表示しない
+  // （会話ログ「要対策一覧表ですが、最初は一覧内容を表示しなくてもよいかと
+  // 思います。検索した時に、一覧表示されるようにしてください」参照。件数だけ
+  // 分かればよい状態から、対象を1件ずつ確認する状態へは、ボタンで絞り込んで
+  // からのほうが自然なため）。
+  const hasSearched = Boolean(tierFilter || kindFilter);
+  const visibleRows = hasSearched
+    ? rows.filter((r) => !tierFilter || r.tier === tierFilter).filter((r) => !kindFilter || r.kind === kindFilter)
+    : [];
 
   const KIND_OPTIONS: { key: Row["kind"]; label: string }[] = [
     { key: "karte", label: "点検調書（防災）" },
@@ -198,7 +204,7 @@ export default async function ActionRequiredPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">⚠ 要対応一覧</h1>
@@ -261,48 +267,54 @@ export default async function ActionRequiredPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
-            <tr>
-              <th className="px-3 py-2">統一区分</th>
-              <th className="px-3 py-2">種別</th>
-              <th className="px-3 py-2">名称</th>
-              <th className="px-3 py-2">元の判定</th>
-              <th className="px-3 py-2">路線名</th>
-              <th className="px-3 py-2">所在地</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((r) => (
-              <tr key={`${r.kind}-${r.id}`} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td className="px-3 py-2">
-                  <span className={`rounded px-2 py-0.5 text-xs ${UNIFIED_TIER_BADGE[r.tier]}`}>{UNIFIED_TIER_LABEL[r.tier]}</span>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{r.kindLabel}</td>
-                <td className="px-3 py-2">
-                  <Link href={r.href} className="text-blue-600 dark:text-blue-400 hover:underline">
-                    {r.title}
-                  </Link>
-                  {r.subtitle && <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{r.subtitle}</span>}
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`rounded px-2 py-0.5 text-xs ${r.rawBadgeClass}`}>{r.rawLabel}</span>
-                </td>
-                <td className="px-3 py-2">{r.routeName ?? "—"}</td>
-                <td className="px-3 py-2">{r.location ?? "—"}</td>
-              </tr>
-            ))}
-            {visibleRows.length === 0 && (
+      {!hasSearched ? (
+        <p className="rounded border border-gray-300 bg-white p-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500">
+          上の「経過観察」「要対策」または種別のボタンを選ぶと、該当する一覧が表示されます。
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-100 dark:bg-gray-700 text-left text-gray-600 dark:text-gray-300">
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
-                  条件に一致する対応が必要な記録はありません。
-                </td>
+                <th className="px-3 py-2">統一区分</th>
+                <th className="px-3 py-2">種別</th>
+                <th className="px-3 py-2">名称</th>
+                <th className="px-3 py-2">元の判定</th>
+                <th className="px-3 py-2">路線名</th>
+                <th className="px-3 py-2">所在地</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {visibleRows.map((r) => (
+                <tr key={`${r.kind}-${r.id}`} className="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <td className="px-3 py-2">
+                    <span className={`rounded px-2 py-0.5 text-xs ${UNIFIED_TIER_BADGE[r.tier]}`}>{UNIFIED_TIER_LABEL[r.tier]}</span>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{r.kindLabel}</td>
+                  <td className="px-3 py-2">
+                    <Link href={r.href} className="text-blue-600 dark:text-blue-400 hover:underline">
+                      {r.title}
+                    </Link>
+                    {r.subtitle && <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">{r.subtitle}</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded px-2 py-0.5 text-xs ${r.rawBadgeClass}`}>{r.rawLabel}</span>
+                  </td>
+                  <td className="px-3 py-2">{r.routeName ?? "—"}</td>
+                  <td className="px-3 py-2">{r.location ?? "—"}</td>
+                </tr>
+              ))}
+              {visibleRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500">
+                    条件に一致する対応が必要な記録はありません。
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

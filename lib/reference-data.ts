@@ -3,7 +3,7 @@
 //
 // 背景（性能監査より）: これらは「実際に登録されている値から選ぶ」ための参照データで、
 // Excelインポートや台帳の追加・編集をしない限り中身は変わらない。にもかかわらず
-// app/karte/page.tsxでは検索するたびに（＝ページを開くたびに）DISTINCT検索を4本
+// app/map/page.tsxでは検索するたびに（＝ページを開くたびに）DISTINCT検索を4本
 // 実行しており、無駄なDB往復になっていた。
 //
 // unstable_cacheでラップし、短い期間（30秒）だけ結果を使い回すことで、この4本分の
@@ -79,7 +79,7 @@ export const getFacilityListRouteNameOptions = unstable_cache(
 // 値（国道・主要地方道・一般県道・1級町道・2級町道・その他市道・その他町道）を
 // 持っているため、これをそのまま使う（他のroutedName源＝Karte・FacilityLedgerには
 // 道路種別を示す列が無く、実データで突き合わせても一致が無かったため、2段階化の
-// 対象は施設台帳タブのみに限定している。app/karte/page.tsxのROAD_TYPE_GROUPS参照）。
+// 対象は施設台帳タブのみに限定している。app/map/page.tsxのROAD_TYPE_GROUPS参照）。
 export const getFacilityListRouteOptionsWithType = unstable_cache(
   async (): Promise<{ routeName: string; routeType: string | null }[]> => {
     const rows = await prisma.facilityListItem.findMany({

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // 施設一覧（台帳）の1件詳細画面。施設諸元（台帳本体）と、管理番号で紐付いた
 // 詳細な点検調書（GateSignInspection/BridgeInspection/BridgeLedger/
 // SlopeStructureInspection）へのリンクを表示する。カルテ詳細画面
-// （/karte/[karteNo]）が様式Ａ〜Ｄという決まった様式を表形式で再現しているのに
+// （/map/[karteNo]）が様式Ａ〜Ｄという決まった様式を表形式で再現しているのに
 // 対し、こちらはExcelの列をそのまま見せるだけの簡素な画面にとどめている
 // （施設一覧データには様式が無いため）。
 export default async function FacilityListItemPage({ params }: { params: Promise<{ id: string }> }) {

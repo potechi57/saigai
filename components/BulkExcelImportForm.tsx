@@ -89,7 +89,7 @@ export default function BulkExcelImportForm() {
                       </td>
                       <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
                         {f.status === "success" && f.facilityNo ? (
-                          <Link href={`/karte/${f.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                          <Link href={`/map/${f.facilityNo}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                             {f.facilityNo} を確認する →
                           </Link>
                         ) : (

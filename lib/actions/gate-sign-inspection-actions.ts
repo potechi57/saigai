@@ -194,7 +194,7 @@ async function runImportGateSignInspection(buffer: Buffer, fileName: string): Pr
   });
 
   revalidatePath("/inspections/gate-signs");
-  revalidatePath("/karte");
+  revalidatePath("/map");
   if (previous) revalidatePath(`/inspections/gate-signs/${previous.id}`);
 
   return { ok: true, id: created.id, managementNo: data.managementNo, matchedFacility: !!facility };
@@ -244,5 +244,5 @@ export async function deleteGateSignInspection(id: string): Promise<void> {
     summary: `${latest.managementNo ?? latest.sourceFileName ?? "点検調書"}を削除（${chain.length}年度分）`,
   });
   revalidatePath("/inspections/gate-signs");
-  revalidatePath("/karte");
+  revalidatePath("/map");
 }

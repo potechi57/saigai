@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import HomeLocationSettings from "@/components/HomeLocationSettings";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -32,7 +33,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">設定</h1>
@@ -55,6 +56,28 @@ export default async function SettingsPage() {
         </div>
         <div className="p-4">
           <HomeLocationSettings home={home} />
+        </div>
+      </section>
+
+      {/* 既存データの健全性チェック（app/data-health/page.tsx）。以前は常時
+          見えるヘッダーに置いていたが、使用頻度が高くない管理系機能で
+          「あえてヘッダーに乗せる必要性を感じない」との指摘を受け（会話ログ
+          「健全性チェックとは何でしょうか。これは、あえてヘッダーに乗せる
+          べきものなのでしょうか」参照）、表示テーマ・ホーム位置と同じく
+          設定画面側へ移した（ThemeToggleを以前ヘッダーから/settingsへ移した
+          のと同じ判断）。機能自体（Excelの再取込みが必要な古いレコードを
+          検知する管理者向けツール）は変更していない。 */}
+      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="border-b border-gray-300 px-4 py-3 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">データ管理</h2>
+        </div>
+        <div className="p-4">
+          <Link href="/data-health" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            🩺 既存データの健全性チェック →
+          </Link>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            点検調書（門型標識・橋梁・法面構造物）のうち、Excelの取込み内容が不完全である可能性がある記録を検出します。
+          </p>
         </div>
       </section>
 

@@ -57,6 +57,6 @@ export async function updateJudgment(target: JudgmentTarget, value: string): Pro
     linkHref,
   });
 
-  revalidatePath("/karte");
+  revalidatePath("/map");
   return { ok: true };
 }

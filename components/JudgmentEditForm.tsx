@@ -7,10 +7,14 @@ import { JUDGMENT_BADGE } from "@/lib/labels";
 // 点検調書（門型標識・橋梁・法面構造物）の判定区分／点検者の評価を、詳細画面上で
 // 直接編集するためのフォーム（会話ログ「カルテ以外への対応区分・判定区分の
 // 直接更新機能」参照。lib/actions/judgment-actions.ts参照）。
-// FavoriteToggleButton.tsxと同じ方針（フォーム送信ではなくクリックで直接
-// Server Actionを呼ぶ。楽観的更新＋失敗時ロールバック）だが、こちらは値の
-// 選択を伴うため、選択直後に自動保存する（保存ボタンを別途設けると
-// 「選んだのに反映されない」という誤操作を招きやすいため）。
+//
+// 以前は選択した瞬間に自動保存する方式（FavoriteToggleButton.tsxのお気に入り
+// 登録と同じ「クリックで直接反映」の考え方）だったが、判定区分は軽々しく
+// 変えるものではないとの指摘を受け（会話ログ「簡単に変えるものではないので、
+// 現在の簡単に修正できる仕様はやめてください」参照）、他の編集（例:
+// app/map/[karteNo]/targets/[targetId]/edit/page.tsxの「保存する」ボタン式
+// フォーム）と同じく、選択しただけでは反映されず、明示的に「保存」ボタンを
+// 押して初めて更新される方式に変更した。
 export default function JudgmentEditForm({
   target,
   initialValue,
@@ -22,20 +26,24 @@ export default function JudgmentEditForm({
   // lib/labels.tsのJUDGMENT_BADGEはⅠ〜Ⅳ両方の配色を持つため共通で使える）。
   options: readonly string[];
 }) {
-  const [value, setValue] = useState(initialValue ?? "");
+  const initial = initialValue ?? "";
+  const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  function handleChange(next: string) {
-    const previous = value;
-    setValue(next);
+  const isDirty = value !== initial;
+
+  function handleSave() {
     setError(null);
+    setSavedMessage(false);
     startTransition(async () => {
-      const result = await updateJudgment(target, next);
+      const result = await updateJudgment(target, value);
       if (!result.ok) {
-        setValue(previous);
         setError(result.error);
+        return;
       }
+      setSavedMessage(true);
     });
   }
 
@@ -43,9 +51,13 @@ export default function JudgmentEditForm({
     <div className="inline-flex items-center gap-2">
       <select
         value={value}
-        onChange={(e) => handleChange(e.target.value)}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setError(null);
+          setSavedMessage(false);
+        }}
         disabled={isPending}
-        aria-label="判定区分を手動で更新"
+        aria-label="判定区分を編集"
         className={`rounded border px-2 py-1 text-xs font-medium disabled:opacity-60 ${
           value ? (JUDGMENT_BADGE[value] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300") : "bg-white dark:bg-gray-800"
         }`}
@@ -57,7 +69,17 @@ export default function JudgmentEditForm({
           </option>
         ))}
       </select>
-      {isPending && <span className="text-xs text-gray-400 dark:text-gray-500">更新中...</span>}
+      {isDirty && (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isPending}
+          className="rounded bg-gray-800 px-2 py-1 text-xs text-white hover:bg-gray-700 disabled:opacity-60 dark:bg-gray-700 dark:hover:bg-gray-600"
+        >
+          {isPending ? "保存中..." : "保存"}
+        </button>
+      )}
+      {!isDirty && savedMessage && <span className="text-xs text-green-600 dark:text-green-400">保存しました</span>}
       {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
     </div>
   );

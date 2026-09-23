@@ -43,7 +43,7 @@ export default function HomeLocationSettings({ home }: { home: HomeLocation }) {
       )}
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/karte?setHome=1"
+          href="/map?setHome=1"
           className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
           🏠 地図で{current ? "変更" : "設定"}する

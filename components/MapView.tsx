@@ -42,7 +42,7 @@ export type MapKarte = {
 // 基本情報。prisma/schema.prismaのFacilityLedger参照）。このコンポーネント
 // 自体は受け取ったledgersをそのまま描画するだけで絞り込みはしない。表示対象の
 // 絞り込み（現在のタブ・分野・施設名称が特定されたものだけに限る）は呼び出し元の
-// app/karte/page.tsx（ledgerWhere）側で行っている（以前はここでの絞り込みが
+// app/map/page.tsx（ledgerWhere）側で行っている（以前はここでの絞り込みが
 // 一切無く常時全件表示だったため、他タブ・他分類の台帳が地図に残り続ける不具合に
 // なっていた）。
 //
@@ -98,7 +98,7 @@ export type MapFacilityListItem = {
 // 位置自体はこのレコード自身の緯度経度（IMS設定シート由来）を使う
 // （会話ログ「A01-AE-010474は、点検調書のデータも入れたので、点検調書でも
 // 表示してほしい」参照）。絞り込み（点検調書＞道路＞門型標識が選ばれている
-// ときだけ表示する）は呼び出し元のapp/karte/page.tsx側で行っている
+// ときだけ表示する）は呼び出し元のapp/map/page.tsx側で行っている
 // （台帳（画像）・施設一覧と同じ、呼び出し元で絞り込んでから渡す方針）。
 export type MapGateSignInspection = {
   id: string;
@@ -183,7 +183,7 @@ export type HomeLocation = { latitude: number; longitude: number; label: string 
 //
 // 「地図を中心とした画面」への刷新に伴い、以前は地図の上に積んでいた凡例・現在地ボタン等の
 // UIを地図の上への浮動オーバーレイに変更し、地図自体が親要素いっぱい（h-full w-full）を
-// 占めるようにしている（親側でheightを決める。app/karte/page.tsx参照）。
+// 占めるようにしている（親側でheightを決める。app/map/page.tsx参照）。
 export default function MapView({
   kartes,
   home,
@@ -402,7 +402,7 @@ export default function MapView({
              <div style="font-weight:600;">${escapeHtml(k.facilityNo)}</div>
              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                <span id="${favSlotId}"></span>
-               <a href="/karte/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
+               <a href="/map/${encodeURIComponent(k.facilityNo)}" style="color:#2563eb;font-size:12px;white-space:nowrap;">詳細を見る →</a>
              </div>
            </div>
            <div style="color:#374151;">路線名: ${escapeHtml(k.routeName)} ・ 防災種別: ${escapeHtml(k.karteTypeLabel)}</div>
@@ -518,10 +518,10 @@ export default function MapView({
             // 以前はここでrouter.refresh()を呼び、ページ全体（このマップに渡す
             // 全検索クエリを含む）を再取得していたが、性能監査で「☆/★を1件切り替える
             // だけで無関係な全クエリが再実行される」不要な処理として指摘された。
-            // view=map/view=list（app/karte/page.tsx）は排他表示のため、このマップを
+            // view=map/view=list（app/map/page.tsx）は排他表示のため、このマップを
             // 見ている間は一覧テーブルが同時に見えることは無く、上のfavoriteIdsRef＋
             // marker.setIcon/renderFavSlotで「今見ている地図上の見た目」は既に
-            // 即座に反映できている。一覧表示や/karte/favoritesへ実際に移動した際は
+            // 即座に反映できている。一覧表示や/map/favoritesへ実際に移動した際は
             // （force-dynamicのため）その時点で最新データを取り直すので、ここでの
             // refreshは不要。components/FavoriteToggleButton.tsx（カルテ詳細画面の
             // ☆/★ボタン）も同じ理由でrouter.refresh()を呼んでいない。
@@ -663,7 +663,7 @@ export default function MapView({
   }, [facilityListItems]);
 
   // 点検調書（門型標識）のマーカーを構築する専用effect。台帳・施設一覧と同様、
-  // 呼び出し元（app/karte/page.tsx）で絞り込み済みの配列をそのまま描画するが、
+  // 呼び出し元（app/map/page.tsx）で絞り込み済みの配列をそのまま描画するが、
   // ID集合が変わったときだけ作り直す（lastGateSignIdsKeyRef参照。理由は
   // lastKarteIdsKeyRefのコメント参照）。
   useEffect(() => {
@@ -1559,7 +1559,7 @@ async function fetchRoadRouteDistance(
 // 詰めても縦スクロールを避けられない。
 //
 // 様式Ａの合成画像は実際には「横長」（点検地点位置図欄（C8:BI26）そのものの
-// 見た目の縦横比。app/karte/[karteNo]/page.tsxの「合成画像は横長になりがちで、
+// 見た目の縦横比。app/map/[karteNo]/page.tsxの「合成画像は横長になりがちで、
 // 横幅を増やしても高さはあまり伸びない」という既存コメント参照）であり、
 // 起点・終点の普通の写真と違って16:9に強制する必然性は無い。そのため、
 // 高さを画像の実寸に完全に追従させる（height:auto）方式も検討したが、

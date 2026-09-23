@@ -28,7 +28,7 @@ export default async function AuditHistoryPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <BackLink fallbackHref="/karte">
+      <BackLink fallbackHref="/map">
         ← 地図に戻る
       </BackLink>
       <div>
@@ -60,7 +60,7 @@ export default async function AuditHistoryPage() {
                     // （lib/audit.ts参照）。削除等で対象が既に無い場合はhref側は
                     // 設定されない（各Server Action側でリンクを付けていない）ため、
                     // 自然にプレーンテキスト表示にフォールバックする。
-                    const href = log.linkHref ?? (log.karteFacilityNo ? `/karte/${log.karteFacilityNo}` : null);
+                    const href = log.linkHref ?? (log.karteFacilityNo ? `/map/${log.karteFacilityNo}` : null);
                     return href ? (
                       <Link href={href} className="text-blue-600 dark:text-blue-400 hover:underline">
                         {log.summary}
