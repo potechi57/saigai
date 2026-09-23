@@ -306,6 +306,22 @@ async function extractForm1OverviewPhotos(buffer: Buffer, sheetName: string): Pr
   return sorted.map((image, i) => ({ image, caption: captions[i] ?? null, category: "overview" as const }));
 }
 
+// 「定期点検調書（その３）」橋梁状況写真（起点→終点／終点→起点／上流→下流／
+// 下流→上流の4枚、2×2配置。会話ログ「その3のタブですが、左上の写真は、
+// 起点→終点を意味する写真で、左下は上流→下流を意味する写真のようです」参照）。
+// Excel側にも近傍にラベルセルがある（例:「起点→終点」がC6、写真はF7付近）が、
+// 列方向に3列以上離れておりfindNearbyCaptionの探索範囲（列±2）では届かず
+// 拾えないことを実データ2件（宮ノ前橋・富田橋）で確認済み。両ファイルとも
+// 「行→列」ソート順が必ず起点→終点(左上)・終点→起点(右上)・上流→下流(左下)・
+// 下流→上流(右下)と一致することも確認済みのため、道路橋様式１の全景写真
+// （extractForm1OverviewPhotos）と同じ「並び順に対する固定ラベル」方式にする。
+const SITE_PHOTO_CAPTIONS = ["起点→終点", "終点→起点", "上流→下流", "下流→上流"];
+async function extractSiteStatusPhotos(buffer: Buffer, sheetName: string): Promise<BridgeInspectionPhotoData[]> {
+  const images = await extractSheetImages(buffer, sheetName);
+  const sorted = [...images].sort((a, b) => a.fromRow - b.fromRow || a.fromCol - b.fromCol);
+  return sorted.map((image, i) => ({ image, caption: SITE_PHOTO_CAPTIONS[i] ?? null, category: "site" as const }));
+}
+
 // 「道路橋様式２」の損傷写真（4枚程度。判定区分Ⅱ・Ⅲ・Ⅳの部材に直接関連する
 // 代表的な損傷の写真）。キャプション文字列（例:「写真1　（2径間）床版
 // ひびわれ」）を部材名・変状の種類にパースし、近傍の「【判定区分：」欄から
@@ -506,10 +522,18 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
   const photos: BridgeInspectionPhotoData[] = [];
   const form1SheetName = wb.SheetNames.find((n) => wb.Sheets[n] === form1Sheet)!;
   photos.push(...(await extractForm1OverviewPhotos(buffer, form1SheetName)));
-  const form2Sheet = findSheet(wb, FORM2_SHEET_NAME);
-  if (form2Sheet) {
-    const name = wb.SheetNames.find((n) => wb.Sheets[n] === form2Sheet)!;
-    photos.push(...(await extractDamageHighlightPhotos(buffer, name, form2Sheet)));
+  // 「道路橋様式２」は損傷写真の枚数が多いとページが複数（道路橋様式2P001・
+  // 道路橋様式2P002…）に分かれる（会話ログ「様式2は2ページある。現在は最初の
+  // 1ページのみを確認している。2ページ目も確認する仕様に修正してほしい」
+  // 参照。実データ「G57-AB-909596_01_宮ノ前橋.xlsx」で確認済み）。findSheetは
+  // 前方一致で最初の1件しか返さないため、ここでは下記「その４」「その５」と
+  // 同じくstartsWith前方一致で全ページ分のシート名を集め、登場順（＝P001,
+  // P002...の順）にすべて処理して写真を連結する。
+  const form2SheetNames = wb.SheetNames.filter((n) => n.trim().startsWith(FORM2_SHEET_NAME));
+  for (const name of form2SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    photos.push(...(await extractDamageHighlightPhotos(buffer, name, ws)));
   }
   const drawingSheet = findSheet(wb, DRAWING_SHEET_NAME);
   if (drawingSheet) {
@@ -519,7 +543,7 @@ export async function parseBridgeInspectionExcel(buffer: Buffer, fileName: strin
   const sitePhotoSheet = findSheet(wb, SITE_PHOTO_SHEET_NAME);
   if (sitePhotoSheet) {
     const name = wb.SheetNames.find((n) => wb.Sheets[n] === sitePhotoSheet)!;
-    photos.push(...(await extractLabeledPhotos(buffer, name, sitePhotoSheet, "site")));
+    photos.push(...(await extractSiteStatusPhotos(buffer, name)));
   }
 
   // 「定期点検調書（その５）」N_径間M シート群。径間ごとに何枚シートが

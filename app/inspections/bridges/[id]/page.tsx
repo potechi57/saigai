@@ -266,13 +266,27 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
                   <div className="grid grid-cols-2 gap-3">
                     {overviewPhotos.map((p, i) => (
                       <div key={p.id}>
-                        <PhotoLightboxThumbnail index={i}>
+                        <PhotoLightboxThumbnail index={i} className="relative block w-full text-left">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={p.url}
                             alt={p.caption ?? "写真"}
                             className="aspect-video w-full cursor-zoom-in rounded border border-gray-300 bg-gray-50 object-contain dark:border-gray-700 dark:bg-gray-800"
                           />
+                          {/* 全景写真は橋を川上から川下に向けて撮影したもので、
+                              写真の左側が起点側・右側が終点側になる（会話ログ
+                              「写真は、橋を川上から川下に向けてみたものになります。
+                              このとき、写真の左側が起点側であり、右側が終点側になる
+                              ようにとられています」参照）。この向きが一目で分かる
+                              よう、写真上の左端・右端に固定ラベルを重ねて表示する
+                              （p.captionは「どちら側から撮った写真か」を示す別の
+                              情報のため、そちらは従来どおり写真の下に残す）。 */}
+                          <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                            起点側
+                          </span>
+                          <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                            終点側
+                          </span>
                         </PhotoLightboxThumbnail>
                         {p.caption && (
                           <p className="mt-1 whitespace-pre-wrap text-center text-xs font-medium text-gray-600 dark:text-gray-300">
