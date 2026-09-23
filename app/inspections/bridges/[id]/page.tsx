@@ -589,6 +589,12 @@ export default async function BridgeInspectionDetailPage({ params }: { params: P
             content: (
               <BridgeSpanPage
                 key={spanNo}
+                spanNo={spanNo}
+                managementNo={insp.managementNo}
+                bridgeName={insp.bridgeName}
+                location={insp.location}
+                routeName={insp.routeName}
+                officeName={insp.officeName}
                 members={spanGroups.find((g) => g.spanNo === spanNo)?.members ?? []}
                 diagnosis={spanDiagnoses.find((d) => d.spanNo === spanNo) ?? null}
               />
@@ -687,7 +693,38 @@ function BridgeSpanDiagnosisTable({ diagnosis }: { diagnosis: BridgeInspectionSp
 // そうすると一つのタブが長くなります。そのため、径間１のタブの中にさらに
 // タブを設けて定期点検調書(その５)の１、２と続けてください」参照。
 // 門型標識の様式２(1)(2)(3)と同じ考え方を、径間タブの中でネストして使う）。
-function BridgeSpanPage({ members, diagnosis }: { members: BridgeInspectionMember[]; diagnosis: BridgeInspectionSpanDiagnosis | null }) {
+//
+// 「その４」の見出しが無く損傷評価表がその５のカード群と地続きに見えていた
+// ため、「実装されていないのか、読み込まれていないのか」と見分けが付かない
+// との指摘を受けた（会話ログ「その4が抜けています。なぜでしょうか」参照。
+// データ自体は元々読み込めていた）。その４・その５それぞれに見出しを分け、
+// 元Excel側で両シートの上部に共通して載っている橋梁番号・橋梁名・径間番号・
+// 所在地・路線名・事務所名も表示するようにした（会話ログ「エクセルを確認
+// すれば分かりますが、その4以降では、上に橋梁番号、橋梁名、径間番号、所在地、
+// 路線名、事務所名を表示しています」参照。実データ「G57-AB-909596_01_
+// 宮ノ前橋.xlsx」の「定期点検調書（その4） 径間1」シート（C4=橋梁番号、
+// F5=橋梁名、K4=径間番号、O4=所在地、T4=路線名、Y4=事務所名）で配置を確認
+// 済み。値自体は既にinsp（BridgeInspection本体。その1由来）から取得できて
+// いるため、その4・その5シートから新たに読み直す必要は無い）。
+function BridgeSpanPage({
+  spanNo,
+  managementNo,
+  bridgeName,
+  location,
+  routeName,
+  officeName,
+  members,
+  diagnosis,
+}: {
+  spanNo: number;
+  managementNo: string | null;
+  bridgeName: string | null;
+  location: string | null;
+  routeName: string | null;
+  officeName: string | null;
+  members: BridgeInspectionMember[];
+  diagnosis: BridgeInspectionSpanDiagnosis | null;
+}) {
   const pageGroups: { pageNo: number; members: BridgeInspectionMember[] }[] = [];
   for (const m of members) {
     let group = pageGroups.find((g) => g.pageNo === m.pageNo);
@@ -701,10 +738,29 @@ function BridgeSpanPage({ members, diagnosis }: { members: BridgeInspectionMembe
 
   return (
     <section className="overflow-x-auto rounded-t border border-b-0 border-gray-400 bg-white dark:border-gray-600 dark:bg-gray-900">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-b border-gray-400 bg-gray-50 p-3 text-xs dark:border-gray-600 dark:bg-gray-800 sm:grid-cols-3">
+        <Field label="橋梁番号" value={managementNo} />
+        <Field label="橋梁名" value={bridgeName} />
+        <Field label="径間番号" value={String(spanNo)} />
+        <Field label="所在地" value={location} />
+        <Field label="路線名" value={routeName} />
+        <Field label="事務所名" value={officeName} />
+      </dl>
+
       <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">損傷評価・損傷箇所（{members.length}件）</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">径間別の損傷評価（その４）</h2>
       </div>
-      {diagnosis && <BridgeSpanDiagnosisTable diagnosis={diagnosis} />}
+      {diagnosis ? (
+        <BridgeSpanDiagnosisTable diagnosis={diagnosis} />
+      ) : (
+        <p className="border-b border-gray-300 p-4 text-sm text-gray-400 dark:border-gray-700 dark:text-gray-500">
+          この径間の損傷評価（その４）はありません。
+        </p>
+      )}
+
+      <div className="border-b border-gray-400 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-800">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">損傷箇所（その５）（{members.length}件）</h2>
+      </div>
       {pageGroups.length === 0 ? (
         <p className="p-4 text-sm text-gray-400 dark:text-gray-500">この径間には損傷記録がありません。</p>
       ) : (
