@@ -17,14 +17,10 @@ export const dynamic = "force-dynamic";
 // （/karte）とは別の、シンプルな全件テーブル表示にしている
 // （件数規模が施設一覧＝台帳全体であり、カルテほど複雑な検索条件は
 // 今のところ不要なため）。地図（/karte）にはピンとして表示される。
-// この一覧は台帳（施設諸元＋直近点検のスナップショット）だけを見せ、点検記録の
-// 履歴（FacilityInspectionRecord）は管理番号または「点検記録」列から詳細画面
-// （/facility-list/[id]）で確認する（構造物は台帳が先にあり点検が後から繰り返し
-// 行われるため、履歴を別画面に分けている。prisma/schema.prismaのコメント参照）。
+// この一覧は台帳（施設諸元＋直近点検のスナップショット）だけを見せる。
 export default async function FacilityListPage() {
   const items = await prisma.facilityListItem.findMany({
     orderBy: { managementNo: "asc" },
-    include: { _count: { select: { inspections: true } } },
   });
 
   return (
@@ -63,7 +59,6 @@ export default async function FacilityListPage() {
                 <th className="px-3 py-2">所在地</th>
                 <th className="px-3 py-2">健全度</th>
                 <th className="px-3 py-2">点検実施日</th>
-                <th className="px-3 py-2">点検記録</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -82,11 +77,6 @@ export default async function FacilityListPage() {
                   <td className="px-3 py-2">{it.soundnessGrade ?? "—"}</td>
                   <td className="px-3 py-2">
                     {it.inspectionDate ? new Date(it.inspectionDate).toLocaleDateString("ja-JP") : "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Link href={`/facility-list/${it.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
-                      {it._count.inspections}件
-                    </Link>
                   </td>
                   <td className="px-3 py-2">
                     <form action={deleteFacilityListItem.bind(null, it.id)}>

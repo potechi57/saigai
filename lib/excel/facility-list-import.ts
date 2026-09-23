@@ -109,12 +109,12 @@ function parseLatLng(text: string | null): { latitude: number | null; longitude:
 // "2016/04/01" 等の日付。cellDates:trueで読み込んだ場合はセルの値が既にDate型に
 // なっていることが多いのでそれを優先し、そうでなければ文字列からパースする。
 // どちらの経路でも、最終的にはUTC正午…ではなくUTC 0時（日付のみ、時刻情報は
-// 捨てる）に正規化する。これは、施設一覧の再取込時にFacilityInspectionRecordの
-// 一意キー（施設×点検日）として使うため（lib/actions/facility-list-actions.ts
-// 参照）で、経路によって時刻・タイムゾーンの解釈が異なると（xlsxのcellDates変換は
+// 捨てる）に正規化する。これは、施設一覧の再取込時に「直近点検」スナップショットの
+// 新旧比較（inspectionDate >= 既存値。lib/actions/facility-list-actions.ts参照）に
+// 使うためで、経路によって時刻・タイムゾーンの解釈が異なると（xlsxのcellDates変換は
 // UTC基準、new Date(text)はロケールのローカル時刻基準）、同じ論理的な日付でも
-// 異なるDateインスタンスになり、再取込のたびに点検記録が重複作成されてしまう
-// おそれがあるため、日付部分だけを取り出して両経路で同じ正規化を行う。
+// 異なるDateインスタンスになり比較がずれてしまうおそれがあるため、日付部分だけを
+// 取り出して両経路で同じ正規化を行う。
 function parseDateCell(ws: WorkSheet, r: number, c: number): Date | null {
   const addr = utils.encode_cell({ r, c });
   const cell = ws[addr];

@@ -8,29 +8,21 @@ import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
-// 施設一覧（台帳）の1件詳細画面。施設諸元（台帳本体）と点検記録の履歴
-// （FacilityInspectionRecord）を分けて表示する。構造物は施工時に台帳がまず
-// 存在し、点検は後から・繰り返し行われるものであるため（プリズマスキーマの
-// FacilityListItem/FacilityInspectionRecordコメント参照）、台帳側は「今分かって
-// いる最新の状態」を、点検記録側は「これまで行われた点検の履歴」を、それぞれ別の
-// テーブルとして見せる。カルテ詳細画面（/karte/[karteNo]）が様式Ａ〜Ｄという
-// 決まった様式を表形式で再現しているのに対し、こちらはExcelの列をそのまま
-// 見せるだけの簡素な画面にとどめている（施設一覧データには様式が無いため）。
+// 施設一覧（台帳）の1件詳細画面。施設諸元（台帳本体）と、管理番号で紐付いた
+// 詳細な点検調書（GateSignInspection/BridgeInspection/BridgeLedger/
+// SlopeStructureInspection）へのリンクを表示する。カルテ詳細画面
+// （/karte/[karteNo]）が様式Ａ〜Ｄという決まった様式を表形式で再現しているのに
+// 対し、こちらはExcelの列をそのまま見せるだけの簡素な画面にとどめている
+// （施設一覧データには様式が無いため）。
 export default async function FacilityListItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const item = await prisma.facilityListItem.findUnique({
     where: { id },
     include: {
-      inspections: { orderBy: { inspectionDate: "desc" } },
-      // 門型標識点検調書（GateSignInspection）・橋梁台帳（BridgeLedger）は管理番号で
-      // 紐付いている場合がある（prisma/schema.prismaのGateSignInspection/BridgeLedger
-      // コメント参照）。紐付いていても、これまでこの画面には一切表示されていなかった
-      // ため（会話ログ「点検調書と施設台帳が組み合わさっていない状態です」参照）、
-      // 上のFacilityInspectionRecord（簡易な点検記録の履歴）とは別に、詳細な点検調書
-      // 本体へのリンクとして追加する。
       gateSignInspections: { orderBy: { inspectionDate: "desc" } },
       bridgeLedgers: { orderBy: { createdAt: "desc" } },
       bridgeInspections: { orderBy: { inspectionDate: "desc" } },
+      slopeStructureInspections: { orderBy: { inspectionDate: "desc" } },
     },
   });
   if (!item) notFound();
@@ -94,11 +86,19 @@ export default async function FacilityListItemPage({ params }: { params: Promise
           無かった）ため追加した。下の「点検記録」は簡易な点検履歴の一覧、
           こちらは1施設1件ずつの詳細な点検報告書（写真・部材ごとの損傷記録等を
           含む）という違いがある。 */}
-      {(item.gateSignInspections.length > 0 || item.bridgeLedgers.length > 0 || item.bridgeInspections.length > 0) && (
+      {(item.gateSignInspections.length > 0 ||
+        item.bridgeLedgers.length > 0 ||
+        item.bridgeInspections.length > 0 ||
+        item.slopeStructureInspections.length > 0) && (
         <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
           <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              詳細な点検調書（{item.gateSignInspections.length + item.bridgeLedgers.length + item.bridgeInspections.length}件）
+              詳細な点検調書（
+              {item.gateSignInspections.length +
+                item.bridgeLedgers.length +
+                item.bridgeInspections.length +
+                item.slopeStructureInspections.length}
+              件）
             </h2>
           </div>
           <ul className="divide-y divide-gray-200 p-3 text-sm dark:divide-gray-700">
@@ -138,6 +138,24 @@ export default async function FacilityListItemPage({ params }: { params: Promise
                 )}
               </li>
             ))}
+            {item.slopeStructureInspections.map((insp) => (
+              <li key={insp.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  法面構造物
+                </span>
+                <Link href={`/inspections/slopes/${insp.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {insp.managementNo ?? insp.sourceFileName ?? "（箇所番号不明）"}
+                </Link>
+                {insp.overallJudgment && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">判定区分 {insp.overallJudgment}</span>
+                )}
+                {insp.inspectionDate && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    点検日: {new Date(insp.inspectionDate).toLocaleDateString("ja-JP")}
+                  </span>
+                )}
+              </li>
+            ))}
             {item.bridgeLedgers.map((bridge) => (
               <li key={bridge.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
@@ -154,48 +172,6 @@ export default async function FacilityListItemPage({ params }: { params: Promise
           </ul>
         </section>
       )}
-
-      <section className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <div className="border-b border-gray-300 px-3 py-2 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            点検記録（{item.inspections.length}件）
-          </h2>
-        </div>
-        {item.inspections.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400 dark:text-gray-500">まだ点検記録がありません。</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 text-left text-gray-500 dark:text-gray-400">
-                <tr>
-                  <th className="px-3 py-2">点検実施日</th>
-                  <th className="px-3 py-2">点検種別</th>
-                  <th className="px-3 py-2">健全度</th>
-                  <th className="px-3 py-2">点検実施者</th>
-                  <th className="px-3 py-2">主な所見</th>
-                  <th className="px-3 py-2">修繕年月日</th>
-                  <th className="px-3 py-2">修繕備考</th>
-                </tr>
-              </thead>
-              <tbody>
-                {item.inspections.map((insp) => (
-                  <tr key={insp.id} className="border-t border-gray-200 dark:border-gray-700">
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-100">
-                      {new Date(insp.inspectionDate).toLocaleDateString("ja-JP")}
-                    </td>
-                    <td className="px-3 py-2">{insp.inspectionType ?? "—"}</td>
-                    <td className="px-3 py-2">{insp.soundnessGrade ?? "—"}</td>
-                    <td className="px-3 py-2">{insp.inspector ?? "—"}</td>
-                    <td className="px-3 py-2 whitespace-pre-wrap">{insp.mainFindings ?? "—"}</td>
-                    <td className="px-3 py-2">{insp.repairDate ?? "—"}</td>
-                    <td className="px-3 py-2 whitespace-pre-wrap">{insp.repairRemarks ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </div>
   );
 }

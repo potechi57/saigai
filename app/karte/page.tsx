@@ -170,7 +170,7 @@ const INSPECTION_FIELDS: FieldDef[] = [
   { key: "sabo", label: "砂防" },
   { key: "park", label: "公園" },
 ];
-// 点検調書側はFacilityInspectionRecordの横断検索がまだ無いため、全ての
+// 点検調書側は施設種別ごとの横断検索がまだ無いため、全ての
 // 施設名称が未実装（matchが無い＝準備中）。
 const INSPECTION_TYPES: Record<FieldKey, FacilityTypeDef[]> = {
   road: [
@@ -1366,7 +1366,7 @@ export default async function KarteListPage({
                   <>
                     {/* 「災害」以外の分野は、施設台帳と同じ形式で施設名称のドリルダウンを
                         もう1段持たせる（例: 道路→橋梁・トンネル・道路法面構造物等）。
-                        FacilityInspectionRecordの横断検索（地図・共通フィールドでの絞り込み）
+                        施設種別ごとの横断検索（地図・共通フィールドでの絞り込み）
                         はまだ無いため、選んでも一覧・地図には反映されないが、道路＞門型標識
                         だけは実データがあるため、一覧ページへの案内を出す
                         （lib/actions/gate-sign-inspection-actions.ts参照。会話ログ
